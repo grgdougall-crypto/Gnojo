@@ -1,4 +1,5 @@
-from flask import Flask, render_template, session
+from flask import Flask, render_template, session, request
+from app.engine.decision_engine import DecisionEngine
 
 app = Flask(__name__)
 
@@ -68,6 +69,49 @@ def internet_diagnosis(scope_type):
         scope=session.get("scope", "Not provided"),
     )
 
+@app.route("/wizard", methods=["GET", "POST"])
+def wizard():
+
+    engine = DecisionEngine()
+
+    # First visit
+    if request.method == "GET":
+
+        engine.load_workflow("internet")
+
+        node = engine.get_start_node()
+
+        session["workflow"] = "internet"
+        session["current_node"] = node.id
+
+        return render_template(
+            "wizard.html",
+            node=node
+        )
+
+    # User submitted an answer
+    engine.load_workflow(session["workflow"])
+
+    current_node = engine.get_node(
+        session["current_node"]
+    )
+
+    answer = request.form.get("answer")
+
+    node = engine.advance(
+        current_node,
+        answer
+    )
+
+    if node is None:
+        return "Workflow complete."
+
+    session["current_node"] = node.id
+
+    return render_template(
+        "wizard.html",
+        node=node
+    )
 
 if __name__ == "__main__":
     app.run(debug=True)

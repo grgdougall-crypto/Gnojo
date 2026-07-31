@@ -19,3 +19,5 @@ class Node:
 
     answers: Optional[dict] = None
     next: Optional[str] = None
+
+    knowledge_article: Optional[str] = None

@@ -48,7 +48,8 @@ class DecisionEngine:
             message=node_data.get("message"),
             help_text=node_data.get("help_text"),
             answers=node_data.get("answers"),
-            next=node_data.get("next")
+            next=node_data.get("next"),
+            knowledge_article=node_data.get("knowledge_article"),
         )
 
     def get_start_node(self):

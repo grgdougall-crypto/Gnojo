@@ -102,6 +102,7 @@
       "type": "instruction",
       "title": "Check the Ethernet cable",
       "instruction": "Confirm that the network cable is firmly connected to both the computer and the router or wall connection.",
+      "knowledge_article": "ethernet-connection-check",
       "next": "verify_resolution"
     },
 

@@ -1,0 +1,19 @@
+{
+  "article_id": "ethernet-connection-check",
+  "title": "Checking an Ethernet Connection",
+  "summary": "Verify that the wired network connection is physically secure before moving to software diagnostics.",
+  "why_it_matters": "A loose, damaged, or disconnected Ethernet cable can prevent the computer from communicating with the router, switch, or wall connection.",
+  "what_to_check": [
+    "Confirm the cable is firmly connected to the computer.",
+    "Confirm the other end is connected to the router, switch, or wall port.",
+    "Look for link lights near the Ethernet port.",
+    "Check the cable for visible damage or bent connectors."
+  ],
+  "common_indicators": [
+    "The network icon shows a disconnected status.",
+    "Windows reports that the network cable is unplugged.",
+    "No link lights appear on the Ethernet port.",
+    "The connection works when a different cable is used."
+  ],
+  "estimated_time": "1 to 2 minutes"
+}

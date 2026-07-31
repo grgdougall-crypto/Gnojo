@@ -1,3 +1,6 @@
+import json
+from pathlib import Path
+
 from flask import (
     Flask,
     abort,
@@ -12,6 +15,12 @@ from app.engine.decision_engine import DecisionEngine
 from app.knowledge.knowledge_base import KnowledgeBase
 
 app = Flask(__name__)
+
+DRAFT_DIRECTORY = (
+    Path(__file__).parent.parent
+    / "knowledge_base"
+    / "drafts"
+)
 
 # Development only
 app.secret_key = "supportpilot-development-key"
@@ -41,6 +50,104 @@ def home():
         workflows=AVAILABLE_WORKFLOWS,
     )
 
+@app.route("/knowledge")
+def knowledge_center():
+    """
+    Display the SupportPilot Knowledge Center.
+    """
+
+    draft_count = 0
+    published_count = 0
+
+    if DRAFT_DIRECTORY.exists():
+        draft_count = len(
+            list(DRAFT_DIRECTORY.glob("*.json"))
+        )
+
+    published_directory = (
+        Path(__file__).parent.parent
+        / "knowledge_base"
+        / "published"
+    )
+
+    if published_directory.exists():
+        published_count = len(
+            list(published_directory.glob("*.json"))
+        )
+
+    return render_template(
+        "knowledge_center.html",
+        draft_count=draft_count,
+        published_count=published_count,
+    )
+
+@app.route("/knowledge/drafts")
+def list_drafts():
+    """
+    Display all knowledge articles awaiting human review.
+    """
+
+    drafts = []
+
+    if DRAFT_DIRECTORY.exists():
+
+        for article_path in sorted(
+            DRAFT_DIRECTORY.glob("*.json")
+        ):
+            try:
+                with article_path.open(
+                    "r",
+                    encoding="utf-8",
+                ) as article_file:
+                    article = json.load(article_file)
+
+            except (
+                OSError,
+                json.JSONDecodeError,
+            ):
+                continue
+
+            if not isinstance(article, dict):
+                continue
+
+            drafts.append(article)
+
+    return render_template(
+        "drafts.html",
+        drafts=drafts,
+    )
+
+@app.route("/knowledge/drafts/<article_id>")
+def review_draft(article_id):
+    """
+    Display one draft knowledge article for human review.
+    """
+
+    article_path = DRAFT_DIRECTORY / f"{article_id}.json"
+
+    if not article_path.exists():
+        abort(404)
+
+    try:
+        with article_path.open(
+            "r",
+            encoding="utf-8",
+        ) as article_file:
+            article = json.load(article_file)
+
+    except (
+        OSError,
+        json.JSONDecodeError,
+    ):
+        abort(500)
+
+    if not isinstance(article, dict):
+        abort(500)
+
+    return render_template(
+        "draft_review.html",
+        article=article,
+    )
 
 @app.route("/wizard", methods=["GET", "POST"])
 def wizard():

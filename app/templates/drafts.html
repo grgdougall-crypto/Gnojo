@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+
+{% block title %}SupportPilot | Knowledge Review{% endblock %}
+
+{% block content %}
+
+<div class="container py-5">
+
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+        <div>
+            <p class="text-uppercase text-muted small mb-1">
+                Knowledge Center
+            </p>
+
+            <h1 class="h2 mb-1">
+                Draft Articles
+            </h1>
+
+            <p class="text-muted mb-0">
+                Review AI-generated knowledge before publication.
+            </p>
+        </div>
+
+        <a
+            href="{{ url_for('home') }}"
+            class="btn btn-outline-primary"
+        >
+            <i class="bi bi-arrow-left me-2"></i>
+            Mission Control
+        </a>
+    </div>
+
+    {% if drafts %}
+
+        <div class="row g-3">
+
+            {% for draft in drafts %}
+
+                <div class="col-12">
+
+                    <div class="card shadow-sm">
+
+                        <div class="card-body p-4">
+
+                            <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+
+                                <div class="flex-grow-1">
+
+                                    <div class="d-flex flex-wrap gap-2 mb-3">
+
+                                        <span class="badge text-bg-warning">
+                                            Draft
+                                        </span>
+
+                                        {% if draft.category %}
+                                            <span class="badge text-bg-primary">
+                                                {{ draft.category }}
+                                            </span>
+                                        {% endif %}
+
+                                        {% if draft.difficulty %}
+                                            <span class="badge text-bg-secondary">
+                                                {{ draft.difficulty }}
+                                            </span>
+                                        {% endif %}
+
+                                    </div>
+
+                                    <h2 class="h4 mb-2">
+                                        {{ draft.title }}
+                                    </h2>
+
+                                    <p class="text-muted mb-3">
+                                        {{ draft.overview }}
+                                    </p>
+
+                                    <div class="small text-muted">
+
+                                        {% if draft.generation %}
+                                            <span class="me-3">
+                                                <strong>Provider:</strong>
+                                                {{ draft.generation.provider }}
+                                            </span>
+
+                                            <span class="me-3">
+                                                <strong>Model:</strong>
+                                                {{ draft.generation.model }}
+                                            </span>
+                                        {% endif %}
+
+                                        {% if draft.estimated_time %}
+                                            <span>
+                                                <strong>Estimated time:</strong>
+                                                {{ draft.estimated_time }}
+                                            </span>
+                                        {% endif %}
+
+                                    </div>
+
+                                </div>
+
+                                <a
+                                    href="{{ url_for('review_draft', article_id=draft.id) }}"
+                                    class="btn btn-primary"
+                                >
+                                    Review Draft
+                                    <i class="bi bi-arrow-right ms-2"></i>
+                                </a>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+            {% endfor %}
+
+        </div>
+
+    {% else %}
+
+        <div class="card shadow-sm">
+
+            <div class="card-body p-5 text-center">
+
+                <i class="bi bi-journal-x display-4 text-muted"></i>
+
+                <h2 class="h4 mt-3">
+                    No draft articles found
+                </h2>
+
+                <p class="text-muted mb-0">
+                    Generate an article to begin the review process.
+                </p>
+
+            </div>
+
+        </div>
+
+    {% endif %}
+
+</div>
+
+{% endblock %}

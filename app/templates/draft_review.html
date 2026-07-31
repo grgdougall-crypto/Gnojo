@@ -1,0 +1,370 @@
+{% extends "base.html" %}
+
+{% block title %}Review Draft | SupportPilot{% endblock %}
+
+{% block content %}
+
+<div class="container py-5">
+
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+
+        <div>
+            <p class="text-uppercase text-muted small mb-1">
+                Knowledge Review
+            </p>
+
+            <h1 class="h2 mb-2">
+                {{ article.title }}
+            </h1>
+
+            <div class="d-flex flex-wrap gap-2">
+
+                <span class="badge text-bg-warning">
+                    Draft
+                </span>
+
+                {% if article.category %}
+                    <span class="badge text-bg-primary">
+                        {{ article.category }}
+                    </span>
+                {% endif %}
+
+                {% if article.difficulty %}
+                    <span class="badge text-bg-secondary">
+                        {{ article.difficulty }}
+                    </span>
+                {% endif %}
+
+                {% if article.estimated_time %}
+                    <span class="badge text-bg-light border">
+                        <i class="bi bi-clock me-1"></i>
+                        {{ article.estimated_time }}
+                    </span>
+                {% endif %}
+
+            </div>
+        </div>
+
+        <a
+            href="{{ url_for('list_drafts') }}"
+            class="btn btn-outline-primary"
+        >
+            <i class="bi bi-arrow-left me-2"></i>
+            Back to Drafts
+        </a>
+
+    </div>
+
+    <div class="alert alert-warning d-flex align-items-start gap-3 mb-4">
+
+        <i class="bi bi-exclamation-triangle-fill fs-4"></i>
+
+        <div>
+            <h2 class="h6 mb-1">
+                AI-generated draft
+            </h2>
+
+            <p class="mb-0">
+                Verify technical accuracy, commands, and sources before publication.
+            </p>
+        </div>
+
+    </div>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-body p-4">
+
+            <h2 class="h4 mb-3">
+                Overview
+            </h2>
+
+            <p class="mb-0">
+                {{ article.overview }}
+            </p>
+
+        </div>
+    </div>
+
+    {% if article.checklist %}
+
+        <div class="card shadow-sm mb-4">
+            <div class="card-body p-4">
+
+                <h2 class="h4 mb-3">
+                    Troubleshooting Checklist
+                </h2>
+
+                <div class="vstack gap-3">
+
+                    {% for item in article.checklist %}
+
+                        <div class="form-check">
+
+                            <input
+                                class="form-check-input"
+                                type="checkbox"
+                                id="checklist_item_{{ loop.index }}"
+                            >
+
+                            <label
+                                class="form-check-label"
+                                for="checklist_item_{{ loop.index }}"
+                            >
+                                {{ item }}
+                            </label>
+
+                        </div>
+
+                    {% endfor %}
+
+                </div>
+
+            </div>
+        </div>
+
+    {% endif %}
+
+    {% if article.common_indicators %}
+
+        <div class="card shadow-sm mb-4">
+            <div class="card-body p-4">
+
+                <h2 class="h4 mb-3">
+                    Common Indicators
+                </h2>
+
+                <ul class="mb-0">
+
+                    {% for indicator in article.common_indicators %}
+                        <li class="mb-2">
+                            {{ indicator }}
+                        </li>
+                    {% endfor %}
+
+                </ul>
+
+            </div>
+        </div>
+
+    {% endif %}
+
+    {% if article.commands %}
+
+        <div class="card shadow-sm mb-4">
+            <div class="card-body p-4">
+
+                <h2 class="h4 mb-3">
+                    Commands
+                </h2>
+
+                <div class="vstack gap-4">
+
+                    {% for command in article.commands %}
+
+                        <div>
+
+                            <pre class="border rounded p-3 mb-2"><code>{{ command.command }}</code></pre>
+
+                            <p class="text-muted mb-0">
+                                {{ command.description }}
+                            </p>
+
+                        </div>
+
+                    {% endfor %}
+
+                </div>
+
+            </div>
+        </div>
+
+    {% endif %}
+
+    {% if article.related_topics %}
+
+        <div class="card shadow-sm mb-4">
+            <div class="card-body p-4">
+
+                <h2 class="h4 mb-3">
+                    Related Topics
+                </h2>
+
+                <div class="d-flex flex-wrap gap-2">
+
+                    {% for topic in article.related_topics %}
+
+                        <span class="badge text-bg-light border">
+                            {{ topic }}
+                        </span>
+
+                    {% endfor %}
+
+                </div>
+
+            </div>
+        </div>
+
+    {% endif %}
+
+    {% if article.quiz %}
+
+        <div class="card shadow-sm mb-4">
+            <div class="card-body p-4">
+
+                <h2 class="h4 mb-3">
+                    Knowledge Check
+                </h2>
+
+                {% set quiz_item = article.quiz[0] %}
+
+                <p class="fw-semibold">
+                    {{ quiz_item.question }}
+                </p>
+
+                <div class="vstack gap-2">
+
+                    {% for answer in quiz_item.answers %}
+
+                        <div class="form-check">
+
+                            <input
+                                class="form-check-input"
+                                type="radio"
+                                name="draft_quiz"
+                                id="draft_quiz_answer_{{ loop.index }}"
+                                value="{{ answer }}"
+                            >
+
+                            <label
+                                class="form-check-label"
+                                for="draft_quiz_answer_{{ loop.index }}"
+                            >
+                                {{ answer }}
+                            </label>
+
+                        </div>
+
+                    {% endfor %}
+
+                </div>
+
+            </div>
+        </div>
+
+    {% endif %}
+
+    {% if article.sources %}
+
+        <div class="card shadow-sm mb-4">
+            <div class="card-body p-4">
+
+                <h2 class="h4 mb-3">
+                    Sources
+                </h2>
+
+                <ul class="mb-0">
+
+                    {% for source in article.sources %}
+
+                        <li class="mb-2">
+
+                            <a
+                                href="{{ source.url }}"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                            >
+                                {{ source.title }}
+                                <i class="bi bi-box-arrow-up-right ms-1"></i>
+                            </a>
+
+                        </li>
+
+                    {% endfor %}
+
+                </ul>
+
+            </div>
+        </div>
+
+    {% endif %}
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-body p-4">
+
+            <h2 class="h4 mb-3">
+                Generation Details
+            </h2>
+
+            <dl class="row mb-0">
+
+                <dt class="col-sm-3">
+                    Provider
+                </dt>
+
+                <dd class="col-sm-9">
+                    {{ article.generation.provider }}
+                </dd>
+
+                <dt class="col-sm-3">
+                    Model
+                </dt>
+
+                <dd class="col-sm-9">
+                    {{ article.generation.model }}
+                </dd>
+
+                <dt class="col-sm-3">
+                    Generated
+                </dt>
+
+                <dd class="col-sm-9">
+                    {{ article.generation.generated_at }}
+                </dd>
+
+                <dt class="col-sm-3">
+                    Review status
+                </dt>
+
+                <dd class="col-sm-9 mb-0">
+                    {{ article.review.status }}
+                </dd>
+
+            </dl>
+
+        </div>
+    </div>
+
+    <div class="d-flex flex-wrap gap-2">
+
+        <button
+            class="btn btn-success"
+            type="button"
+            disabled
+        >
+            <i class="bi bi-check-circle me-2"></i>
+            Approve Draft
+        </button>
+
+        <button
+            class="btn btn-outline-primary"
+            type="button"
+            disabled
+        >
+            <i class="bi bi-pencil-square me-2"></i>
+            Edit Article
+        </button>
+
+        <button
+            class="btn btn-outline-danger"
+            type="button"
+            disabled
+        >
+            <i class="bi bi-x-circle me-2"></i>
+            Reject Draft
+        </button>
+
+    </div>
+
+</div>
+
+{% endblock %}

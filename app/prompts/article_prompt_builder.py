@@ -4,20 +4,18 @@ Purpose:
 
 Responsibilities:
     - Define article-generation instructions.
-    - Include the required SupportPilot JSON structure.
     - Produce consistent prompts for all AI providers.
     - Track the prompt version used for generation.
+    - Validate required prompt inputs.
 
 Does NOT:
     - Call AI providers.
+    - Define the JSON response schema.
     - Validate generated articles.
     - Save or publish articles.
 """
 
-import json
 from typing import Any
-
-from app.knowledge.article_schema import create_article_template
 
 
 class ArticlePromptBuilder:
@@ -57,24 +55,12 @@ class ArticlePromptBuilder:
             difficulty=difficulty,
         )
 
-        article_template = create_article_template()
-
-        schema_example = json.dumps(
-            article_template,
-            indent=2,
-        )
-
         prompt = f"""
-You are creating a structured learning article for SupportPilot.
-
-SupportPilot is an AI-assisted IT troubleshooting and learning platform.
-AI-generated content is always treated as a draft and must be reviewed
-by a human before publication.
+You are creating a learning article for SupportPilot, an AI-assisted
+IT troubleshooting and training platform.
 
 PROMPT VERSION:
 {self.PROMPT_VERSION}
-
-ARTICLE REQUEST
 
 Topic:
 {topic}
@@ -85,62 +71,23 @@ Category:
 Difficulty:
 {difficulty}
 
-TARGET AUDIENCE
+Audience:
+Entry-level IT support technicians and learners.
 
-The intended reader is an entry-level IT support technician or learner.
-Use clear, accurate, practical language.
-
-CONTENT REQUIREMENTS
-
-Create a concise technical learning article that includes:
-
-1. A clear title.
-2. A short overview.
-3. A practical troubleshooting checklist.
-4. Common indicators or symptoms.
-5. Relevant commands when appropriate.
-6. Related technical topics.
-7. At least one multiple-choice quiz question.
-8. Trusted technical sources.
-
-QUALITY RULES
-
-- Do not invent commands.
-- Do not invent URLs.
-- Prefer official vendor documentation.
-- Explain commands in plain language.
-- Keep troubleshooting steps practical and ordered.
-- Do not claim the article has been human reviewed.
-- Set review.status to "draft".
+Requirements:
+- Use clear, practical, technically accurate language.
+- Create an ordered troubleshooting checklist.
+- Include common symptoms or indicators.
+- Include useful commands only when appropriate.
+- Explain every command in plain language.
+- Include at least one multiple-choice quiz question.
+- Prefer official vendor documentation for sources.
+- Do not invent commands or source URLs.
+- Use schema version 1.0.
+- Use a lowercase hyphen-separated article ID.
+- Keep review status set to draft.
 - Set reviewed_by and reviewed_at to null.
-- Return JSON only.
-- Do not return markdown.
-- Do not add text before or after the JSON object.
-
-REQUIRED JSON STRUCTURE
-
-Use this exact top-level structure:
-
-{schema_example}
-
-FIELD RULES
-
-- schema_version must remain unchanged.
-- id must use lowercase words separated by hyphens.
-- difficulty must be exactly:
-  Beginner, Intermediate, or Advanced.
-- commands must contain objects with:
-  command and description.
-- quiz answers must contain at least two choices.
-- correct_answer must exactly match one provided answer.
-- sources must contain objects with:
-  title and url.
-- generation.provider may initially be null.
-- generation.model may initially be null.
-- generation.generated_at may initially be null.
-- review.status must be "draft".
-
-Generate the requested SupportPilot article now.
+- Do not claim that a human reviewed the article.
 """
 
         return prompt.strip()

@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+
+{% block title %}Troubleshooting Summary{% endblock %}
+
+{% block content %}
+
+<div class="container py-5">
+
+    <div class="text-center mb-5">
+        <p class="text-uppercase text-secondary small mb-2">
+            Internet Troubleshooting
+        </p>
+
+        <h1 class="display-5 fw-bold">
+            We’re ready to begin troubleshooting.
+        </h1>
+
+        <p class="lead text-secondary">
+            Here is what SupportPilot knows so far.
+        </p>
+    </div>
+
+    <div class="row justify-content-center">
+        <div class="col-lg-7">
+
+            <div class="card shadow-sm">
+                <div class="card-body p-4">
+
+                    <div class="mb-4">
+                        <small class="text-uppercase text-secondary">
+                            Problem
+                        </small>
+                        <h4>{{ problem }}</h4>
+                    </div>
+
+                    <div class="mb-4">
+                        <small class="text-uppercase text-secondary">
+                            Device
+                        </small>
+                        <h4>{{ device }}</h4>
+                    </div>
+
+                    <div class="mb-4">
+                        <small class="text-uppercase text-secondary">
+                            Connection
+                        </small>
+                        <h4>{{ connection }}</h4>
+                    </div>
+
+                    <div>
+                        <small class="text-uppercase text-secondary">
+                            Other Devices
+                        </small>
+                        <h4>{{ scope }}</h4>
+                    </div>
+
+                </div>
+            </div>
+
+            <div class="text-center mt-4">
+                <p class="text-secondary">
+                    The first troubleshooting step will be added next.
+                </p>
+
+                <a href="/connection/internet/windows"
+                   class="btn btn-outline-secondary">
+                    ← Change Answers
+                </a>
+            </div>
+
+        </div>
+    </div>
+
+</div>
+
+{% endblock %}

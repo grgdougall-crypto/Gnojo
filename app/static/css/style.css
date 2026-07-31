@@ -373,3 +373,21 @@ a {
         min-height: auto;
     }
 }
+.problem-card {
+    transition: all 0.25s ease;
+    border: none;
+    cursor: pointer;
+}
+
+.problem-card:hover {
+    transform: translateY(-6px);
+    box-shadow: 0 1rem 2rem rgba(0,0,0,.25);
+}
+
+.problem-card.disabled {
+    opacity: .65;
+}
+
+.problem-card.disabled:hover {
+    transform: none;
+}

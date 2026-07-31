@@ -1,0 +1,108 @@
+{
+  "workflow_id": "internet",
+  "name": "Internet Connection",
+  "start_node": "check_scope",
+
+  "nodes": {
+    "check_scope": {
+      "type": "question",
+      "question": "Can any other devices connect to the internet?",
+      "help_text": "Try another phone, computer, or tablet using the same network.",
+      "answers": {
+        "yes": "check_connection",
+        "no": "restart_network_equipment",
+        "unknown": "test_other_device"
+      }
+    },
+
+    "test_other_device": {
+      "type": "instruction",
+      "title": "Test another device",
+      "instruction": "Try connecting another phone, computer, or tablet to the same network.",
+      "next": "check_scope"
+    },
+
+    "check_connection": {
+      "type": "question",
+      "question": "How does this computer connect to the internet?",
+      "answers": {
+        "wifi": "check_wifi_enabled",
+        "ethernet": "check_ethernet_cable",
+        "unknown": "identify_connection"
+      }
+    },
+
+    "identify_connection": {
+      "type": "instruction",
+      "title": "Identify the connection",
+      "instruction": "Look near the clock for a Wi-Fi symbol or check whether a network cable is connected to the computer.",
+      "next": "check_connection"
+    },
+
+    "check_wifi_enabled": {
+      "type": "question",
+      "question": "Is Wi-Fi turned on?",
+      "answers": {
+        "yes": "reconnect_wifi",
+        "no": "enable_wifi",
+        "unknown": "show_wifi_help"
+      }
+    },
+
+    "show_wifi_help": {
+      "type": "instruction",
+      "title": "Check Wi-Fi status",
+      "instruction": "Select the network icon near the clock and confirm that Wi-Fi is turned on.",
+      "next": "check_wifi_enabled"
+    },
+
+    "enable_wifi": {
+      "type": "instruction",
+      "title": "Turn on Wi-Fi",
+      "instruction": "Select the network icon near the clock, turn on Wi-Fi, and try connecting again.",
+      "next": "verify_resolution"
+    },
+
+    "reconnect_wifi": {
+      "type": "instruction",
+      "title": "Reconnect to Wi-Fi",
+      "instruction": "Disconnect from the wireless network, reconnect, and enter the network password if requested.",
+      "next": "verify_resolution"
+    },
+
+    "check_ethernet_cable": {
+      "type": "instruction",
+      "title": "Check the Ethernet cable",
+      "instruction": "Confirm that the network cable is firmly connected to both the computer and the router or wall connection.",
+      "next": "verify_resolution"
+    },
+
+    "restart_network_equipment": {
+      "type": "instruction",
+      "title": "Restart the network equipment",
+      "instruction": "Unplug the modem and router for 30 seconds. Plug the modem back in first, wait for it to reconnect, and then plug in the router.",
+      "next": "verify_resolution"
+    },
+
+    "verify_resolution": {
+      "type": "question",
+      "question": "Can this computer connect to the internet now?",
+      "answers": {
+        "yes": "resolved",
+        "no": "advanced_diagnostics"
+      }
+    },
+
+    "resolved": {
+      "type": "resolution",
+      "title": "Internet connection restored",
+      "message": "The connection appears to be working again."
+    },
+
+    "advanced_diagnostics": {
+      "type": "resolution",
+      "title": "Additional troubleshooting is needed",
+      "message": "The basic checks did not restore the connection. SupportPilot can continue with network adapter, IP address, DNS, and driver diagnostics."
+    }
+  }
+}

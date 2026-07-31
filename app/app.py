@@ -1,117 +1,148 @@
-from flask import Flask, render_template, session, request
+from flask import (
+    Flask,
+    abort,
+    redirect,
+    render_template,
+    request,
+    session,
+    url_for,
+)
+
 from app.engine.decision_engine import DecisionEngine
 
 app = Flask(__name__)
 
-# Required for Flask session storage.
-# This is acceptable for local development but should be replaced
-# with a secure environment variable before deployment.
+# Development only
 app.secret_key = "supportpilot-development-key"
+
+AVAILABLE_WORKFLOWS = {
+    "internet": {
+        "name": "Internet Connection",
+        "description": "Troubleshoot Wi-Fi, Ethernet, routers, and connectivity.",
+        "icon": "bi-wifi",
+    },
+    "printer": {
+        "name": "Printer",
+        "description": (
+            "Troubleshoot power, connections, print queues, and paper issues."
+        ),
+        "icon": "bi-printer",
+    },
+}
 
 
 @app.route("/")
 def home():
     session.clear()
-    return render_template("index.html")
-
-
-@app.route("/problems")
-def problems():
-    return render_template("problems.html")
-
-
-@app.route("/device/internet")
-def internet_device():
-    session["problem"] = "Internet connection"
-    return render_template("device.html")
-
-
-@app.route("/connection/internet/windows")
-def internet_connection():
-    session["device"] = "Windows PC"
-    return render_template("connection.html")
-
-
-@app.route("/scope/internet/<connection_type>")
-def internet_scope(connection_type):
-    connection_names = {
-        "wifi": "Wi-Fi",
-        "ethernet": "Ethernet",
-        "unknown": "Not sure",
-    }
-
-    session["connection"] = connection_names.get(
-        connection_type,
-        "Not sure"
-    )
-
-    return render_template("scope.html")
-
-
-@app.route("/diagnosis/internet/<scope_type>")
-def internet_diagnosis(scope_type):
-    scope_names = {
-        "single-device": "Other devices can connect",
-        "all-devices": "No other devices can connect",
-        "unknown": "Not sure",
-    }
-
-    session["scope"] = scope_names.get(
-        scope_type,
-        "Not sure"
-    )
 
     return render_template(
-        "diagnosis.html",
-        problem=session.get("problem", "Not provided"),
-        device=session.get("device", "Not provided"),
-        connection=session.get("connection", "Not provided"),
-        scope=session.get("scope", "Not provided"),
+        "index.html",
+        workflows=AVAILABLE_WORKFLOWS,
     )
+
 
 @app.route("/wizard", methods=["GET", "POST"])
 def wizard():
-
     engine = DecisionEngine()
 
-    # First visit
+    # --------------------------------------------------
+    # Start or restart a workflow
+    # --------------------------------------------------
     if request.method == "GET":
+        workflow_name = request.args.get("workflow")
 
-        engine.load_workflow("internet")
+        if workflow_name not in AVAILABLE_WORKFLOWS:
+            return redirect(url_for("home"))
+
+        try:
+            engine.load_workflow(workflow_name)
+        except FileNotFoundError:
+            abort(404)
 
         node = engine.get_start_node()
 
-        session["workflow"] = "internet"
+        if node is None:
+            abort(500)
+
+        session["workflow"] = workflow_name
         session["current_node"] = node.id
+        session["step"] = 1
 
-        return render_template(
-            "wizard.html",
-            node=node
-        )
+        return render_wizard(engine, node)
 
-    # User submitted an answer
-    engine.load_workflow(session["workflow"])
+    # --------------------------------------------------
+    # Continue an existing workflow
+    # --------------------------------------------------
+    workflow_name = session.get("workflow")
+    current_node_id = session.get("current_node")
 
-    current_node = engine.get_node(
-        session["current_node"]
-    )
+    if (
+        workflow_name not in AVAILABLE_WORKFLOWS
+        or current_node_id is None
+    ):
+        return redirect(url_for("home"))
+
+    try:
+        engine.load_workflow(workflow_name)
+    except FileNotFoundError:
+        abort(404)
+
+    current_node = engine.get_node(current_node_id)
+
+    if current_node is None:
+        return redirect(url_for("home"))
 
     answer = request.form.get("answer")
-
-    node = engine.advance(
-        current_node,
-        answer
-    )
+    node = engine.advance(current_node, answer)
 
     if node is None:
-        return "Workflow complete."
+        node = current_node
+    else:
+        session["current_node"] = node.id
 
-    session["current_node"] = node.id
+        estimated_steps = engine.workflow.get("estimated_steps", 5)
+        current_step = session.get("step", 1)
+
+        session["step"] = min(
+            current_step + 1,
+            estimated_steps,
+        )
+
+    return render_wizard(engine, node)
+
+
+def render_wizard(engine, node):
+    """
+    Render the shared wizard template with workflow progress.
+    """
+
+    workflow_name = session["workflow"]
+    workflow_info = AVAILABLE_WORKFLOWS[workflow_name]
+
+    estimated_steps = engine.workflow.get("estimated_steps", 5)
+    current_step = session.get("step", 1)
+
+    if node.type == "resolution":
+        current_step = estimated_steps
+        progress_percent = 100
+    else:
+        current_step = min(current_step, estimated_steps)
+
+        progress_percent = min(
+            round((current_step / estimated_steps) * 100),
+            100,
+        )
 
     return render_template(
         "wizard.html",
-        node=node
+        node=node,
+        workflow_id=workflow_name,
+        workflow_name=workflow_info["name"],
+        current_step=current_step,
+        estimated_steps=estimated_steps,
+        progress_percent=progress_percent,
     )
+
 
 if __name__ == "__main__":
     app.run(debug=True)

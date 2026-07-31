@@ -1,18 +1,58 @@
 {% extends "base.html" %}
 
-{% block title %}SupportPilot Wizard{% endblock %}
+{% block title %}{{ workflow_name }} | SupportPilot{% endblock %}
 
 {% block content %}
 
 <div class="container py-5">
 
+    <div class="d-flex justify-content-between align-items-start gap-3 mb-4">
+        <div>
+            <p class="text-uppercase text-muted small mb-1">
+                Guided Troubleshooting
+            </p>
+
+            <h1 class="h3 mb-1">
+                {{ workflow_name }}
+            </h1>
+
+            <p class="text-muted mb-0">
+                Step {{ current_step }} of {{ estimated_steps }}
+            </p>
+        </div>
+
+        <a
+            href="{{ url_for('wizard', workflow=workflow_id) }}"
+            class="btn btn-outline-primary"
+        >
+            <i class="bi bi-arrow-clockwise me-2"></i>
+            Restart
+        </a>
+    </div>
+
+    <div
+        class="progress mb-4"
+        role="progressbar"
+        aria-label="Troubleshooting progress"
+        aria-valuenow="{{ progress_percent }}"
+        aria-valuemin="0"
+        aria-valuemax="100"
+        style="height: 10px;"
+    >
+        <div
+            class="progress-bar"
+            style="width: {{ progress_percent }}%;"
+        ></div>
+    </div>
+
     {% if node.type == "question" %}
 
         <div class="card shadow-sm">
+            <div class="card-body p-4">
 
-            <div class="card-body">
-
-                <h2 class="mb-3">{{ node.question }}</h2>
+                <h2 class="mb-3">
+                    {{ node.question }}
+                </h2>
 
                 {% if node.help_text %}
                     <p class="text-muted">
@@ -22,16 +62,19 @@
 
                 <form method="POST">
 
-                    {% for value, next_node in node.answers.items() %}
+                    {% for value, answer_data in node.answers.items() %}
 
                         <button
                             class="btn btn-primary d-block mb-3 w-100"
                             type="submit"
                             name="answer"
-                            value="{{ value }}">
-
-                            {{ value.replace("_", " ").title() }}
-
+                            value="{{ value }}"
+                        >
+                            {% if answer_data is mapping %}
+                                {{ answer_data.label }}
+                            {% else %}
+                                {{ value.replace("_", " ").title() }}
+                            {% endif %}
                         </button>
 
                     {% endfor %}
@@ -39,16 +82,20 @@
                 </form>
 
             </div>
-
         </div>
 
     {% elif node.type == "instruction" %}
 
         <div class="card shadow-sm">
+            <div class="card-body p-4">
 
-            <div class="card-body">
+                <p class="text-uppercase text-muted small mb-2">
+                    Recommended Action
+                </p>
 
-                <h2>{{ node.title }}</h2>
+                <h2>
+                    {{ node.title }}
+                </h2>
 
                 <p class="mt-3">
                     {{ node.instruction }}
@@ -58,40 +105,51 @@
 
                     <button
                         class="btn btn-success"
-                        type="submit">
-
+                        type="submit"
+                    >
                         Continue
-
+                        <i class="bi bi-arrow-right ms-2"></i>
                     </button>
 
                 </form>
 
             </div>
-
         </div>
 
     {% elif node.type == "resolution" %}
 
         <div class="card shadow-sm">
+            <div class="card-body p-4">
 
-            <div class="card-body">
+                <p class="text-uppercase text-muted small mb-2">
+                    Troubleshooting Result
+                </p>
 
-                <h2>{{ node.title }}</h2>
+                <h2>
+                    {{ node.title }}
+                </h2>
 
                 <p class="mt-3">
                     {{ node.message }}
                 </p>
 
-                <a
-                    href="/"
-                    class="btn btn-primary">
+                <div class="d-flex flex-wrap gap-2 mt-4">
+                    <a
+                        href="{{ url_for('home') }}"
+                        class="btn btn-primary"
+                    >
+                        Choose Another Workflow
+                    </a>
 
-                    Start Over
-
-                </a>
+                    <a
+                        href="{{ url_for('wizard', workflow=workflow_id) }}"
+                        class="btn btn-outline-primary"
+                    >
+                        Restart This Workflow
+                    </a>
+                </div>
 
             </div>
-
         </div>
 
     {% endif %}

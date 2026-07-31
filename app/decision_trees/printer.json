@@ -1,0 +1,142 @@
+{
+  "workflow_id": "printer",
+  "name": "Printer",
+  "estimated_steps": 5,
+  "start_node": "check_power",
+
+  "nodes": {
+    "check_power": {
+      "type": "question",
+      "question": "Is the printer turned on?",
+      "help_text": "Check the power button, display, and any status lights.",
+      "answers": {
+        "yes": {
+          "label": "Yes",
+          "next": "check_connection"
+        },
+        "no": {
+          "label": "No",
+          "next": "turn_on_printer"
+        },
+        "unknown": {
+          "label": "I'm Not Sure",
+          "next": "inspect_power"
+        }
+      }
+    },
+
+    "inspect_power": {
+      "type": "instruction",
+      "title": "Check the printer power",
+      "instruction": "Confirm that the power cable is securely connected and press the printer's power button.",
+      "next": "check_power"
+    },
+
+    "turn_on_printer": {
+      "type": "instruction",
+      "title": "Turn on the printer",
+      "instruction": "Turn on the printer and wait until it finishes starting.",
+      "next": "verify_printing"
+    },
+
+    "check_connection": {
+      "type": "question",
+      "question": "How is the printer connected?",
+      "answers": {
+        "usb": {
+          "label": "USB Cable",
+          "next": "check_usb"
+        },
+        "network": {
+          "label": "Wi-Fi or Network",
+          "next": "restart_printer"
+        },
+        "unknown": {
+          "label": "I'm Not Sure",
+          "next": "identify_connection"
+        }
+      }
+    },
+
+    "identify_connection": {
+      "type": "instruction",
+      "title": "Identify the printer connection",
+      "instruction": "Check whether a USB cable connects the printer directly to the computer. If no USB cable is present, the printer may use Wi-Fi or the local network.",
+      "next": "check_connection"
+    },
+
+    "check_usb": {
+      "type": "instruction",
+      "title": "Check the USB connection",
+      "instruction": "Disconnect and reconnect the USB cable at both the printer and computer. Try another USB port if one is available.",
+      "next": "verify_printing"
+    },
+
+    "restart_printer": {
+      "type": "instruction",
+      "title": "Restart the printer",
+      "instruction": "Turn the printer off, wait 30 seconds, and then turn it back on. Allow it to reconnect before trying again.",
+      "next": "verify_printing"
+    },
+
+    "verify_printing": {
+      "type": "question",
+      "question": "Can you print now?",
+      "answers": {
+        "yes": {
+          "label": "Yes",
+          "next": "resolved"
+        },
+        "no": {
+          "label": "No",
+          "next": "check_printer_status"
+        }
+      }
+    },
+
+    "check_printer_status": {
+      "type": "question",
+      "question": "Does the printer show a paper, ink, toner, or jam warning?",
+      "answers": {
+        "yes": {
+          "label": "Yes",
+          "next": "clear_printer_warning"
+        },
+        "no": {
+          "label": "No",
+          "next": "advanced_diagnostics"
+        },
+        "unknown": {
+          "label": "I'm Not Sure",
+          "next": "inspect_printer_display"
+        }
+      }
+    },
+
+    "inspect_printer_display": {
+      "type": "instruction",
+      "title": "Inspect the printer status",
+      "instruction": "Check the printer display and status lights for a paper, ink, toner, cover, or jam warning.",
+      "next": "check_printer_status"
+    },
+
+    "clear_printer_warning": {
+      "type": "instruction",
+      "title": "Clear the printer warning",
+      "instruction": "Follow the printer's displayed instructions to add paper, replace ink or toner, close open covers, or remove jammed paper.",
+      "next": "verify_printing"
+    },
+
+    "resolved": {
+      "type": "resolution",
+      "title": "Printer operation restored",
+      "message": "The printer appears to be working again."
+    },
+
+    "advanced_diagnostics": {
+      "type": "resolution",
+      "title": "Additional troubleshooting is needed",
+      "message": "The basic checks did not restore printing. The print queue, default printer, network address, driver, or spooler service may require additional diagnostics."
+    }
+  }
+}

@@ -1,6 +1,7 @@
 {
   "workflow_id": "internet",
   "name": "Internet Connection",
+  "estimated_steps": 5,
   "start_node": "check_scope",
 
   "nodes": {
@@ -9,9 +10,18 @@
       "question": "Can any other devices connect to the internet?",
       "help_text": "Try another phone, computer, or tablet using the same network.",
       "answers": {
-        "yes": "check_connection",
-        "no": "restart_network_equipment",
-        "unknown": "test_other_device"
+        "yes": {
+          "label": "Yes",
+          "next": "check_connection"
+        },
+        "no": {
+          "label": "No",
+          "next": "restart_network_equipment"
+        },
+        "unknown": {
+          "label": "I'm Not Sure",
+          "next": "test_other_device"
+        }
       }
     },
 
@@ -26,9 +36,18 @@
       "type": "question",
       "question": "How does this computer connect to the internet?",
       "answers": {
-        "wifi": "check_wifi_enabled",
-        "ethernet": "check_ethernet_cable",
-        "unknown": "identify_connection"
+        "wifi": {
+          "label": "Wi-Fi",
+          "next": "check_wifi_enabled"
+        },
+        "ethernet": {
+          "label": "Ethernet",
+          "next": "check_ethernet_cable"
+        },
+        "unknown": {
+          "label": "I'm Not Sure",
+          "next": "identify_connection"
+        }
       }
     },
 
@@ -43,9 +62,18 @@
       "type": "question",
       "question": "Is Wi-Fi turned on?",
       "answers": {
-        "yes": "reconnect_wifi",
-        "no": "enable_wifi",
-        "unknown": "show_wifi_help"
+        "yes": {
+          "label": "Yes",
+          "next": "reconnect_wifi"
+        },
+        "no": {
+          "label": "No",
+          "next": "enable_wifi"
+        },
+        "unknown": {
+          "label": "I'm Not Sure",
+          "next": "show_wifi_help"
+        }
       }
     },
 
@@ -88,8 +116,14 @@
       "type": "question",
       "question": "Can this computer connect to the internet now?",
       "answers": {
-        "yes": "resolved",
-        "no": "advanced_diagnostics"
+        "yes": {
+          "label": "Yes",
+          "next": "resolved"
+        },
+        "no": {
+          "label": "No",
+          "next": "advanced_diagnostics"
+        }
       }
     },
 
@@ -102,7 +136,7 @@
     "advanced_diagnostics": {
       "type": "resolution",
       "title": "Additional troubleshooting is needed",
-      "message": "The basic checks did not restore the connection. SupportPilot can continue with network adapter, IP address, DNS, and driver diagnostics."
+      "message": "The basic checks did not restore the connection. Additional network adapter, IP address, DNS, or driver diagnostics may be needed."
     }
   }
 }

@@ -19,7 +19,7 @@
                 </p>
 
                 <div class="hero-actions">
-                    <a href="{{ url_for('wizard') }}" class="btn btn-primary btn-lg">
+                    <a href="#workflows" class="btn btn-primary btn-lg">
                         <i class="bi bi-tools me-2"></i>
                         Start Troubleshooting
                     </a>
@@ -62,15 +62,50 @@
     </div>
 </section>
 
-<section class="mission-section">
+<section class="mission-section" id="workflows">
     <div class="container">
+        <div class="section-heading">
+            <p class="section-label">Guided Troubleshooting</p>
+
+            <h2>Choose a workflow</h2>
+
+            <p class="section-description">
+                Select the issue that most closely matches the problem.
+            </p>
+        </div>
+
+        <div class="row g-3 mb-5">
+            {% for workflow_id, workflow in workflows.items() %}
+                <div class="col-12 col-md-6">
+                    <a
+                        class="service-card"
+                        href="{{ url_for('wizard', workflow=workflow_id) }}"
+                    >
+                        <div class="service-icon">
+                            <i class="bi {{ workflow.icon }}"></i>
+                        </div>
+
+                        <div>
+                            <h3>{{ workflow.name }}</h3>
+
+                            <p>
+                                {{ workflow.description }}
+                            </p>
+                        </div>
+
+                        <i class="bi bi-arrow-right card-arrow"></i>
+                    </a>
+                </div>
+            {% endfor %}
+        </div>
+
         <div class="section-heading">
             <p class="section-label">Mission Control</p>
 
-            <h2>How can SupportPilot help?</h2>
+            <h2>More SupportPilot services</h2>
 
             <p class="section-description">
-                Choose a service area or begin with guided troubleshooting.
+                Additional service areas will be connected as the platform grows.
             </p>
         </div>
 
@@ -83,9 +118,10 @@
 
                     <div>
                         <h3>Desktop Support</h3>
+
                         <p>
-                            Windows 10, Windows 11, macOS,
-                            applications, printers, and user access.
+                            Windows, macOS, applications,
+                            printers, and user access.
                         </p>
                     </div>
 
@@ -101,9 +137,10 @@
 
                     <div>
                         <h3>Networking</h3>
+
                         <p>
                             Wi-Fi, DNS, DHCP, VPN, routing,
-                            connectivity, and network diagnostics.
+                            and network diagnostics.
                         </p>
                     </div>
 
@@ -119,9 +156,10 @@
 
                     <div>
                         <h3>Servers &amp; Identity</h3>
+
                         <p>
                             Windows Server, Active Directory,
-                            Group Policy, permissions, and file services.
+                            Group Policy, and permissions.
                         </p>
                     </div>
 
@@ -137,9 +175,10 @@
 
                     <div>
                         <h3>Security</h3>
+
                         <p>
-                            Alerts, suspicious activity, event logs,
-                            packet captures, and escalation guidance.
+                            Alerts, suspicious activity, logs,
+                            packet captures, and escalation.
                         </p>
                     </div>
 
@@ -155,9 +194,10 @@
 
                     <div>
                         <h3>Knowledge Base</h3>
+
                         <p>
                             Browse troubleshooting playbooks,
-                            documented solutions, commands, and examples.
+                            solutions, commands, and examples.
                         </p>
                     </div>
 
@@ -173,6 +213,7 @@
 
                     <div>
                         <h3>Learning Mode</h3>
+
                         <p>
                             Practice realistic scenarios and learn
                             why each troubleshooting step matters.

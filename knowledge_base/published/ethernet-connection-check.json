@@ -1,0 +1,42 @@
+{
+  "id": "ethernet-connection-check",
+  "title": "Checking an Ethernet Connection",
+  "category": "Networking",
+  "difficulty": "Beginner",
+  "estimated_time": "1 to 2 minutes",
+  "overview": "A wired Ethernet connection depends on a secure physical connection between the computer and the network device. A loose, damaged, or disconnected cable can prevent the computer from reaching the network.",
+  "checklist": [
+    "Confirm the Ethernet cable is firmly connected to the computer.",
+    "Confirm the other end is connected to the router, switch, wall jack, or docking station.",
+    "Look for link or activity lights near the Ethernet port.",
+    "Inspect the cable and connector for visible damage.",
+    "Test with a known-good Ethernet cable when one is available."
+  ],
+  "common_indicators": [
+    "No link or activity lights near the Ethernet port.",
+    "The connector feels loose or does not click into place.",
+    "Windows reports that the network cable is unplugged.",
+    "The connection works after reseating or replacing the cable."
+  ],
+  "commands": [],
+  "related_topics": [
+    "Network adapter status",
+    "IP address configuration",
+    "Router and switch connectivity"
+  ],
+  "quiz": [
+    {
+      "question": "What should you try when an Ethernet cable appears connected but there are no link lights?",
+      "answers": [
+        "Restart the printer",
+        "Reseat the cable or test a known-good cable",
+        "Change the computer wallpaper"
+      ],
+      "correct_answer": "Reseat the cable or test a known-good cable"
+    }
+  ],
+  "sources": [],
+  "review_status": "draft",
+  "last_reviewed": null,
+  "reviewed_by": null
+}

@@ -9,6 +9,7 @@ from flask import (
 )
 
 from app.engine.decision_engine import DecisionEngine
+from app.knowledge.knowledge_base import KnowledgeBase
 
 app = Flask(__name__)
 
@@ -44,6 +45,7 @@ def home():
 @app.route("/wizard", methods=["GET", "POST"])
 def wizard():
     engine = DecisionEngine()
+    knowledge = KnowledgeBase()
 
     # --------------------------------------------------
     # Start or restart a workflow
@@ -68,7 +70,11 @@ def wizard():
         session["current_node"] = node.id
         session["step"] = 1
 
-        return render_wizard(engine, node)
+        return render_wizard(
+            engine,
+            node,
+            knowledge,
+        )
 
     # --------------------------------------------------
     # Continue an existing workflow
@@ -108,12 +114,17 @@ def wizard():
             estimated_steps,
         )
 
-    return render_wizard(engine, node)
+    return render_wizard(
+        engine,
+        node,
+        knowledge,
+    )
 
 
-def render_wizard(engine, node):
+def render_wizard(engine, node, knowledge):
     """
-    Render the shared wizard template with workflow progress.
+    Render the shared wizard template with workflow progress
+    and optional knowledge article content.
     """
 
     workflow_name = session["workflow"]
@@ -133,9 +144,17 @@ def render_wizard(engine, node):
             100,
         )
 
+    article = None
+
+    if node.knowledge_article:
+        article = knowledge.load_article(
+            node.knowledge_article
+        )
+
     return render_template(
         "wizard.html",
         node=node,
+        article=article,
         workflow_id=workflow_name,
         workflow_name=workflow_info["name"],
         current_step=current_step,

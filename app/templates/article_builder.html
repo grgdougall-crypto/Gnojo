@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+
+{% block title %}Article Builder | SupportPilot{% endblock %}
+
+{% block content %}
+
+<section class="content-section">
+
+    <div class="container">
+
+        <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-5">
+
+            <div>
+
+                <p class="section-label">
+                    Knowledge Engineering
+                </p>
+
+                <h1>
+                    Article Builder
+                </h1>
+
+                <p class="section-description">
+                    Create structured troubleshooting knowledge for SupportPilot.
+                </p>
+
+            </div>
+
+            <a
+                href="{{ url_for('knowledge_center') }}"
+                class="btn btn-outline-primary"
+            >
+                <i class="bi bi-arrow-left me-2"></i>
+                Knowledge Center
+            </a>
+
+        </div>
+
+        <div class="alert alert-primary">
+
+            <strong>Early Preview</strong>
+
+            <p class="mb-0 mt-2">
+
+                This editor is currently under construction.
+                Future versions will support drafts, publishing,
+                AI-assisted writing, validation, and version history.
+
+            </p>
+
+        </div>
+
+        <div class="card shadow-sm mt-4">
+
+            <div class="card-body p-4">
+
+                <h2 class="h4 mb-4">
+                    Article Information
+                </h2>
+
+                <div class="row g-3">
+
+                    <div class="col-md-8">
+
+                        <label class="form-label">
+                            Title
+                        </label>
+
+                        <input
+                            class="form-control"
+                            placeholder="Example: Troubleshoot DHCP Issues"
+                            disabled
+                        >
+
+                    </div>
+
+                    <div class="col-md-4">
+
+                        <label class="form-label">
+                            Category
+                        </label>
+
+                        <select
+                            class="form-select"
+                            disabled
+                        >
+                            <option>Networking</option>
+                        </select>
+
+                    </div>
+
+                    <div class="col-md-4">
+
+                        <label class="form-label">
+                            Difficulty
+                        </label>
+
+                        <select
+                            class="form-select"
+                            disabled
+                        >
+                            <option>Beginner</option>
+                        </select>
+
+                    </div>
+
+                    <div class="col-md-4">
+
+                        <label class="form-label">
+                            Estimated Time
+                        </label>
+
+                        <input
+                            class="form-control"
+                            placeholder="10–15 minutes"
+                            disabled
+                        >
+
+                    </div>
+
+                    <div class="col-md-4">
+
+                        <label class="form-label">
+                            Review Status
+                        </label>
+
+                        <input
+                            class="form-control"
+                            value="Draft"
+                            disabled
+                        >
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+</section>
+
+{% endblock %}

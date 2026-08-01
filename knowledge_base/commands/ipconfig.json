@@ -1,0 +1,116 @@
+{
+  "schema_version": "1.0",
+  "id": "ipconfig",
+  "name": "ipconfig",
+  "title": "Inspect Windows network configuration with ipconfig",
+  "shell": "Command Prompt",
+  "platforms": [
+    "Windows 10",
+    "Windows 11",
+    "Windows Server"
+  ],
+  "category": "Networking",
+  "difficulty": "Beginner",
+  "summary": "Displays TCP/IP configuration details for Windows network adapters.",
+  "syntax": "ipconfig [options]",
+  "examples": [
+    {
+      "command": "ipconfig",
+      "description": "Displays a basic summary of active network adapters."
+    },
+    {
+      "command": "ipconfig /all",
+      "description": "Displays detailed configuration, including DNS, DHCP, MAC address, and lease information."
+    },
+    {
+      "command": "ipconfig /release",
+      "description": "Releases the current DHCP-assigned IPv4 address."
+    },
+    {
+      "command": "ipconfig /renew",
+      "description": "Requests a new IPv4 address from the DHCP server."
+    },
+    {
+      "command": "ipconfig /flushdns",
+      "description": "Clears the local DNS resolver cache."
+    }
+  ],
+  "permissions": {
+    "requires_elevation": false,
+    "notes": "Viewing configuration does not usually require administrator access. Some repair operations may require an elevated Command Prompt."
+  },
+  "risk": {
+    "level": "Moderate",
+    "changes_system": true,
+    "warning": "The release option temporarily removes the adapter's DHCP address and may interrupt network access until the address is renewed."
+  },
+  "output_fields": [
+    {
+      "name": "IPv4 Address",
+      "description": "The current IPv4 address assigned to the network adapter."
+    },
+    {
+      "name": "Subnet Mask",
+      "description": "Identifies which portion of the address represents the local network."
+    },
+    {
+      "name": "Default Gateway",
+      "description": "The router or device used to reach other networks."
+    },
+    {
+      "name": "DNS Servers",
+      "description": "The servers used to translate hostnames into IP addresses."
+    },
+    {
+      "name": "DHCP Enabled",
+      "description": "Shows whether the adapter receives its configuration automatically from DHCP."
+    },
+    {
+      "name": "Physical Address",
+      "description": "The MAC address assigned to the network adapter."
+    }
+  ],
+  "common_errors": [
+    {
+      "message": "Media disconnected",
+      "meaning": "The adapter does not currently have an active network connection."
+    },
+    {
+      "message": "Access is denied",
+      "meaning": "The selected option may require an elevated Command Prompt."
+    }
+  ],
+  "related_commands": [
+    "ping",
+    "tracert",
+    "nslookup",
+    "netstat"
+  ],
+  "related_articles": [
+    "inspect-windows-network-ipconfig",
+    "ethernet-connection-check"
+  ],
+  "tags": [
+    "networking",
+    "windows",
+    "tcp/ip",
+    "ip address",
+    "dns",
+    "dhcp",
+    "default gateway",
+    "network adapter"
+  ],
+  "sources": [
+    {
+      "title": "ipconfig",
+      "organization": "Microsoft Learn",
+      "url": "https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/ipconfig",
+      "type": "Official Documentation",
+      "verified": "2026-08-01"
+    }
+  ],
+  "review_status": "draft",
+  "reviewed_by": null,
+  "last_reviewed": null,
+  "version": "1.0"
+}

@@ -15,10 +15,18 @@ from app.repositories.knowledge_repository import (
     KnowledgeRepository,
     KnowledgeRepositoryError,
 )
+from app.repositories.command_repository import CommandRepository
+
+from app.services.search_service import SearchService
+
+from app.services.relationship_service import RelationshipService
 
 app = Flask(__name__)
 
 knowledge_repository = KnowledgeRepository()
+command_repository = CommandRepository()
+search_service = SearchService()
+relationship_service = RelationshipService()
 
 # Development only
 app.secret_key = "supportpilot-development-key"
@@ -58,6 +66,114 @@ def knowledge_center():
         "knowledge_center.html",
         draft_count=knowledge_repository.count_drafts(),
         published_count=knowledge_repository.count_published(),
+    )
+
+@app.route("/knowledge/builder")
+def article_builder():
+    return render_template(
+        "article_builder.html"
+    )
+
+@app.route("/commands")
+def list_commands():
+    """
+    Display all commands grouped by category.
+    """
+
+    commands = command_repository.get_all()
+
+    grouped_commands = {}
+
+    for command in commands:
+        category = command.get(
+            "category",
+            "Uncategorized",
+        )
+
+        grouped_commands.setdefault(
+            category,
+            [],
+        ).append(command)
+
+    return render_template(
+        "commands.html",
+        grouped_commands=grouped_commands,
+    )
+
+
+@app.route("/commands/<command_id>")
+def view_command(command_id):
+    """
+    Display one command from the Command Library.
+    """
+
+    command = command_repository.get(command_id)
+
+    if command is None:
+        abort(404)
+
+    related_articles = (
+        relationship_service.related_articles_for_command(
+            command_id
+        )
+    )
+
+    return render_template(
+        "command.html",
+        command=command,
+        related_articles=related_articles,
+    )
+
+@app.route("/search/test")
+def search_test():
+    """
+    Temporarily test universal search results as JSON.
+    """
+
+    query = request.args.get(
+        "q",
+        "",
+    ).strip()
+
+    if not query:
+        return {
+            "query": "",
+            "articles": [],
+            "commands": [],
+        }
+
+    results = search_service.search(query)
+
+    return {
+        "query": query,
+        "articles": [
+            article.get("id")
+            for article in results["articles"]
+        ],
+        "commands": [
+            command.get("id")
+            for command in results["commands"]
+        ],
+    }
+
+@app.route("/search")
+def search():
+    """
+    Display universal search results.
+    """
+
+    query = request.args.get(
+        "q",
+        "",
+    ).strip()
+
+    results = search_service.search(query)
+
+    return render_template(
+        "search_results.html",
+        query=query,
+        articles=results["articles"],
+        commands=results["commands"],
     )
 
 @app.route("/knowledge/drafts")
@@ -164,6 +280,32 @@ def view_published(article_id):
             article_id
         )
 
+        related_articles = []
+
+        for related_id in article.get(
+            "related_articles",
+            [],
+        ):
+            try:
+                related_article = (
+                    knowledge_repository.get_published_article(
+                        related_id
+                    )
+                )
+
+                related_articles.append(
+                    related_article
+                )
+
+            except ArticleNotFoundError:
+                continue
+
+        related_commands = (
+            relationship_service.related_commands_for_article(
+                article_id
+            )
+        )
+
     except ArticleNotFoundError:
         abort(404)
 
@@ -173,6 +315,8 @@ def view_published(article_id):
     return render_template(
         "published_article.html",
         article=article,
+        related_articles=related_articles,
+        related_commands=related_commands,
     )
 
 @app.route(

@@ -12,6 +12,12 @@
   "default gateway",
   "network configuration"
 ],
+"related_articles": [
+  "ethernet-connection-check"
+],
+"related_commands": [
+  "ipconfig"
+],
   "difficulty": "Beginner",
   "estimated_time": "15-20 minutes",
   "overview": "The 'ipconfig' command-line tool is essential for Windows users and IT professionals to quickly view and manage network adapter settings. This article will guide entry-level IT support technicians and learners through using 'ipconfig' to inspect IP addresses, subnet masks, default gateways, DNS servers, and other crucial network configuration details. Understanding these basics is fundamental for diagnosing common network connectivity issues.",

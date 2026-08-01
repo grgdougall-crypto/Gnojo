@@ -1,0 +1,479 @@
+{% extends "base.html" %}
+
+{% block title %}
+{{ command.title }} | SupportPilot
+{% endblock %}
+
+{% block content %}
+
+<div class="container py-5">
+
+    <div
+        class="d-flex flex-wrap justify-content-between
+               align-items-start gap-3 mb-4"
+    >
+
+        <div>
+
+            <p class="text-uppercase text-muted small mb-1">
+                Command Reference
+            </p>
+
+            <h1 class="display-6 mb-3">
+                {{ command.name }}
+            </h1>
+
+            <div class="d-flex flex-wrap gap-2">
+
+                {% if command.shell %}
+                    <span class="badge text-bg-primary">
+                        {{ command.shell }}
+                    </span>
+                {% endif %}
+
+                {% if command.category %}
+                    <span class="badge text-bg-secondary">
+                        {{ command.category }}
+                    </span>
+                {% endif %}
+
+                {% if command.difficulty %}
+                    <span class="badge text-bg-light">
+                        {{ command.difficulty }}
+                    </span>
+                {% endif %}
+
+                {% if command.risk %}
+                    <span class="badge text-bg-warning">
+                        Risk: {{ command.risk.level }}
+                    </span>
+                {% endif %}
+
+            </div>
+
+        </div>
+
+        <a
+            href="{{ url_for('list_commands') }}"
+            class="btn btn-outline-primary"
+        >
+            <i class="bi bi-arrow-left me-2"></i>
+            Command Library
+        </a>
+
+    </div>
+
+
+    <div class="card shadow-sm mb-4">
+
+        <div class="card-body p-4">
+
+            <h2 class="h4 mb-3">
+                Summary
+            </h2>
+
+            <p class="mb-0">
+                {{ command.summary }}
+            </p>
+
+        </div>
+
+    </div>
+
+
+    <div class="card shadow-sm mb-4">
+
+        <div class="card-body p-4">
+
+            <h2 class="h4 mb-3">
+                Syntax
+            </h2>
+
+            <pre class="mb-0"><code>{{ command.syntax }}</code></pre>
+
+        </div>
+
+    </div>
+
+
+    {% if command.examples %}
+
+        <div class="card shadow-sm mb-4">
+
+            <div class="card-body p-4">
+
+                <h2 class="h4 mb-4">
+                    Examples
+                </h2>
+
+                <div class="d-grid gap-3">
+
+                    {% for example in command.examples %}
+
+                        <div class="border rounded p-3">
+
+                            <pre class="mb-2"><code>{{ example.command }}</code></pre>
+
+                            <p class="text-muted mb-0">
+                                {{ example.description }}
+                            </p>
+
+                        </div>
+
+                    {% endfor %}
+
+                </div>
+
+            </div>
+
+        </div>
+
+    {% endif %}
+
+
+    <div class="row g-4 mb-4">
+
+        <div class="col-12 col-lg-6">
+
+            <div class="card shadow-sm h-100">
+
+                <div class="card-body p-4">
+
+                    <h2 class="h4 mb-3">
+                        Permissions
+                    </h2>
+
+                    <p class="mb-2">
+                        <strong>Administrator required:</strong>
+
+                        {% if command.permissions.requires_elevation %}
+                            Yes
+                        {% else %}
+                            No
+                        {% endif %}
+                    </p>
+
+                    {% if command.permissions.notes %}
+                        <p class="text-muted mb-0">
+                            {{ command.permissions.notes }}
+                        </p>
+                    {% endif %}
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <div class="col-12 col-lg-6">
+
+            <div class="card shadow-sm h-100">
+
+                <div class="card-body p-4">
+
+                    <h2 class="h4 mb-3">
+                        Risk and Impact
+                    </h2>
+
+                    <p class="mb-2">
+                        <strong>Risk level:</strong>
+                        {{ command.risk.level }}
+                    </p>
+
+                    <p class="mb-2">
+                        <strong>Changes the system:</strong>
+
+                        {% if command.risk.changes_system %}
+                            Yes
+                        {% else %}
+                            No
+                        {% endif %}
+                    </p>
+
+                    {% if command.risk.warning %}
+                        <p class="text-muted mb-0">
+                            {{ command.risk.warning }}
+                        </p>
+                    {% endif %}
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+
+    {% if command.platforms %}
+
+        <div class="card shadow-sm mb-4">
+
+            <div class="card-body p-4">
+
+                <h2 class="h4 mb-3">
+                    Supported Platforms
+                </h2>
+
+                <div class="d-flex flex-wrap gap-2">
+
+                    {% for platform in command.platforms %}
+
+                        <span class="badge rounded-pill text-bg-dark">
+                            {{ platform }}
+                        </span>
+
+                    {% endfor %}
+
+                </div>
+
+            </div>
+
+        </div>
+
+    {% endif %}
+
+
+    {% if command.output_fields %}
+
+        <div class="card shadow-sm mb-4">
+
+            <div class="card-body p-4">
+
+                <h2 class="h4 mb-4">
+                    Important Output Fields
+                </h2>
+
+                <div class="d-grid gap-3">
+
+                    {% for field in command.output_fields %}
+
+                        <div class="border-bottom pb-3">
+
+                            <h3 class="h6 mb-1">
+                                {{ field.name }}
+                            </h3>
+
+                            <p class="text-muted mb-0">
+                                {{ field.description }}
+                            </p>
+
+                        </div>
+
+                    {% endfor %}
+
+                </div>
+
+            </div>
+
+        </div>
+
+    {% endif %}
+
+
+    {% if command.common_errors %}
+
+        <div class="card shadow-sm mb-4">
+
+            <div class="card-body p-4">
+
+                <h2 class="h4 mb-4">
+                    Common Errors
+                </h2>
+
+                <div class="d-grid gap-3">
+
+                    {% for error in command.common_errors %}
+
+                        <div class="border rounded p-3">
+
+                            <h3 class="h6 mb-2">
+                                {{ error.message }}
+                            </h3>
+
+                            <p class="text-muted mb-0">
+                                {{ error.meaning }}
+                            </p>
+
+                        </div>
+
+                    {% endfor %}
+
+                </div>
+
+            </div>
+
+        </div>
+
+    {% endif %}
+
+
+    {% if related_articles %}
+
+    <div class="card shadow-sm mb-4">
+
+        <div class="card-body p-4">
+
+            <h2 class="h4 mb-3">
+                Related Articles
+            </h2>
+
+            <p class="text-muted mb-3">
+                These SupportPilot articles use or explain this command.
+            </p>
+
+            <div class="row g-3">
+
+                {% for article in related_articles %}
+
+                    <div class="col-12 col-lg-6">
+
+                        <div class="card h-100">
+
+                            <div class="card-body">
+
+                                <div class="d-flex flex-wrap gap-2 mb-3">
+
+                                    {% if article.category %}
+                                        <span class="badge text-bg-primary">
+                                            {{ article.category }}
+                                        </span>
+                                    {% endif %}
+
+                                    {% if article.difficulty %}
+                                        <span class="badge text-bg-secondary">
+                                            {{ article.difficulty }}
+                                        </span>
+                                    {% endif %}
+
+                                </div>
+
+                                <h3 class="h5 mb-2">
+                                    {{ article.title }}
+                                </h3>
+
+                                <p class="text-muted mb-3">
+                                    {{ article.overview }}
+                                </p>
+
+                                <a
+                                    class="btn btn-outline-primary"
+                                    href="{{ url_for(
+                                        'view_published',
+                                        article_id=article.id
+                                    ) }}"
+                                >
+                                    View Article
+                                    <i class="bi bi-arrow-right ms-2"></i>
+                                </a>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                {% endfor %}
+
+            </div>
+
+        </div>
+
+    </div>
+
+{% endif %}
+
+
+    {% if command.related_commands %}
+
+        <div class="card shadow-sm mb-4">
+
+            <div class="card-body p-4">
+
+                <h2 class="h4 mb-3">
+                    Related Commands
+                </h2>
+
+                <div class="d-flex flex-wrap gap-2">
+
+                    {% for related_id in command.related_commands %}
+
+                        <a
+                            class="btn btn-outline-secondary"
+                            href="{{ url_for(
+                                'view_command',
+                                command_id=related_id
+                            ) }}"
+                        >
+                            {{ related_id }}
+                        </a>
+
+                    {% endfor %}
+
+                </div>
+
+            </div>
+
+        </div>
+
+    {% endif %}
+
+
+    {% if command.sources %}
+
+        <div class="card shadow-sm mb-4">
+
+            <div class="card-body p-4">
+
+                <h2 class="h4 mb-3">
+                    Official References
+                </h2>
+
+                <div class="d-grid gap-3">
+
+                    {% for source in command.sources %}
+
+                        <div
+                            class="d-flex flex-wrap justify-content-between
+                                   align-items-center gap-3 border rounded p-3"
+                        >
+
+                            <div>
+
+                                <h3 class="h6 mb-1">
+                                    {{ source.title }}
+                                </h3>
+
+                                <p class="small text-muted mb-0">
+                                    {{ source.organization }}
+                                    · {{ source.type }}
+                                </p>
+
+                            </div>
+
+                            <a
+                                class="btn btn-outline-primary"
+                                href="{{ source.url }}"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                            >
+                                Open Source
+                                <i class="bi bi-box-arrow-up-right ms-2"></i>
+                            </a>
+
+                        </div>
+
+                    {% endfor %}
+
+                </div>
+
+            </div>
+
+        </div>
+
+    {% endif %}
+
+</div>
+
+{% endblock %}

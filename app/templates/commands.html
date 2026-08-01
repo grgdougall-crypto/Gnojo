@@ -1,0 +1,194 @@
+{% extends "base.html" %}
+
+{% block title %}Command Library | SupportPilot{% endblock %}
+
+{% block content %}
+
+<div class="container py-5">
+
+    <div
+        class="d-flex flex-wrap justify-content-between
+               align-items-start gap-3 mb-4"
+    >
+        <div>
+            <p class="text-uppercase text-muted small mb-1">
+                Technician Toolkit
+            </p>
+
+            <h1 class="h2 mb-2">
+                Command Library
+            </h1>
+
+            <p class="text-muted mb-0">
+                Browse reviewed commands, syntax, examples,
+                risks, and related troubleshooting knowledge.
+            </p>
+        </div>
+
+        <a
+            class="btn btn-outline-primary"
+            href="{{ url_for('knowledge_center') }}"
+        >
+            <i class="bi bi-arrow-left me-2"></i>
+            Knowledge Center
+        </a>
+    </div>
+
+    {% if grouped_commands %}
+
+        {% for category, commands in grouped_commands.items() %}
+
+            <section class="mb-5">
+
+                <div
+                    class="d-flex align-items-center
+                           justify-content-between mb-3"
+                >
+                    <div>
+                        <p class="text-uppercase text-muted small mb-1">
+                            Category
+                        </p>
+
+                        <h2 class="h4 mb-0">
+                            {{ category }}
+                        </h2>
+                    </div>
+
+                    <span class="badge text-bg-primary">
+                        {{ commands|length }}
+                    </span>
+                </div>
+
+                <div class="row g-3">
+
+                    {% for command in commands %}
+
+                        <div class="col-12">
+
+                            <div class="card shadow-sm">
+
+                                <div class="card-body p-4">
+
+                                    <div
+                                        class="d-flex flex-wrap
+                                               justify-content-between
+                                               align-items-start gap-3"
+                                    >
+                                        <div class="flex-grow-1">
+
+                                            <div class="d-flex flex-wrap gap-2 mb-3">
+
+                                                {% if command.shell %}
+                                                    <span class="badge text-bg-primary">
+                                                        {{ command.shell }}
+                                                    </span>
+                                                {% endif %}
+
+                                                {% if command.difficulty %}
+                                                    <span class="badge text-bg-secondary">
+                                                        {{ command.difficulty }}
+                                                    </span>
+                                                {% endif %}
+
+                                                {% if command.risk %}
+                                                    <span class="badge text-bg-warning">
+                                                        Risk:
+                                                        {{ command.risk.level }}
+                                                    </span>
+                                                {% endif %}
+
+                                            </div>
+
+                                            <h3 class="h5 mb-2">
+                                                {{ command.title }}
+                                            </h3>
+
+                                            <p class="text-muted mb-3">
+                                                {{ command.summary }}
+                                            </p>
+
+                                            {% if command.platforms %}
+
+                                                <div class="mb-3">
+
+                                                    <p
+                                                        class="small text-uppercase
+                                                               text-muted fw-semibold mb-2"
+                                                    >
+                                                        Platforms
+                                                    </p>
+
+                                                    <div class="d-flex flex-wrap gap-2">
+
+                                                        {% for platform in command.platforms %}
+
+                                                            <span
+                                                                class="badge rounded-pill
+                                                                       text-bg-dark"
+                                                            >
+                                                                {{ platform }}
+                                                            </span>
+
+                                                        {% endfor %}
+
+                                                    </div>
+
+                                                </div>
+
+                                            {% endif %}
+
+                                        </div>
+
+                                        <a
+                                            class="btn btn-primary"
+                                            href="{{ url_for(
+                                                'view_command',
+                                                command_id=command.id
+                                            ) }}"
+                                        >
+                                            View Command
+                                            <i class="bi bi-arrow-right ms-2"></i>
+                                        </a>
+
+                                    </div>
+
+                                </div>
+
+                            </div>
+
+                        </div>
+
+                    {% endfor %}
+
+                </div>
+
+            </section>
+
+        {% endfor %}
+
+    {% else %}
+
+        <div class="card shadow-sm">
+
+            <div class="card-body p-5 text-center">
+
+                <i class="bi bi-terminal display-4 text-muted"></i>
+
+                <h2 class="h4 mt-3">
+                    No commands found
+                </h2>
+
+                <p class="text-muted mb-0">
+                    Command records will appear here after they are added
+                    to the Command Library.
+                </p>
+
+            </div>
+
+        </div>
+
+    {% endif %}
+
+</div>
+
+{% endblock %}

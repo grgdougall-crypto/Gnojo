@@ -167,25 +167,32 @@ def search():
         "",
     ).strip()
 
+    selected_type = request.args.get(
+        "type",
+        "all",
+    ).strip().lower()
+
     results = search_service.search_all(query)
+
+    if selected_type == "article":
+        results = [
+            result
+            for result in results
+            if result.content_type == "Article"
+        ]
+
+    elif selected_type == "command":
+        results = [
+            result
+            for result in results
+            if result.content_type == "Command"
+        ]
 
     return render_template(
         "search_results.html",
         query=query,
         results=results,
-    )
-
-@app.route("/knowledge/drafts")
-def list_drafts():
-    """
-    Display all knowledge articles awaiting review.
-    """
-
-    drafts = knowledge_repository.get_drafts()
-
-    return render_template(
-        "drafts.html",
-        drafts=drafts,
+        selected_type=selected_type,
     )
 
 @app.route("/knowledge/drafts/<article_id>")

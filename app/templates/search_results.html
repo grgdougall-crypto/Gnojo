@@ -40,6 +40,58 @@ SupportPilot Search
 
     </div>
 
+<div class="d-flex flex-wrap gap-2 mb-4">
+
+    <a
+        href="{{ url_for(
+            'search',
+            q=query,
+            type='all'
+        ) }}"
+        class="btn
+               {% if selected_type == 'all' %}
+                   btn-primary
+               {% else %}
+                   btn-outline-primary
+               {% endif %}"
+    >
+        All
+    </a>
+
+    <a
+        href="{{ url_for(
+            'search',
+            q=query,
+            type='article'
+        ) }}"
+        class="btn
+               {% if selected_type == 'article' %}
+                   btn-primary
+               {% else %}
+                   btn-outline-primary
+               {% endif %}"
+    >
+        Articles
+    </a>
+
+    <a
+        href="{{ url_for(
+            'search',
+            q=query,
+            type='command'
+        ) }}"
+        class="btn
+               {% if selected_type == 'command' %}
+                   btn-primary
+               {% else %}
+                   btn-outline-primary
+               {% endif %}"
+    >
+        Commands
+    </a>
+
+</div>
+
     {% if results %}
 
         <div

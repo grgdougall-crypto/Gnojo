@@ -195,6 +195,19 @@ def search():
         selected_type=selected_type,
     )
 
+@app.route("/knowledge/drafts")
+def list_drafts():
+    """
+    Display all draft knowledge articles awaiting review.
+    """
+
+    drafts = knowledge_repository.get_drafts()
+
+    return render_template(
+        "drafts.html",
+        drafts=drafts,
+    )
+
 @app.route("/knowledge/drafts/<article_id>")
 def review_draft(article_id):
     """

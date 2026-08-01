@@ -396,3 +396,63 @@ a {
     min-width: 190px;
     justify-content: center;
 }
+
+/* Global header search */
+
+.app-header .container {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+}
+
+.global-search {
+    flex: 1;
+    max-width: 460px;
+    margin-inline: auto;
+}
+
+.global-search .input-group {
+    width: 100%;
+}
+
+.global-search .form-control {
+    min-width: 0;
+}
+
+
+/* Page spacing below the header */
+
+main {
+    padding-top: 2rem;
+}
+
+
+/* Responsive header layout */
+
+@media (max-width: 991.98px) {
+    .app-header .container {
+        flex-wrap: wrap;
+        padding-top: 0.75rem;
+        padding-bottom: 0.75rem;
+    }
+
+    .global-search {
+        order: 3;
+        width: 100%;
+        max-width: none;
+    }
+}
+
+@media (max-width: 575.98px) {
+    main {
+        padding-top: 1.5rem;
+    }
+
+    .header-status {
+        display: none;
+    }
+
+    .global-search .btn {
+        padding-inline: 1rem;
+    }
+}

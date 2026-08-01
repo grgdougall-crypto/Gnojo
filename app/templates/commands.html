@@ -8,26 +8,26 @@
 
     <div
         class="d-flex flex-wrap justify-content-between
-               align-items-start gap-3 mb-4"
+               align-items-start gap-3 mb-5"
     >
         <div>
             <p class="text-uppercase text-muted small mb-1">
                 Technician Toolkit
             </p>
 
-            <h1 class="h2 mb-2">
+            <h1 class="display-5 mb-2">
                 Command Library
             </h1>
 
             <p class="text-muted mb-0">
-                Browse reviewed commands, syntax, examples,
-                risks, and related troubleshooting knowledge.
+                Browse reviewed commands, syntax, examples, risks,
+                and related troubleshooting knowledge.
             </p>
         </div>
 
         <a
-            class="btn btn-outline-primary"
             href="{{ url_for('knowledge_center') }}"
+            class="btn btn-outline-primary"
         >
             <i class="bi bi-arrow-left me-2"></i>
             Knowledge Center
@@ -41,15 +41,15 @@
             <section class="mb-5">
 
                 <div
-                    class="d-flex align-items-center
-                           justify-content-between mb-3"
+                    class="d-flex justify-content-between
+                           align-items-center mb-3"
                 >
                     <div>
                         <p class="text-uppercase text-muted small mb-1">
                             Category
                         </p>
 
-                        <h2 class="h4 mb-0">
+                        <h2 class="h3 mb-0">
                             {{ category }}
                         </h2>
                     </div>
@@ -76,30 +76,40 @@
                                     >
                                         <div class="flex-grow-1">
 
-                                            <div class="d-flex flex-wrap gap-2 mb-3">
-
+                                            <div
+                                                class="d-flex flex-wrap
+                                                       gap-2 mb-3"
+                                            >
                                                 {% if command.shell %}
-                                                    <span class="badge text-bg-primary">
+                                                    <span
+                                                        class="badge
+                                                               text-bg-primary"
+                                                    >
                                                         {{ command.shell }}
                                                     </span>
                                                 {% endif %}
 
                                                 {% if command.difficulty %}
-                                                    <span class="badge text-bg-secondary">
+                                                    <span
+                                                        class="badge
+                                                               text-bg-secondary"
+                                                    >
                                                         {{ command.difficulty }}
                                                     </span>
                                                 {% endif %}
 
-                                                {% if command.risk %}
-                                                    <span class="badge text-bg-warning">
+                                                {% if command.risk_level %}
+                                                    <span
+                                                        class="badge
+                                                               text-bg-warning"
+                                                    >
                                                         Risk:
-                                                        {{ command.risk.level }}
+                                                        {{ command.risk_level }}
                                                     </span>
                                                 {% endif %}
-
                                             </div>
 
-                                            <h3 class="h5 mb-2">
+                                            <h3 class="h4 mb-2">
                                                 {{ command.title }}
                                             </h3>
 
@@ -109,30 +119,28 @@
 
                                             {% if command.platforms %}
 
-                                                <div class="mb-3">
+                                                <p
+                                                    class="text-uppercase
+                                                           text-muted small
+                                                           fw-semibold mb-2"
+                                                >
+                                                    Platforms
+                                                </p>
 
-                                                    <p
-                                                        class="small text-uppercase
-                                                               text-muted fw-semibold mb-2"
-                                                    >
-                                                        Platforms
-                                                    </p>
+                                                <div
+                                                    class="d-flex flex-wrap
+                                                           gap-3"
+                                                >
+                                                    {% for platform in command.platforms %}
 
-                                                    <div class="d-flex flex-wrap gap-2">
+                                                        <span
+                                                            class="small
+                                                                   fw-semibold"
+                                                        >
+                                                            {{ platform }}
+                                                        </span>
 
-                                                        {% for platform in command.platforms %}
-
-                                                            <span
-                                                                class="badge rounded-pill
-                                                                       text-bg-dark"
-                                                            >
-                                                                {{ platform }}
-                                                            </span>
-
-                                                        {% endfor %}
-
-                                                    </div>
-
+                                                    {% endfor %}
                                                 </div>
 
                                             {% endif %}
@@ -140,14 +148,16 @@
                                         </div>
 
                                         <a
-                                            class="btn btn-primary"
                                             href="{{ url_for(
                                                 'view_command',
                                                 command_id=command.id
                                             ) }}"
+                                            class="btn btn-primary"
                                         >
                                             View Command
-                                            <i class="bi bi-arrow-right ms-2"></i>
+                                            <i
+                                                class="bi bi-arrow-right ms-2"
+                                            ></i>
                                         </a>
 
                                     </div>
@@ -179,8 +189,7 @@
                 </h2>
 
                 <p class="text-muted mb-0">
-                    Command records will appear here after they are added
-                    to the Command Library.
+                    Reviewed commands will appear here.
                 </p>
 
             </div>

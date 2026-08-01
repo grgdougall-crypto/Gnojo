@@ -14,7 +14,7 @@ class SearchService:
 
     def search(self, query):
         """
-        Return matching articles and commands ranked by relevance.
+        Return matching articles and commands in separate groups.
         """
 
         normalized_query = query.lower().strip()
@@ -29,6 +29,35 @@ class SearchService:
             "articles": self._search_articles(normalized_query),
             "commands": self._search_commands(normalized_query),
         }
+
+    def search_all(self, query):
+        """
+        Return all matching content as one relevance-ranked list.
+        """
+
+        normalized_query = query.lower().strip()
+
+        if not normalized_query:
+            return []
+
+        results = []
+
+        results.extend(
+            self._search_articles(normalized_query)
+        )
+
+        results.extend(
+            self._search_commands(normalized_query)
+        )
+
+        results.sort(
+            key=lambda result: (
+                -result.score,
+                result.title.lower(),
+            )
+        )
+
+        return results
 
     def _search_articles(self, query):
         ranked_results = []

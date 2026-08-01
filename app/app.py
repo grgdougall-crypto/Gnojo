@@ -167,13 +167,12 @@ def search():
         "",
     ).strip()
 
-    results = search_service.search(query)
+    results = search_service.search_all(query)
 
     return render_template(
         "search_results.html",
         query=query,
-        articles=results["articles"],
-        commands=results["commands"],
+        results=results,
     )
 
 @app.route("/knowledge/drafts")

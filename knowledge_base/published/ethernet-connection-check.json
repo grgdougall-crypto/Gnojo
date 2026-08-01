@@ -2,6 +2,14 @@
   "id": "ethernet-connection-check",
   "title": "Checking an Ethernet Connection",
   "category": "Networking",
+  "tags": [
+  "ethernet",
+  "wired network",
+  "network cable",
+  "lan",
+  "connectivity",
+  "windows networking"
+],
   "difficulty": "Beginner",
   "estimated_time": "1 to 2 minutes",
   "overview": "A wired Ethernet connection depends on a secure physical connection between the computer and the network device. A loose, damaged, or disconnected cable can prevent the computer from reaching the network.",
@@ -35,7 +43,12 @@
       "correct_answer": "Reseat the cable or test a known-good cable"
     }
   ],
-  "sources": [],
+  "sources": [
+  {
+    "title": "Fix Ethernet connection problems in Windows",
+    "url": "https://learn.microsoft.com/en-us/troubleshoot/windows-client/networking/networking-overview"
+  }
+],
   "review_status": "draft",
   "last_reviewed": null,
   "reviewed_by": null

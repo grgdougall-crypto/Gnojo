@@ -1,0 +1,93 @@
+{
+  "schema_version": "1.0",
+  "id": "inspect-windows-network-ipconfig",
+  "title": "Use ipconfig to inspect Windows network configuration",
+  "category": "Networking",
+  "tags": [
+  "ipconfig",
+  "windows networking",
+  "ip address",
+  "dns",
+  "dhcp",
+  "default gateway",
+  "network configuration"
+],
+  "difficulty": "Beginner",
+  "estimated_time": "15-20 minutes",
+  "overview": "The 'ipconfig' command-line tool is essential for Windows users and IT professionals to quickly view and manage network adapter settings. This article will guide entry-level IT support technicians and learners through using 'ipconfig' to inspect IP addresses, subnet masks, default gateways, DNS servers, and other crucial network configuration details. Understanding these basics is fundamental for diagnosing common network connectivity issues.",
+  "checklist": [
+    "Open Command Prompt as an administrator.",
+    "Run 'ipconfig' to get a quick overview of active network adapters.",
+    "Run 'ipconfig /all' for detailed configuration information.",
+    "Identify the IP address, subnet mask, and default gateway for your active adapter.",
+    "Note the DNS server addresses being used.",
+    "If experiencing connectivity issues, try 'ipconfig /release' followed by 'ipconfig /renew'.",
+    "If experiencing name resolution issues, try 'ipconfig /flushdns'."
+  ],
+  "common_indicators": [
+    "Cannot access websites or network resources.",
+    "Limited or no connectivity status in Windows.",
+    "Unable to ping other devices on the local network or the internet.",
+    "Slow internet browsing or network access.",
+    "Trouble connecting to shared folders or network printers.",
+    "Error messages related to IP address conflicts or DNS resolution failures."
+  ],
+  "commands": [
+    {
+      "command": "ipconfig",
+      "description": "Displays the current TCP/IP network configuration for all active network adapters, including IP address, subnet mask, and default gateway."
+    },
+    {
+      "command": "ipconfig /all",
+      "description": "Provides a comprehensive display of TCP/IP configuration for all network adapters, including physical (MAC) address, DHCP server, DNS servers, and lease information."
+    },
+    {
+      "command": "ipconfig /release",
+      "description": "Releases the current IP address obtained from a DHCP server for the specified adapter(s). This effectively disconnects the adapter from the network until a new IP address is obtained."
+    },
+    {
+      "command": "ipconfig /renew",
+      "description": "Requests a new IP address from a DHCP server for the specified adapter(s). This command is often used after 'ipconfig /release' to troubleshoot IP address assignment issues."
+    },
+    {
+      "command": "ipconfig /flushdns",
+      "description": "Clears the DNS resolver cache. This is useful when troubleshooting DNS name resolution problems, as it forces the system to re-query DNS servers for hostnames."
+    }
+  ],
+  "related_topics": [
+    "Basic Network Troubleshooting",
+    "Understanding IP Addressing",
+    "DHCP (Dynamic Host Configuration Protocol)",
+    "DNS (Domain Name System)",
+    "Using ping and tracert commands"
+  ],
+  "quiz": [
+    {
+      "question": "Which 'ipconfig' command provides the most detailed information about all network adapters, including physical address and DHCP server details?",
+      "answers": [
+        "ipconfig",
+        "ipconfig /release",
+        "ipconfig /all",
+        "ipconfig /flushdns"
+      ],
+      "correct_answer": "ipconfig /all"
+    }
+  ],
+  "sources": [
+    {
+      "title": "ipconfig",
+      "url": "https://learn.microsoft.com/windows-server/administration/windows-commands/ipconfig"
+    }
+  ],
+  "generation": {
+    "provider": "gemini",
+    "model": "gemini-2.5-flash",
+    "generated_at": "2026-07-31T08:33:31.640653+00:00"
+  },
+  "review": {
+    "status": "published",
+    "reviewed_by": null,
+    "reviewed_at": null,
+    "notes": []
+  }
+}

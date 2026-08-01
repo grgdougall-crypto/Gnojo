@@ -71,26 +71,37 @@
                         <i class="bi bi-search"></i>
                     </span>
 
-                    <input
-                        class="form-control"
-                        type="search"
-                        placeholder="Search the knowledge library"
-                        disabled
-                    >
+                    <form
+    method="GET"
+    action="{{ url_for('list_published') }}"
+>
+    <div class="input-group">
 
-                    <button
-                        class="btn btn-primary"
-                        type="button"
-                        disabled
-                    >
-                        Search
-                    </button>
+        <span class="input-group-text">
+            <i class="bi bi-search"></i>
+        </span>
 
-                </div>
+        <input
+            class="form-control"
+            type="search"
+            name="q"
+            placeholder="Search the knowledge library"
+            required
+        >
 
-                <p class="small text-muted mt-2 mb-0">
-                    Search will be connected after published article browsing.
-                </p>
+        <button
+            class="btn btn-primary"
+            type="submit"
+        >
+            Search
+        </button>
+
+    </div>
+</form>
+
+<p class="small text-muted mt-2 mb-0">
+    Search reviewed and published SupportPilot articles.
+</p>
 
             </div>
 
@@ -137,14 +148,13 @@
 
                             </div>
 
-                            <button
-                                class="btn btn-outline-primary"
-                                type="button"
-                                disabled
-                            >
-                                Browse Articles
-                                <i class="bi bi-arrow-right ms-2"></i>
-                            </button>
+                            <a
+    class="btn btn-outline-primary sp-action-button"
+    href="{{ url_for('list_published') }}"
+>
+    Browse Articles
+    <i class="bi bi-arrow-right ms-2"></i>
+</a>
 
                         </div>
 
@@ -192,9 +202,9 @@
                             </div>
 
                             <a
-                                class="btn btn-primary"
-                                href="{{ url_for('list_drafts') }}"
-                            >
+    class="btn btn-primary sp-action-button"
+    href="{{ url_for('list_drafts') }}"
+>
                                 Review Drafts
                                 <i class="bi bi-arrow-right ms-2"></i>
                             </a>
@@ -236,11 +246,11 @@
 
                             </div>
 
-                            <button
-                                class="btn btn-outline-primary"
-                                type="button"
-                                disabled
-                            >
+                          <button
+    class="btn btn-outline-primary sp-action-button"
+    type="button"
+    disabled
+>
                                 Generate Article
                                 <i class="bi bi-arrow-right ms-2"></i>
                             </button>

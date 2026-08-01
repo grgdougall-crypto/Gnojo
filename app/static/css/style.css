@@ -391,3 +391,8 @@ a {
 .problem-card.disabled:hover {
     transform: none;
 }
+
+.sp-action-button {
+    min-width: 190px;
+    justify-content: center;
+}

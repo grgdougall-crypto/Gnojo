@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Review Draft | SupportPilot{% endblock %}
+{% block title %}{{ article.title }} | SupportPilot{% endblock %}
 
 {% block content %}
 
@@ -10,7 +10,7 @@
 
         <div>
             <p class="text-uppercase text-muted small mb-1">
-                Knowledge Review
+                Published Knowledge
             </p>
 
             <h1 class="h2 mb-2">
@@ -19,8 +19,8 @@
 
             <div class="d-flex flex-wrap gap-2">
 
-                <span class="badge text-bg-warning">
-                    Draft
+                <span class="badge text-bg-success">
+                    Published
                 </span>
 
                 {% if article.category %}
@@ -46,26 +46,26 @@
         </div>
 
         <a
-            href="{{ url_for('list_drafts') }}"
+            href="{{ url_for('list_published') }}"
             class="btn btn-outline-primary"
         >
             <i class="bi bi-arrow-left me-2"></i>
-            Back to Drafts
+            Back to Articles
         </a>
 
     </div>
 
-    <div class="alert alert-warning d-flex align-items-start gap-3 mb-4">
+    <div class="alert alert-success d-flex align-items-start gap-3 mb-4">
 
-        <i class="bi bi-exclamation-triangle-fill fs-4"></i>
+        <i class="bi bi-patch-check-fill fs-4"></i>
 
         <div>
             <h2 class="h6 mb-1">
-                AI-generated draft
+                Reviewed knowledge
             </h2>
 
             <p class="mb-0">
-                Verify technical accuracy, commands, and sources before publication.
+                This article has been approved for use in SupportPilot.
             </p>
         </div>
 
@@ -94,30 +94,15 @@
                     Troubleshooting Checklist
                 </h2>
 
-                <div class="vstack gap-3">
+                <ol class="mb-0">
 
                     {% for item in article.checklist %}
-
-                        <div class="form-check">
-
-                            <input
-                                class="form-check-input"
-                                type="checkbox"
-                                id="checklist_item_{{ loop.index }}"
-                            >
-
-                            <label
-                                class="form-check-label"
-                                for="checklist_item_{{ loop.index }}"
-                            >
-                                {{ item }}
-                            </label>
-
-                        </div>
-
+                        <li class="mb-2">
+                            {{ item }}
+                        </li>
                     {% endfor %}
 
-                </div>
+                </ol>
 
             </div>
         </div>
@@ -192,11 +177,9 @@
                 <div class="d-flex flex-wrap gap-2">
 
                     {% for topic in article.related_topics %}
-
                         <span class="badge text-bg-light border">
                             {{ topic }}
                         </span>
-
                     {% endfor %}
 
                 </div>
@@ -215,38 +198,27 @@
                     Knowledge Check
                 </h2>
 
-                {% set quiz_item = article.quiz[0] %}
+                {% for quiz_item in article.quiz %}
 
-                <p class="fw-semibold">
-                    {{ quiz_item.question }}
-                </p>
+                    <div class="{% if not loop.last %}mb-4{% endif %}">
 
-                <div class="vstack gap-2">
+                        <p class="fw-semibold">
+                            {{ quiz_item.question }}
+                        </p>
 
-                    {% for answer in quiz_item.answers %}
+                        <ul class="mb-0">
 
-                        <div class="form-check">
+                            {% for answer in quiz_item.answers %}
+                                <li class="mb-2">
+                                    {{ answer }}
+                                </li>
+                            {% endfor %}
 
-                            <input
-                                class="form-check-input"
-                                type="radio"
-                                name="draft_quiz"
-                                id="draft_quiz_answer_{{ loop.index }}"
-                                value="{{ answer }}"
-                            >
+                        </ul>
 
-                            <label
-                                class="form-check-label"
-                                for="draft_quiz_answer_{{ loop.index }}"
-                            >
-                                {{ answer }}
-                            </label>
+                    </div>
 
-                        </div>
-
-                    {% endfor %}
-
-                </div>
+                {% endfor %}
 
             </div>
         </div>
@@ -259,117 +231,108 @@
             <div class="card-body p-4">
 
                 <h2 class="h4 mb-3">
-                    Sources
+                    Official Sources and References
                 </h2>
 
-                <ul class="mb-0">
+                <div class="vstack gap-3">
 
                     {% for source in article.sources %}
 
-                        <li class="mb-2">
+                        <div class="border rounded p-3">
 
-                            <a
-                                href="{{ source.url }}"
-                                target="_blank"
-                                rel="noopener noreferrer"
-                            >
-                                {{ source.title }}
-                                <i class="bi bi-box-arrow-up-right ms-1"></i>
-                            </a>
+                            <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
 
-                        </li>
+                                <div>
+
+                                    <p class="fw-semibold mb-1">
+                                        {{ source.title }}
+                                    </p>
+
+                                    <p class="small text-muted mb-0">
+                                        External technical reference
+                                    </p>
+
+                                </div>
+
+                                <a
+                                    href="{{ source.url }}"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    class="btn btn-outline-primary btn-sm"
+                                >
+                                    Open Source
+                                    <i class="bi bi-box-arrow-up-right ms-1"></i>
+                                </a>
+
+                            </div>
+
+                        </div>
 
                     {% endfor %}
 
-                </ul>
+                </div>
 
             </div>
         </div>
 
     {% endif %}
 
-    <div class="card shadow-sm mb-4">
+    <div class="card shadow-sm">
         <div class="card-body p-4">
 
             <h2 class="h4 mb-3">
-                Generation Details
+                Article Details
             </h2>
 
             <dl class="row mb-0">
 
                 <dt class="col-sm-3">
-                    Provider
+                    Article ID
                 </dt>
 
                 <dd class="col-sm-9">
-                    {{ article.generation.provider }}
+                    {{ article.id }}
                 </dd>
 
                 <dt class="col-sm-3">
-                    Model
+                    Schema version
                 </dt>
 
                 <dd class="col-sm-9">
-                    {{ article.generation.model }}
+                    {{ article.schema_version }}
                 </dd>
 
-                <dt class="col-sm-3">
-                    Generated
-                </dt>
+                {% if article.review %}
 
-                <dd class="col-sm-9">
-                    {{ article.generation.generated_at }}
-                </dd>
+                    <dt class="col-sm-3">
+                        Review status
+                    </dt>
 
-                <dt class="col-sm-3">
-                    Review status
-                </dt>
+                    <dd class="col-sm-9">
+                        {{ article.review.status }}
+                    </dd>
 
-                <dd class="col-sm-9 mb-0">
-                    {{ article.review.status }}
-                </dd>
+                    <dt class="col-sm-3">
+                        Reviewed by
+                    </dt>
+
+                    <dd class="col-sm-9">
+                        {{ article.review.reviewed_by or "Not recorded" }}
+                    </dd>
+
+                    <dt class="col-sm-3">
+                        Reviewed at
+                    </dt>
+
+                    <dd class="col-sm-9 mb-0">
+                        {{ article.review.reviewed_at or "Not recorded" }}
+                    </dd>
+
+                {% endif %}
 
             </dl>
 
         </div>
-    </div>
-
-    <div class="d-flex flex-wrap gap-2">
-
-       <form
-    method="POST"
-    action="{{ url_for(
-        'publish_draft',
-        article_id=article.id
-    ) }}"
->
-    <button
-        class="btn btn-success"
-        type="submit"
-    >
-        <i class="bi bi-check-circle me-2"></i>
-        Approve and Publish
-    </button>
-</form>
-
-        <button
-            class="btn btn-outline-primary"
-            type="button"
-            disabled
-        >
-            <i class="bi bi-pencil-square me-2"></i>
-            Edit Article
-        </button>
-
-        <button
-            class="btn btn-outline-danger"
-            type="button"
-            disabled
-        >
-            <i class="bi bi-x-circle me-2"></i>
-            Reject Draft
-        </button>
-
     </div>
 
 </div>

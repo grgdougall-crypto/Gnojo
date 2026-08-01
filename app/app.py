@@ -93,6 +93,121 @@ def review_draft(article_id):
         article=article,
     )
 
+@app.route("/knowledge/published")
+def list_published():
+    """
+    Display published articles grouped by category.
+    """
+
+    query = request.args.get(
+        "q",
+        "",
+    ).strip().lower()
+
+    articles = knowledge_repository.get_published()
+
+    if query:
+
+        filtered = []
+
+        for article in articles:
+
+            tags = article.get("tags", [])
+
+            if not isinstance(tags, list):
+                tags = []
+
+            searchable_text = " ".join(
+                [
+                    article.get("title", ""),
+                    article.get("overview", ""),
+                    article.get("category", ""),
+                    article.get("difficulty", ""),
+                    " ".join(str(tag) for tag in tags),
+                ]
+            ).lower()
+
+            if query in searchable_text:
+                filtered.append(article)
+
+        articles = filtered
+
+    grouped_articles = {}
+
+    for article in articles:
+
+        category = article.get(
+            "category",
+            "Uncategorized",
+        )
+
+        grouped_articles.setdefault(
+            category,
+            [],
+        ).append(article)
+
+    return render_template(
+        "published.html",
+        grouped_articles=grouped_articles,
+        query=query,
+    )
+
+
+@app.route("/knowledge/published/<article_id>")
+def view_published(article_id):
+    """
+    Display one published knowledge article.
+    """
+
+    try:
+        article = knowledge_repository.get_published_article(
+            article_id
+        )
+
+    except ArticleNotFoundError:
+        abort(404)
+
+    except KnowledgeRepositoryError:
+        abort(500)
+
+    return render_template(
+        "published_article.html",
+        article=article,
+    )
+
+@app.route(
+    "/knowledge/drafts/<article_id>/publish",
+    methods=["POST"],
+)
+def publish_draft(article_id):
+    """
+    Approve a draft and move it into the published library.
+    """
+
+    try:
+        article = knowledge_repository.get_draft(article_id)
+
+        article["review"]["status"] = "published"
+
+        knowledge_repository.save_draft(
+            article,
+            overwrite=True,
+        )
+
+        knowledge_repository.publish_article(
+            article_id,
+        )
+
+    except ArticleNotFoundError:
+        abort(404)
+
+    except KnowledgeRepositoryError:
+        abort(500)
+
+    return redirect(
+        url_for("knowledge_center")
+    )
+
 @app.route("/wizard", methods=["GET", "POST"])
 def wizard():
     engine = DecisionEngine()

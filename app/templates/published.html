@@ -1,0 +1,242 @@
+{% extends "base.html" %}
+
+{% block title %}Published Knowledge | SupportPilot{% endblock %}
+
+{% block content %}
+
+<div class="container py-5">
+
+    <div
+        class="d-flex flex-wrap justify-content-between
+               align-items-start gap-3 mb-4"
+    >
+        <div>
+            <p class="text-uppercase text-muted small mb-1">
+                Knowledge Library
+            </p>
+
+            <h1 class="h2 mb-2">
+                Published Articles
+            </h1>
+
+            <p class="text-muted mb-0">
+                Browse reviewed and approved troubleshooting guidance.
+            </p>
+        </div>
+
+        <a
+            href="{{ url_for('knowledge_center') }}"
+            class="btn btn-outline-primary"
+        >
+            <i class="bi bi-arrow-left me-2"></i>
+            Knowledge Center
+        </a>
+    </div>
+
+    <form
+        class="mb-5"
+        method="GET"
+        action="{{ url_for('list_published') }}"
+    >
+        <div class="input-group">
+
+            <input
+                class="form-control"
+                type="search"
+                name="q"
+                placeholder="Search published knowledge..."
+                value="{{ query }}"
+            >
+
+            <button
+                class="btn btn-primary"
+                type="submit"
+            >
+                <i class="bi bi-search me-2"></i>
+                Search
+            </button>
+
+        </div>
+    </form>
+
+    {% if grouped_articles %}
+
+        {% for category, articles in grouped_articles.items() %}
+
+            <section class="mb-5">
+
+                <div
+                    class="d-flex align-items-center
+                           justify-content-between mb-3"
+                >
+                    <div>
+                        <p class="text-uppercase text-muted small mb-1">
+                            Category
+                        </p>
+
+                        <h2 class="h4 mb-0">
+                            {{ category }}
+                        </h2>
+                    </div>
+
+                    <span class="badge text-bg-primary">
+                        {{ articles|length }}
+                    </span>
+                </div>
+
+                <div class="row g-3">
+
+                    {% for article in articles %}
+
+                        <div class="col-12">
+
+                            <div class="card shadow-sm">
+
+                                <div class="card-body p-4">
+
+                                    <div
+                                        class="d-flex flex-wrap
+                                               justify-content-between
+                                               align-items-start gap-3"
+                                    >
+                                        <div class="flex-grow-1">
+
+                                            <div class="d-flex flex-wrap gap-2 mb-3">
+
+                                                <span class="badge text-bg-success">
+                                                    Published
+                                                </span>
+
+                                                <span class="badge text-bg-primary">
+                                                    {{ article.category }}
+                                                </span>
+
+                                                {% if article.difficulty %}
+                                                    <span class="badge text-bg-secondary">
+                                                        {{ article.difficulty }}
+                                                    </span>
+                                                {% endif %}
+
+                                                {% if article.estimated_time %}
+                                                    <span class="badge text-bg-light">
+                                                        <i class="bi bi-clock me-1"></i>
+                                                        {{ article.estimated_time }}
+                                                    </span>
+                                                {% endif %}
+
+                                            </div>
+
+                                            <h3 class="h5 mb-2">
+                                                {{ article.title }}
+                                            </h3>
+
+                                            <p class="text-muted mb-3">
+                                                {{ article.overview }}
+                                            </p>
+
+                                            {% if article.tags %}
+
+                                                <div class="mb-3">
+
+                                                    <p
+                                                        class="small text-uppercase
+                                                               text-muted fw-semibold mb-2"
+                                                    >
+                                                        Tags
+                                                    </p>
+
+                                                    <div class="d-flex flex-wrap gap-2">
+
+                                                        {% for tag in article.tags %}
+
+                                                            <span
+                                                                class="badge rounded-pill
+                                                                       text-bg-dark"
+                                                            >
+                                                                {{ tag }}
+                                                            </span>
+
+                                                        {% endfor %}
+
+                                                    </div>
+
+                                                </div>
+
+                                            {% endif %}
+
+                                        </div>
+
+                                        <a
+                                            href="{{ url_for(
+                                                'view_published',
+                                                article_id=article.id
+                                            ) }}"
+                                            class="btn btn-primary"
+                                        >
+                                            View Article
+                                            <i class="bi bi-arrow-right ms-2"></i>
+                                        </a>
+
+                                    </div>
+
+                                </div>
+
+                            </div>
+
+                        </div>
+
+                    {% endfor %}
+
+                </div>
+
+            </section>
+
+        {% endfor %}
+
+    {% else %}
+
+        <div class="card shadow-sm">
+
+            <div class="card-body p-5 text-center">
+
+                <i class="bi bi-journal-x display-4 text-muted"></i>
+
+                {% if query %}
+
+                    <h2 class="h4 mt-3">
+                        No articles match your search
+                    </h2>
+
+                    <p class="text-muted mb-3">
+                        No published articles were found for
+                        “{{ query }}”.
+                    </p>
+
+                    <a
+                        class="btn btn-outline-primary"
+                        href="{{ url_for('list_published') }}"
+                    >
+                        Clear Search
+                    </a>
+
+                {% else %}
+
+                    <h2 class="h4 mt-3">
+                        No published articles found
+                    </h2>
+
+                    <p class="text-muted mb-0">
+                        Approved articles will appear here after publication.
+                    </p>
+
+                {% endif %}
+
+            </div>
+
+        </div>
+
+    {% endif %}
+
+</div>
+
+{% endblock %}

@@ -1,3 +1,5 @@
+import re
+
 from flask import (
     Flask,
     abort,
@@ -7,6 +9,8 @@ from flask import (
     session,
     url_for,
 )
+
+from markupsafe import Markup, escape
 
 from app.engine.decision_engine import DecisionEngine
 from app.knowledge.knowledge_base import KnowledgeBase
@@ -22,6 +26,35 @@ from app.services.search_service import SearchService
 from app.services.relationship_service import RelationshipService
 
 app = Flask(__name__)
+
+@app.template_filter("highlight")
+def highlight_search_term(value, query):
+    """
+    Safely highlight a search term within displayed text.
+    """
+
+    if value is None:
+        return ""
+
+    safe_value = escape(str(value))
+    normalized_query = str(query).strip()
+
+    if not normalized_query:
+        return safe_value
+
+    pattern = re.compile(
+        re.escape(normalized_query),
+        re.IGNORECASE,
+    )
+
+    highlighted_value = pattern.sub(
+        lambda match: (
+            f"<mark>{match.group(0)}</mark>"
+        ),
+        str(safe_value),
+    )
+
+    return Markup(highlighted_value)
 
 knowledge_repository = KnowledgeRepository()
 command_repository = CommandRepository()

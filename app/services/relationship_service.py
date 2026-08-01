@@ -60,3 +60,30 @@ class RelationshipService:
                 matches.append(command)
 
         return matches
+
+    def related_commands_for_command(self, command_id):
+        """
+        Return existing command records referenced by another command.
+        """
+
+        command = self.commands.get(
+            command_id
+        )
+
+        if command is None:
+            return []
+
+        matches = []
+
+        for related_id in command.get(
+            "related_commands",
+            [],
+        ):
+            related_command = self.commands.get(
+                related_id
+            )
+
+            if related_command is not None:
+                matches.append(related_command)
+
+        return matches

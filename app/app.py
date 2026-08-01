@@ -151,10 +151,17 @@ def view_command(command_id):
         )
     )
 
+    related_commands = (
+        relationship_service.related_commands_for_command(
+            command_id
+        )
+    )
+
     return render_template(
         "command.html",
         command=command,
         related_articles=related_articles,
+        related_commands=related_commands,
     )
 
 @app.route("/search/test")

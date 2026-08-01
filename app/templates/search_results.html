@@ -8,135 +8,207 @@ SupportPilot Search
 
 <div class="container py-5">
 
-    <div class="d-flex justify-content-between align-items-center mb-4">
+    <div
+        class="d-flex flex-wrap justify-content-between
+               align-items-start gap-3 mb-4"
+    >
 
         <div>
-            <div class="text-uppercase text-primary small fw-bold">
-                Universal Search
-            </div>
 
-            <h1 class="display-5 fw-bold">
+            <p class="text-uppercase text-primary small fw-bold mb-1">
+                Universal Search
+            </p>
+
+            <h1 class="display-5 fw-bold mb-2">
                 Search Results
             </h1>
 
-            <p class="text-secondary mb-0">
-                Results for "<strong>{{ query }}</strong>"
+            <p class="text-muted mb-0">
+                Results for
+                <strong>"{{ query }}"</strong>
             </p>
+
         </div>
 
         <a
             href="{{ url_for('knowledge_center') }}"
             class="btn btn-outline-primary"
         >
-            ← Knowledge Center
+            <i class="bi bi-arrow-left me-2"></i>
+            Knowledge Center
         </a>
 
     </div>
 
-
     {% if not articles and not commands %}
 
         <div class="alert alert-secondary">
-            No results found.
+
+            <h2 class="h5 mb-2">
+                No results found
+            </h2>
+
+            <p class="mb-0">
+                Try another keyword or browse the Knowledge Center.
+            </p>
+
         </div>
 
     {% endif %}
-
 
     {% if articles %}
 
-    <section class="mb-5">
+        <section class="mb-5">
 
-        <h3 class="mb-3">
-            Articles
-            <span class="badge bg-primary">
-                {{ articles|length }}
-            </span>
-        </h3>
+            <div
+                class="d-flex justify-content-between
+                       align-items-center mb-3"
+            >
 
-        <div class="row g-3">
+                <h2 class="h4 mb-0">
+                    Articles
+                </h2>
 
-        {% for article in articles %}
-
-            <div class="col-12">
-
-                <div class="card shadow-sm">
-
-                    <div class="card-body">
-
-                        <h4>{{ article.title }}</h4>
-
-                        <p class="text-secondary">
-                            {{ article.overview }}
-                        </p>
-
-                        <a
-                            href="{{ url_for('view_published', article_id=article.id) }}"
-                            class="btn btn-primary"
-                        >
-                            View Article →
-                        </a>
-
-                    </div>
-
-                </div>
+                <span class="badge text-bg-primary">
+                    {{ articles|length }}
+                </span>
 
             </div>
 
-        {% endfor %}
+            <div class="row g-3">
 
-        </div>
+                {% for article in articles %}
 
-    </section>
+                    <div class="col-12">
+
+                        <div class="card shadow-sm">
+
+                            <div class="card-body p-4">
+
+                                <div class="d-flex flex-wrap gap-2 mb-3">
+
+                                    {% if article.category %}
+                                        <span class="badge text-bg-primary">
+                                            {{ article.category }}
+                                        </span>
+                                    {% endif %}
+
+                                    {% if article.difficulty %}
+                                        <span class="badge text-bg-secondary">
+                                            {{ article.difficulty }}
+                                        </span>
+                                    {% endif %}
+
+                                </div>
+
+                                <h3 class="h5 mb-2">
+                                    {{ article.title }}
+                                </h3>
+
+                                <p class="text-muted mb-3">
+                                    {{ article.summary }}
+                                </p>
+
+                                <a
+                                    href="{{ url_for(
+                                        article.endpoint,
+                                        article_id=article.id
+                                    ) }}"
+                                    class="btn btn-primary"
+                                >
+                                    View Article
+                                    <i class="bi bi-arrow-right ms-2"></i>
+                                </a>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                {% endfor %}
+
+            </div>
+
+        </section>
 
     {% endif %}
 
-
     {% if commands %}
 
-    <section>
+        <section>
 
-        <h3 class="mb-3">
-            Commands
-            <span class="badge bg-primary">
-                {{ commands|length }}
-            </span>
-        </h3>
+            <div
+                class="d-flex justify-content-between
+                       align-items-center mb-3"
+            >
 
-        <div class="row g-3">
+                <h2 class="h4 mb-0">
+                    Commands
+                </h2>
 
-        {% for command in commands %}
-
-            <div class="col-12">
-
-                <div class="card shadow-sm">
-
-                    <div class="card-body">
-
-                        <h4>{{ command.name }}</h4>
-
-                        <p class="text-secondary">
-                            {{ command.summary }}
-                        </p>
-
-                        <a
-                            href="{{ url_for('view_command', command_id=command.id) }}"
-                            class="btn btn-primary"
-                        >
-                            View Command →
-                        </a>
-
-                    </div>
-
-                </div>
+                <span class="badge text-bg-primary">
+                    {{ commands|length }}
+                </span>
 
             </div>
 
-        {% endfor %}
+            <div class="row g-3">
 
-        </div>
+                {% for command in commands %}
 
-    </section>
+                    <div class="col-12">
+
+                        <div class="card shadow-sm">
+
+                            <div class="card-body p-4">
+
+                                <div class="d-flex flex-wrap gap-2 mb-3">
+
+                                    {% if command.category %}
+                                        <span class="badge text-bg-primary">
+                                            {{ command.category }}
+                                        </span>
+                                    {% endif %}
+
+                                    {% if command.difficulty %}
+                                        <span class="badge text-bg-secondary">
+                                            {{ command.difficulty }}
+                                        </span>
+                                    {% endif %}
+
+                                </div>
+
+                                <h3 class="h5 mb-2">
+                                    {{ command.title }}
+                                </h3>
+
+                                <p class="text-muted mb-3">
+                                    {{ command.summary }}
+                                </p>
+
+                                <a
+                                    href="{{ url_for(
+                                        command.endpoint,
+                                        command_id=command.id
+                                    ) }}"
+                                    class="btn btn-primary"
+                                >
+                                    View Command
+                                    <i class="bi bi-arrow-right ms-2"></i>
+                                </a>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                {% endfor %}
+
+            </div>
+
+        </section>
 
     {% endif %}
 

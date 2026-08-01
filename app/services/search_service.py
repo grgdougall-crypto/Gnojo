@@ -1,3 +1,4 @@
+from app.models.search_result import SearchResult
 from app.repositories.command_repository import CommandRepository
 from app.repositories.knowledge_repository import KnowledgeRepository
 
@@ -42,6 +43,7 @@ class SearchService:
             )
 
             score = 0
+
             score += self._score_text(
                 query,
                 title,
@@ -49,6 +51,7 @@ class SearchService:
                 starts_with_score=70,
                 contains_score=50,
             )
+
             score += self._score_text(
                 query,
                 category,
@@ -56,6 +59,7 @@ class SearchService:
                 starts_with_score=25,
                 contains_score=15,
             )
+
             score += self._score_text(
                 query,
                 difficulty,
@@ -63,6 +67,7 @@ class SearchService:
                 starts_with_score=15,
                 contains_score=10,
             )
+
             score += self._score_text(
                 query,
                 overview,
@@ -82,23 +87,28 @@ class SearchService:
 
             if score > 0:
                 ranked_results.append(
-                    (
-                        score,
-                        article,
+                    SearchResult(
+                        id=article.get("id", ""),
+                        title=title,
+                        summary=overview,
+                        content_type="Article",
+                        endpoint="view_published",
+                        category=category or None,
+                        difficulty=difficulty or None,
+                        icon="bi-journal-text",
+                        score=score,
+                        source=article,
                     )
                 )
 
         ranked_results.sort(
             key=lambda result: (
-                -result[0],
-                result[1].get("title", "").lower(),
+                -result.score,
+                result.title.lower(),
             )
         )
 
-        return [
-            article
-            for _, article in ranked_results
-        ]
+        return ranked_results
 
     def _search_commands(self, query):
         ranked_results = []
@@ -109,14 +119,18 @@ class SearchService:
             summary = command.get("summary", "")
             category = command.get("category", "")
             shell = command.get("shell", "")
+            difficulty = command.get("difficulty", "")
+
             platforms = self._safe_string_list(
                 command.get("platforms", [])
             )
+
             tags = self._safe_string_list(
                 command.get("tags", [])
             )
 
             score = 0
+
             score += self._score_text(
                 query,
                 name,
@@ -124,6 +138,7 @@ class SearchService:
                 starts_with_score=90,
                 contains_score=60,
             )
+
             score += self._score_text(
                 query,
                 title,
@@ -131,6 +146,7 @@ class SearchService:
                 starts_with_score=70,
                 contains_score=50,
             )
+
             score += self._score_text(
                 query,
                 summary,
@@ -138,6 +154,7 @@ class SearchService:
                 starts_with_score=20,
                 contains_score=15,
             )
+
             score += self._score_text(
                 query,
                 category,
@@ -145,12 +162,21 @@ class SearchService:
                 starts_with_score=25,
                 contains_score=15,
             )
+
             score += self._score_text(
                 query,
                 shell,
                 exact_score=30,
                 starts_with_score=20,
                 contains_score=15,
+            )
+
+            score += self._score_text(
+                query,
+                difficulty,
+                exact_score=20,
+                starts_with_score=15,
+                contains_score=10,
             )
 
             for platform in platforms:
@@ -173,23 +199,28 @@ class SearchService:
 
             if score > 0:
                 ranked_results.append(
-                    (
-                        score,
-                        command,
+                    SearchResult(
+                        id=command.get("id", ""),
+                        title=name or title,
+                        summary=summary,
+                        content_type="Command",
+                        endpoint="view_command",
+                        category=category or None,
+                        difficulty=difficulty or None,
+                        icon="bi-terminal",
+                        score=score,
+                        source=command,
                     )
                 )
 
         ranked_results.sort(
             key=lambda result: (
-                -result[0],
-                result[1].get("name", "").lower(),
+                -result.score,
+                result.title.lower(),
             )
         )
 
-        return [
-            command
-            for _, command in ranked_results
-        ]
+        return ranked_results
 
     @staticmethod
     def _score_text(

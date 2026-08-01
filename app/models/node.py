@@ -5,7 +5,8 @@ from typing import Optional
 @dataclass
 class Node:
     """
-    Represents a single workflow node.
+    Represents a single node within a troubleshooting
+    decision tree.
     """
 
     id: str

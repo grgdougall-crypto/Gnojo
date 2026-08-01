@@ -228,6 +228,41 @@ def search():
         selected_type=selected_type,
     )
 
+@app.route("/api/search/suggestions")
+def search_suggestions():
+    """
+    Return lightweight search suggestions for the global search bar.
+    """
+
+    query = request.args.get(
+        "q",
+        "",
+    ).strip()
+
+    if len(query) < 2:
+        return {
+            "suggestions": [],
+        }
+
+    results = search_service.search_all(query)
+
+    suggestions = []
+
+    for result in results[:8]:
+        suggestions.append(
+            {
+                "id": result.id,
+                "title": result.title,
+                "summary": result.summary,
+                "content_type": result.content_type,
+                "endpoint": result.endpoint,
+            }
+        )
+
+    return {
+        "suggestions": suggestions,
+    }
+
 @app.route("/knowledge/drafts")
 def list_drafts():
     """

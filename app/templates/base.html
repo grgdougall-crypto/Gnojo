@@ -46,42 +46,59 @@
                     <span>SupportPilot</span>
                 </a>
 
-                <form
-                    class="global-search"
-                    method="GET"
-                    action="{{ url_for('search') }}"
-                    role="search"
-                >
-                    <div class="input-group">
+                <div class="global-search-wrapper">
 
-                        <span class="input-group-text">
-                            <i class="bi bi-search"></i>
-                        </span>
+                    <form
+                        class="global-search"
+                        id="globalSearchForm"
+                        method="GET"
+                        action="{{ url_for('search') }}"
+                        role="search"
+                        autocomplete="off"
+                    >
+                        <div class="input-group">
 
-                        <input
-                            class="form-control"
-                            type="search"
-                            name="q"
-                            placeholder="Search SupportPilot..."
-                            value="{{ request.args.get('q', '') }}"
-                            aria-label="Search SupportPilot"
-                        >
+                            <span class="input-group-text">
+                                <i class="bi bi-search"></i>
+                            </span>
 
-                        <input
-                            type="hidden"
-                            name="type"
-                            value="all"
-                        >
+                            <input
+                                class="form-control"
+                                id="globalSearchInput"
+                                type="search"
+                                name="q"
+                                placeholder="Search SupportPilot..."
+                                value="{{ request.args.get('q', '') }}"
+                                aria-label="Search SupportPilot"
+                                aria-autocomplete="list"
+                                aria-controls="searchSuggestions"
+                                aria-expanded="false"
+                            >
 
-                        <button
-                            class="btn btn-primary"
-                            type="submit"
-                        >
-                            Search
-                        </button>
+                            <input
+                                type="hidden"
+                                name="type"
+                                value="all"
+                            >
 
-                    </div>
-                </form>
+                            <button
+                                class="btn btn-primary"
+                                type="submit"
+                            >
+                                Search
+                            </button>
+
+                        </div>
+                    </form>
+
+                    <div
+                        class="search-suggestions"
+                        id="searchSuggestions"
+                        role="listbox"
+                        hidden
+                    ></div>
+
+                </div>
 
                 <div class="header-actions">
 
@@ -122,5 +139,6 @@
     ></script>
 
     <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/search.js') }}"></script>
 </body>
 </html>

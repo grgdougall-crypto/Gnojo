@@ -405,10 +405,15 @@ a {
     gap: 1.5rem;
 }
 
-.global-search {
+.global-search-wrapper {
+    position: relative;
     flex: 1;
     max-width: 460px;
     margin-inline: auto;
+}
+
+.global-search {
+    width: 100%;
 }
 
 .global-search .input-group {
@@ -436,7 +441,7 @@ main {
         padding-bottom: 0.75rem;
     }
 
-    .global-search {
+    .global-search-wrapper {
         order: 3;
         width: 100%;
         max-width: none;
@@ -455,4 +460,92 @@ main {
     .global-search .btn {
         padding-inline: 1rem;
     }
+}
+
+/* Search autocomplete */
+
+.global-search-wrapper {
+    position: relative;
+    z-index: 1100;
+}
+
+.search-suggestions {
+    position: absolute;
+    top: calc(100% + 0.5rem);
+    left: 0;
+    right: 0;
+    z-index: 1200;
+
+    max-height: 24rem;
+    overflow-y: auto;
+
+    background: var(--bs-body-bg);
+    border: 1px solid var(--bs-border-color);
+    border-radius: 0.75rem;
+    box-shadow: 0 1rem 2.5rem rgba(0, 0, 0, 0.35);
+}
+
+.search-suggestions[hidden] {
+    display: none;
+}
+
+.search-suggestion-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+
+    padding: 0.9rem 1rem;
+
+    color: var(--bs-body-color);
+    text-decoration: none;
+
+    border-bottom: 1px solid var(--bs-border-color);
+}
+
+.search-suggestion-item:last-child {
+    border-bottom: 0;
+}
+
+.search-suggestion-item:hover,
+.search-suggestion-item:focus {
+    background: var(--bs-secondary-bg);
+    color: var(--bs-body-color);
+}
+
+.search-suggestion-type {
+    flex: 0 0 auto;
+
+    margin-top: 0.1rem;
+    padding: 0.2rem 0.45rem;
+
+    font-size: 0.72rem;
+    font-weight: 700;
+    line-height: 1.2;
+
+    color: var(--bs-primary-text-emphasis);
+    background: var(--bs-primary-bg-subtle);
+    border-radius: 0.35rem;
+}
+
+.search-suggestion-content {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.search-suggestion-title {
+    display: block;
+    margin-bottom: 0.2rem;
+}
+
+.search-suggestion-summary {
+    display: block;
+
+    overflow: hidden;
+    color: var(--bs-secondary-color);
+    font-size: 0.85rem;
+    line-height: 1.35;
+
+    white-space: nowrap;
+    text-overflow: ellipsis;
 }

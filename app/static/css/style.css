@@ -549,3 +549,11 @@ main {
     white-space: nowrap;
     text-overflow: ellipsis;
 }
+
+.search-suggestion-item.active,
+.search-suggestion-item:focus {
+    background: var(--bs-secondary-bg);
+    color: var(--bs-body-color);
+    outline: 2px solid var(--bs-primary);
+    outline-offset: -2px;
+}

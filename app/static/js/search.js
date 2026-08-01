@@ -8,11 +8,60 @@ document.addEventListener("DOMContentLoaded", () => {
 
     let debounceTimer;
     let activeRequest;
+    let activeIndex = -1;
+
+    const getSuggestionItems = () => {
+        return Array.from(
+            suggestionsBox.querySelectorAll(".search-suggestion-item")
+        );
+    };
+
+    const clearActiveSuggestion = () => {
+        const items = getSuggestionItems();
+
+        items.forEach((item) => {
+            item.classList.remove("active");
+            item.setAttribute("aria-selected", "false");
+        });
+
+        activeIndex = -1;
+    };
+
+    const setActiveSuggestion = (index) => {
+        const items = getSuggestionItems();
+
+        if (items.length === 0) {
+            activeIndex = -1;
+            return;
+        }
+
+        items.forEach((item) => {
+            item.classList.remove("active");
+            item.setAttribute("aria-selected", "false");
+        });
+
+        if (index < 0) {
+            activeIndex = items.length - 1;
+        } else if (index >= items.length) {
+            activeIndex = 0;
+        } else {
+            activeIndex = index;
+        }
+
+        const activeItem = items[activeIndex];
+
+        activeItem.classList.add("active");
+        activeItem.setAttribute("aria-selected", "true");
+        activeItem.scrollIntoView({
+            block: "nearest",
+        });
+    };
 
     const hideSuggestions = () => {
         suggestionsBox.hidden = true;
         suggestionsBox.innerHTML = "";
         searchInput.setAttribute("aria-expanded", "false");
+        clearActiveSuggestion();
     };
 
     const buildSuggestionUrl = (suggestion) => {
@@ -21,7 +70,9 @@ document.addEventListener("DOMContentLoaded", () => {
         }
 
         if (suggestion.content_type === "Article") {
-            return `/knowledge/published/${encodeURIComponent(suggestion.id)}`;
+            return `/knowledge/published/${encodeURIComponent(
+                suggestion.id
+            )}`;
         }
 
         return "#";
@@ -29,17 +80,21 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const renderSuggestions = (suggestions) => {
         suggestionsBox.innerHTML = "";
+        activeIndex = -1;
 
         if (suggestions.length === 0) {
             hideSuggestions();
             return;
         }
 
-        suggestions.forEach((suggestion) => {
+        suggestions.forEach((suggestion, index) => {
             const link = document.createElement("a");
+
             link.className = "search-suggestion-item";
             link.href = buildSuggestionUrl(suggestion);
             link.setAttribute("role", "option");
+            link.setAttribute("aria-selected", "false");
+            link.dataset.index = String(index);
 
             const type = document.createElement("span");
             type.className = "search-suggestion-type";
@@ -59,6 +114,10 @@ document.addEventListener("DOMContentLoaded", () => {
             content.append(title, summary);
             link.append(type, content);
             suggestionsBox.append(link);
+
+            link.addEventListener("mouseenter", () => {
+                setActiveSuggestion(index);
+            });
         });
 
         suggestionsBox.hidden = false;
@@ -98,6 +157,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const query = searchInput.value.trim();
 
         clearTimeout(debounceTimer);
+        clearActiveSuggestion();
 
         if (query.length < 2) {
             hideSuggestions();
@@ -109,19 +169,54 @@ document.addEventListener("DOMContentLoaded", () => {
         }, 250);
     });
 
+    searchInput.addEventListener("keydown", (event) => {
+        const items = getSuggestionItems();
+
+        if (event.key === "ArrowDown") {
+            if (items.length === 0 || suggestionsBox.hidden) {
+                return;
+            }
+
+            event.preventDefault();
+            setActiveSuggestion(activeIndex + 1);
+            return;
+        }
+
+        if (event.key === "ArrowUp") {
+            if (items.length === 0 || suggestionsBox.hidden) {
+                return;
+            }
+
+            event.preventDefault();
+            setActiveSuggestion(activeIndex - 1);
+            return;
+        }
+
+        if (event.key === "Enter") {
+            if (
+                activeIndex >= 0 &&
+                activeIndex < items.length &&
+                !suggestionsBox.hidden
+            ) {
+                event.preventDefault();
+                items[activeIndex].click();
+            }
+
+            return;
+        }
+
+        if (event.key === "Escape") {
+            hideSuggestions();
+            searchInput.blur();
+        }
+    });
+
     document.addEventListener("click", (event) => {
         if (
             !suggestionsBox.contains(event.target) &&
             event.target !== searchInput
         ) {
             hideSuggestions();
-        }
-    });
-
-    searchInput.addEventListener("keydown", (event) => {
-        if (event.key === "Escape") {
-            hideSuggestions();
-            searchInput.blur();
         }
     });
 });

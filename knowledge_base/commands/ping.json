@@ -1,0 +1,127 @@
+{
+  "id": "ping",
+  "name": "ping",
+  "title": "Test network connectivity with ping",
+  "summary": "Tests whether a remote host can be reached and measures basic response time using ICMP echo requests.",
+  "category": "Networking",
+  "shell": "Command Prompt",
+  "difficulty": "Beginner",
+
+  "platforms": [
+    "Windows 10",
+    "Windows 11",
+    "Windows Server"
+  ],
+
+  "syntax": "ping [options] target",
+
+  "examples": [
+    {
+      "command": "ping 8.8.8.8",
+      "description": "Tests connectivity to a public IP address without relying on DNS."
+    },
+    {
+      "command": "ping google.com",
+      "description": "Tests connectivity and confirms whether the hostname can be resolved."
+    },
+    {
+      "command": "ping -t 8.8.8.8",
+      "description": "Sends echo requests continuously until the command is stopped with Ctrl+C."
+    },
+    {
+      "command": "ping -n 5 8.8.8.8",
+      "description": "Sends exactly five echo requests."
+    },
+    {
+      "command": "ping -4 google.com",
+      "description": "Forces the command to use IPv4."
+    }
+  ],
+
+  "permissions": {
+    "requires_elevation": false,
+    "notes": "Standard ping tests normally do not require administrator access."
+  },
+
+  "risk": {
+    "level": "Low",
+    "changes_system": false,
+    "warning": "Ping does not modify the system. Some hosts or firewalls may block ICMP traffic, so a failed test does not always mean the destination is offline."
+  },
+
+  "output_fields": [
+    {
+      "name": "Reply from",
+      "description": "Shows the address of the device that responded."
+    },
+    {
+      "name": "Bytes",
+      "description": "Shows the size of the ICMP response."
+    },
+    {
+      "name": "Time",
+      "description": "Shows the round-trip response time in milliseconds."
+    },
+    {
+      "name": "TTL",
+      "description": "Shows the remaining Time to Live value in the response packet."
+    },
+    {
+      "name": "Packets sent, received, and lost",
+      "description": "Summarizes whether packets reached the destination and returned."
+    },
+    {
+      "name": "Minimum, maximum, and average",
+      "description": "Summarizes round-trip timing across the completed tests."
+    }
+  ],
+
+  "common_errors": [
+    {
+      "message": "Request timed out",
+      "meaning": "No ICMP reply was received before the timeout. The destination may be unavailable, unreachable, or blocking ping traffic."
+    },
+    {
+      "message": "Destination host unreachable",
+      "meaning": "A local device or router could not find a valid route to the destination."
+    },
+    {
+      "message": "Ping request could not find host",
+      "meaning": "The hostname could not be resolved. Check spelling and DNS configuration."
+    },
+    {
+      "message": "General failure",
+      "meaning": "The local system could not send the request, often because of an adapter, routing, or TCP/IP configuration problem."
+    }
+  ],
+
+  "related_commands": [
+    "ipconfig",
+    "tracert",
+    "nslookup",
+    "pathping"
+  ],
+
+  "related_articles": [
+    "ethernet-connection-check"
+  ],
+
+  "tags": [
+    "networking",
+    "connectivity",
+    "icmp",
+    "latency",
+    "packet loss",
+    "dns",
+    "troubleshooting"
+  ],
+
+  "sources": [
+    {
+      "title": "ping",
+      "organization": "Microsoft Learn",
+      "type": "Official Documentation",
+      "url": "https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/ping"
+    }
+  ]
+}

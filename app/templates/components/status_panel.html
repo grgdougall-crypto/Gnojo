@@ -1,0 +1,124 @@
+{% if draft %}
+
+    <section class="mb-5">
+
+        <div
+            class="d-flex flex-wrap justify-content-between
+                   align-items-start gap-3 mb-4"
+        >
+            <div>
+                <p
+                    class="text-uppercase text-primary
+                           small fw-bold mb-1"
+                >
+                    AI Draft Review
+                </p>
+
+                <h2 class="h3 mb-1">
+                    {{ draft.command_name }}
+                </h2>
+
+                <p class="text-muted mb-0">
+                    Review all generated content before saving
+                    or publishing it.
+                </p>
+            </div>
+
+            {% if completeness >= 90 %}
+                <span class="badge text-bg-success">
+                    Review Ready
+                </span>
+            {% elif completeness >= 60 %}
+                <span class="badge text-bg-warning">
+                    Needs Review
+                </span>
+            {% else %}
+                <span class="badge text-bg-secondary">
+                    Incomplete
+                </span>
+            {% endif %}
+        </div>
+
+        <div class="mb-4">
+
+            <div
+                class="d-flex justify-content-between
+                       align-items-center mb-2"
+            >
+                <span class="fw-semibold">
+                    Draft completeness
+                </span>
+
+                <span class="fw-bold">
+                    {{ completeness }}%
+                </span>
+            </div>
+
+            <div
+                class="progress"
+                role="progressbar"
+                aria-label="Draft completeness"
+                aria-valuenow="{{ completeness }}"
+                aria-valuemin="0"
+                aria-valuemax="100"
+                style="height: 0.75rem;"
+            >
+                <div
+                    class="progress-bar"
+                    style="width: {{ completeness }}%"
+                ></div>
+            </div>
+
+        </div>
+
+        <div class="row g-3">
+
+            {% set section_checks = [
+                ('Summary', draft.summary),
+                ('Syntax', draft.syntax),
+                ('Examples', draft.examples),
+                ('Important fields', draft.important_fields),
+                ('Common errors', draft.common_errors),
+                ('Related commands', draft.related_commands),
+                ('References', draft.official_references),
+                ('Explanation', draft.explanation)
+            ] %}
+
+            {% for label, value in section_checks %}
+
+                <div class="col-12 col-sm-6 col-lg-3">
+
+                    <div class="border rounded p-3 h-100">
+
+                        <div
+                            class="d-flex justify-content-between
+                                   align-items-center gap-2"
+                        >
+                            <span class="small fw-semibold">
+                                {{ label }}
+                            </span>
+
+                            {% if value %}
+                                <i
+                                    class="bi bi-check-circle-fill text-success"
+                                    aria-label="Complete"
+                                ></i>
+                            {% else %}
+                                <i
+                                    class="bi bi-exclamation-circle text-warning"
+                                    aria-label="Needs review"
+                                ></i>
+                            {% endif %}
+                        </div>
+
+                    </div>
+
+                </div>
+
+            {% endfor %}
+
+        </div>
+
+    </section>
+
+{% endif %}

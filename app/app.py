@@ -10,6 +10,8 @@ from flask import (
     url_for,
 )
 
+from dataclasses import asdict
+
 from markupsafe import Markup, escape
 
 from app.engine.decision_engine import DecisionEngine
@@ -70,6 +72,8 @@ draft_generation_service = DraftGenerationService()
 # Development only
 app.secret_key = "supportpilot-development-key"
 
+current_draft = None
+
 AVAILABLE_WORKFLOWS = {
     "internet": {
         "name": "Internet Connection",
@@ -117,7 +121,17 @@ def article_builder():
     "/commands/builder",
     methods=["GET", "POST"],
 )
+@app.route(
+    "/commands/builder",
+    methods=["GET", "POST"],
+)
+@app.route(
+    "/commands/builder",
+    methods=["GET", "POST"],
+)
 def command_builder():
+    global current_draft
+
     """
     Create a new SupportPilot command draft.
     """
@@ -137,25 +151,42 @@ def command_builder():
         ).strip()
 
         if command_name:
-          draft = (
-            draft_generation_service.generate_command_draft(
-                command_name,
-                description,
-                use_generated_content=True,
+            draft = (
+                draft_generation_service.generate_command_draft(
+                    command_name,
+                    description,
+                    use_generated_content=True,
+                )
             )
-        )
-        print(draft)
-        
-        completeness = (
-            draft_generation_service.calculate_completeness(
-                draft
+
+            current_draft = draft
+
+            completeness = (
+                draft_generation_service.calculate_completeness(
+                    draft
+                )
             )
-        )
 
     return render_template(
         "command_builder.html",
         draft=draft,
         completeness=completeness,
+    )
+
+@app.route("/commands/builder/edit")
+def edit_command_draft():
+    """
+    Display the most recently generated command draft.
+    """
+
+    if current_draft is None:
+        return redirect(
+            url_for("command_builder")
+        )
+
+    return render_template(
+        "command_builder_edit.html",
+        draft=current_draft,
     )
 
 @app.route("/commands")

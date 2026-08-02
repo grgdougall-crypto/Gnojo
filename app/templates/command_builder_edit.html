@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+
+{% block title %}
+Edit Command Draft | SupportPilot
+{% endblock %}
+
+{% block content %}
+
+<div class="container py-5">
+
+    <div
+        class="d-flex flex-wrap justify-content-between
+               align-items-start gap-3 mb-4"
+    >
+        <div>
+            <p class="text-uppercase text-primary small fw-bold mb-1">
+                Knowledge Studio
+            </p>
+
+            <h1 class="display-6 fw-bold mb-2">
+                Edit Command Draft
+            </h1>
+
+            <p class="text-muted mb-0">
+                Review and revise AI-generated content before saving.
+            </p>
+        </div>
+
+        <a
+            class="btn btn-outline-primary"
+            href="{{ url_for('command_builder') }}"
+        >
+            <i class="bi bi-arrow-left me-2"></i>
+            Back to Draft Review
+        </a>
+    </div>
+
+    <div class="card shadow-sm">
+
+       <div class="mb-4">
+
+    <label
+        for="command_name"
+        class="form-label fw-semibold"
+    >
+        Command Name
+    </label>
+
+    <input
+        id="command_name"
+        type="text"
+        class="form-control"
+        value="{{ draft.command_name }}"
+    >
+
+</div>
+
+{% include "components/editor_summary.html" %}
+
+{% include "components/editor_syntax.html" %}
+
+{% include "components/editor_examples.html" %}
+
+<div
+    class="d-flex justify-content-end gap-2"
+>
+
+    <button
+        class="btn btn-outline-secondary"
+        type="button"
+    >
+        Cancel
+    </button>
+
+    <button
+        class="btn btn-primary"
+        type="button"
+        disabled
+    >
+        Save Changes
+    </button>
+
+</div>
+
+    </div>
+
+</div>
+
+{% endblock %}

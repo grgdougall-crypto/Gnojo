@@ -144,7 +144,8 @@ def command_builder():
                 use_generated_content=True,
             )
         )
-
+        print(draft)
+        
         completeness = (
             draft_generation_service.calculate_completeness(
                 draft

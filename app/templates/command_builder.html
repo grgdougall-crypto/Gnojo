@@ -1,0 +1,398 @@
+{% extends "base.html" %}
+
+{% block title %}
+Command Builder | SupportPilot
+{% endblock %}
+
+{% block content %}
+
+<div class="container py-5">
+
+    <div
+        class="d-flex flex-wrap justify-content-between
+               align-items-start gap-3 mb-4"
+    >
+        <div>
+            <p class="text-uppercase text-primary small fw-bold mb-1">
+                Knowledge Builder
+            </p>
+
+            <h1 class="display-6 fw-bold mb-2">
+                Generate Command Draft
+            </h1>
+
+            <p class="text-muted mb-0">
+                Start with a command name and optional context.
+                SupportPilot will prepare a structured draft for review.
+            </p>
+        </div>
+
+        <a
+            class="btn btn-outline-primary"
+            href="{{ url_for('list_commands') }}"
+        >
+            <i class="bi bi-arrow-left me-2"></i>
+            Command Library
+        </a>
+    </div>
+
+    <div class="row g-4">
+
+        <div class="col-12 col-lg-5">
+
+            <div class="card shadow-sm">
+
+                <div class="card-body p-4">
+
+                    <h2 class="h4 mb-4">
+                        Command Details
+                    </h2>
+
+                    <form
+                        method="POST"
+                        action="{{ url_for('command_builder') }}"
+                    >
+                        <div class="mb-3">
+
+                            <label
+                                class="form-label"
+                                for="commandName"
+                            >
+                                Command name
+                            </label>
+
+                            <input
+                                class="form-control"
+                                id="commandName"
+                                type="text"
+                                name="command_name"
+                                placeholder="Example: nslookup"
+                                required
+                            >
+
+                        </div>
+
+                        <div class="mb-4">
+
+                            <label
+                                class="form-label"
+                                for="commandDescription"
+                            >
+                                Description or context
+                            </label>
+
+                            <textarea
+                                class="form-control"
+                                id="commandDescription"
+                                name="description"
+                                rows="5"
+                                placeholder="Optional notes about the command, platform, or intended use."
+                            ></textarea>
+
+                        </div>
+
+                        <button
+                            class="btn btn-primary w-100"
+                            type="submit"
+                        >
+                            <i class="bi bi-stars me-2"></i>
+                            Generate Draft
+                        </button>
+
+                    </form>
+
+                </div>
+
+            </div>
+
+        </div>
+
+        <div class="col-12 col-lg-7">
+
+            {% if draft %}
+
+                <div class="card shadow-sm">
+
+    <div class="card-body p-4">
+
+        <div
+            class="d-flex flex-wrap justify-content-between
+                   align-items-start gap-3 mb-4"
+        >
+            <div>
+                <p class="text-uppercase text-primary small fw-bold mb-1">
+                    Draft Preview
+                </p>
+
+                <h2 class="h4 mb-0">
+                    {{ draft.command_name }}
+                </h2>
+            </div>
+
+            <span class="badge text-bg-warning">
+                {{ draft.status }}
+            </span>
+        </div>
+
+        <div class="mb-4">
+
+            <div
+                class="d-flex justify-content-between
+                       align-items-center mb-2"
+            >
+                <span class="small fw-semibold">
+                    Draft completeness
+                </span>
+
+                <span class="small text-muted">
+    {{ completeness }}%
+</span>
+            </div>
+
+            <div
+                class="progress"
+                role="progressbar"
+                aria-label="Draft completeness"
+                aria-valuenow="{{ completeness }}"
+                aria-valuemin="0"
+                aria-valuemax="100"
+            >
+                <div
+                    class="progress-bar"
+                    style="width: {{ completeness }}%"
+                ></div>
+            </div>
+
+        </div>
+
+        <div class="d-grid gap-3 mb-4">
+
+            <div class="border rounded p-3">
+
+                <div
+                    class="d-flex justify-content-between
+                           align-items-start gap-3"
+                >
+                    <div>
+                        <h3 class="h6 mb-1">
+                            Summary
+                        </h3>
+
+                        <p class="small text-muted mb-0">
+                            {% if draft.summary %}
+                                {{ draft.summary }}
+                            {% else %}
+                                Not generated yet.
+                            {% endif %}
+                        </p>
+                    </div>
+
+                    <span class="badge text-bg-secondary">
+                        Pending
+                    </span>
+                </div>
+
+            </div>
+
+            <div class="border rounded p-3">
+
+                <div
+                    class="d-flex justify-content-between
+                           align-items-start gap-3"
+                >
+                    <div>
+                        <h3 class="h6 mb-1">
+                            Syntax
+                        </h3>
+
+                        <p class="small text-muted mb-0">
+                            {% if draft.syntax %}
+                                {{ draft.syntax }}
+                            {% else %}
+                                Not generated yet.
+                            {% endif %}
+                        </p>
+                    </div>
+
+                    <span class="badge text-bg-secondary">
+                        Pending
+                    </span>
+                </div>
+
+            </div>
+
+            <div class="border rounded p-3">
+
+                <div
+                    class="d-flex justify-content-between
+                           align-items-center gap-3"
+                >
+                    <span>
+                        Examples
+                    </span>
+
+                    <span class="badge text-bg-primary">
+                        {{ draft.examples | length }}
+                    </span>
+                </div>
+
+            </div>
+
+            <div class="border rounded p-3">
+
+                <div
+                    class="d-flex justify-content-between
+                           align-items-center gap-3"
+                >
+                    <span>
+                        Important fields
+                    </span>
+
+                    <span class="badge text-bg-primary">
+                        {{ draft.important_fields | length }}
+                    </span>
+                </div>
+
+            </div>
+
+            <div class="border rounded p-3">
+
+                <div
+                    class="d-flex justify-content-between
+                           align-items-center gap-3"
+                >
+                    <span>
+                        Common errors
+                    </span>
+
+                    <span class="badge text-bg-primary">
+                        {{ draft.common_errors | length }}
+                    </span>
+                </div>
+
+            </div>
+
+            <div class="border rounded p-3">
+
+                <div
+                    class="d-flex justify-content-between
+                           align-items-center gap-3"
+                >
+                    <span>
+                        Related commands
+                    </span>
+
+                    <span class="badge text-bg-primary">
+                        {{ draft.related_commands | length }}
+                    </span>
+                </div>
+
+            </div>
+
+            <div class="border rounded p-3">
+
+                <div
+                    class="d-flex justify-content-between
+                           align-items-center gap-3"
+                >
+                    <span>
+                        Explanation
+                    </span>
+
+                    <span class="badge text-bg-secondary">
+                        Pending generation
+                    </span>
+                </div>
+
+            </div>
+
+        </div>
+
+        {% if draft.description %}
+
+            <div class="mb-4">
+
+                <h3 class="h6">
+                    Provided context
+                </h3>
+
+                <p class="text-muted mb-0">
+                    {{ draft.description }}
+                </p>
+
+            </div>
+
+        {% endif %}
+
+        <div class="d-grid gap-2">
+
+            <button
+                class="btn btn-primary"
+                type="button"
+            >
+                <i class="bi bi-stars me-2"></i>
+                Generate AI Draft
+            </button>
+
+            <button
+                class="btn btn-outline-primary"
+                type="button"
+            >
+                <i class="bi bi-save me-2"></i>
+                Save Draft
+            </button>
+
+            <button
+                class="btn btn-outline-secondary"
+                type="button"
+                disabled
+            >
+                <i class="bi bi-send me-2"></i>
+                Publish
+            </button>
+
+        </div>
+
+    </div>
+
+</div>
+
+            {% else %}
+
+                <div class="card shadow-sm h-100">
+
+                    <div
+                        class="card-body p-4 d-flex flex-column
+                               justify-content-center"
+                    >
+                        <div class="text-center py-5">
+
+                            <i
+                                class="bi bi-magic display-4
+                                       text-primary"
+                            ></i>
+
+                            <h2 class="h4 mt-3">
+                                Ready to generate
+                            </h2>
+
+                            <p class="text-muted mb-0">
+                                Enter a command name to create the first
+                                structured SupportPilot draft.
+                            </p>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+            {% endif %}
+
+        </div>
+
+    </div>
+
+</div>
+
+{% endblock %}

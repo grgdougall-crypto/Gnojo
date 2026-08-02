@@ -24,3 +24,32 @@ toggleButton.addEventListener("click", () => {
     localStorage.setItem("supportpilot-theme", newTheme);
     updateThemeIcon(newTheme);
 });
+
+document.addEventListener("DOMContentLoaded", () => {
+
+    const explainButton = document.getElementById(
+        "explainCommandButton"
+    );
+
+    const explanationPanel = document.getElementById(
+        "commandExplanationPanel"
+    );
+
+    if (!explainButton || !explanationPanel) {
+        return;
+    }
+
+    explainButton.addEventListener("click", () => {
+
+        const isHidden = explanationPanel.hidden;
+
+        explanationPanel.hidden = !isHidden;
+
+        explainButton.setAttribute(
+            "aria-expanded",
+            String(isHidden)
+        );
+
+    });
+
+});

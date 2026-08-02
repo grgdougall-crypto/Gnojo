@@ -25,6 +25,10 @@ from app.services.search_service import SearchService
 
 from app.services.relationship_service import RelationshipService
 
+from app.services.explanation_service import ExplanationService
+
+from app.services.draft_generation_service import DraftGenerationService
+
 app = Flask(__name__)
 
 @app.template_filter("highlight")
@@ -60,6 +64,8 @@ knowledge_repository = KnowledgeRepository()
 command_repository = CommandRepository()
 search_service = SearchService()
 relationship_service = RelationshipService()
+explanation_service = ExplanationService()
+draft_generation_service = DraftGenerationService()
 
 # Development only
 app.secret_key = "supportpilot-development-key"
@@ -105,6 +111,50 @@ def knowledge_center():
 def article_builder():
     return render_template(
         "article_builder.html"
+    )
+
+@app.route(
+    "/commands/builder",
+    methods=["GET", "POST"],
+)
+def command_builder():
+    """
+    Create a new SupportPilot command draft.
+    """
+
+    draft = None
+    completeness = 0
+
+    if request.method == "POST":
+        command_name = request.form.get(
+            "command_name",
+            "",
+        ).strip()
+
+        description = request.form.get(
+            "description",
+            "",
+        ).strip()
+
+        if command_name:
+          draft = (
+            draft_generation_service.generate_command_draft(
+                command_name,
+                description,
+                use_generated_content=True,
+            )
+        )
+
+        completeness = (
+            draft_generation_service.calculate_completeness(
+                draft
+            )
+        )
+
+    return render_template(
+        "command_builder.html",
+        draft=draft,
+        completeness=completeness,
     )
 
 @app.route("/commands")
@@ -157,11 +207,17 @@ def view_command(command_id):
         )
     )
 
+    explanation = explanation_service.explain_command(
+    command,
+    related_commands,
+)
+
     return render_template(
         "command.html",
         command=command,
         related_articles=related_articles,
         related_commands=related_commands,
+        explanation=explanation,
     )
 
 @app.route("/search/test")

@@ -130,14 +130,21 @@ def article_builder():
     methods=["GET", "POST"],
 )
 def command_builder():
-    global current_draft
-
     """
     Create a new SupportPilot command draft.
     """
 
-    draft = None
+    global current_draft
+
+    draft = current_draft
     completeness = 0
+
+    if draft is not None:
+        completeness = (
+            draft_generation_service.calculate_completeness(
+                draft
+            )
+        )
 
     if request.method == "POST":
         command_name = request.form.get(

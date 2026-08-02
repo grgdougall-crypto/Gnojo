@@ -1,5 +1,6 @@
 from app.engine.content_generation_engine import ContentGenerationEngine
 from app.models.command_explanation import CommandExplanation
+from app.models.draft_metadata import DraftMetadata
 
 
 class DraftGenerationService:
@@ -84,12 +85,17 @@ class DraftGenerationService:
                     "",
                 ),
             )
-
+            generated["metadata"] = DraftMetadata()
+            generated["metadata"].touch()
             return generated
+
+        metadata = DraftMetadata()
+        metadata.touch()
 
         return {
             "command_name": normalized_name,
             "description": normalized_description,
+            "metadata": metadata,
             "status": "Draft",
             "summary": "",
             "syntax": "",

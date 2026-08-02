@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+
+{% block title %}
+Publication Review | SupportPilot
+{% endblock %}
+
+{% block content %}
+
+<div class="container py-5">
+
+    <div class="text-center mb-5">
+
+        <div class="display-4 text-success mb-3">
+            <i class="bi bi-check-circle-fill"></i>
+        </div>
+
+        <h1 class="display-6 fw-bold">
+            Ready for Publication
+        </h1>
+
+        <p class="text-muted mb-0">
+            <strong>{{ article.command_name }}</strong>
+            passed all publication requirements.
+        </p>
+
+    </div>
+
+    <div class="card shadow-sm mb-4">
+
+        <div class="card-body">
+
+            <h2 class="h5 mb-4">
+                Publication Summary
+            </h2>
+
+            <div class="row g-3">
+
+                <div class="col-md-4">
+
+                    <div class="border rounded p-3 h-100">
+
+                        <div class="small text-muted mb-1">
+                            Status
+                        </div>
+
+                        <div class="fw-semibold">
+                            {{ article.metadata.status }}
+                        </div>
+
+                    </div>
+
+                </div>
+
+                <div class="col-md-4">
+
+                    <div class="border rounded p-3 h-100">
+
+                        <div class="small text-muted mb-1">
+                            Version
+                        </div>
+
+                        <div class="fw-semibold">
+                            {{ article.metadata.version }}
+                        </div>
+
+                    </div>
+
+                </div>
+
+                <div class="col-md-4">
+
+                    <div class="border rounded p-3 h-100">
+
+                        <div class="small text-muted mb-1">
+                            Published
+                        </div>
+
+                        <div class="fw-semibold">
+                            {{ article.metadata.published_at }}
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+    <div class="card shadow-sm mb-4">
+
+        <div class="card-body">
+
+            <h2 class="h5 mb-3">
+                Command
+            </h2>
+
+            <h3 class="fw-bold font-monospace">
+                {{ article.command_name }}
+            </h3>
+
+            <p class="text-muted">
+                {{ article.summary }}
+            </p>
+
+        </div>
+
+    </div>
+
+    <div
+        class="d-flex justify-content-between
+               align-items-center flex-wrap gap-3"
+    >
+
+        <a
+            href="{{ url_for('edit_command_draft') }}"
+            class="btn btn-outline-secondary"
+        >
+            <i class="bi bi-arrow-left me-2"></i>
+            Back to Knowledge Studio
+        </a>
+
+        <button
+            class="btn btn-success"
+            type="button"
+            disabled
+        >
+            <i class="bi bi-send-check me-2"></i>
+            Publication Complete
+        </button>
+
+    </div>
+
+</div>
+
+{% endblock %}

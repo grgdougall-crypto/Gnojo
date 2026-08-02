@@ -39,7 +39,6 @@
 
         </div>
 
-
         <!-- Search published knowledge -->
 
         <div class="card shadow-sm mb-4">
@@ -103,10 +102,115 @@
 
         </div>
 
-
         <!-- Knowledge actions -->
 
         <div class="row g-3">
+
+            <!-- Knowledge Studio -->
+
+            <div class="col-12">
+
+                <div class="card shadow-sm">
+
+                    <div class="card-body p-4">
+
+                        <div
+                            class="d-flex flex-wrap justify-content-between
+                                   align-items-center gap-3"
+                        >
+                            <div class="d-flex align-items-start gap-3">
+
+                                <div class="service-icon">
+                                    <i class="bi bi-pencil-square"></i>
+                                </div>
+
+                                <div>
+
+                                    <h2 class="h4 mb-1">
+                                        Knowledge Studio
+                                    </h2>
+
+                                    <p class="text-muted mb-0">
+                                        Create, review, and publish trusted technical
+                                        knowledge for your organization.
+                                    </p>
+
+                                </div>
+
+                            </div>
+
+                            <a
+                                class="btn btn-primary sp-action-button"
+                                href="{{ url_for('command_builder') }}"
+                            >
+                                Open Studio
+                                <i class="bi bi-arrow-right ms-2"></i>
+                            </a>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+            <!-- Draft review -->
+
+            <div class="col-12">
+
+                <div class="card shadow-sm">
+
+                    <div class="card-body p-4">
+
+                        <div
+                            class="d-flex flex-wrap justify-content-between
+                                   align-items-center gap-3"
+                        >
+                            <div class="d-flex align-items-start gap-3">
+
+                                <div class="service-icon">
+                                    <i class="bi bi-file-earmark-text"></i>
+                                </div>
+
+                                <div>
+
+                                    <div
+                                        class="d-flex flex-wrap
+                                               align-items-center gap-2 mb-1"
+                                    >
+                                        <h2 class="h4 mb-0">
+                                            Review Drafts
+                                        </h2>
+
+                                        <span class="badge text-bg-warning">
+                                            {{ draft_count }}
+                                        </span>
+                                    </div>
+
+                                    <p class="text-muted mb-0">
+                                        Review AI-generated knowledge before publication.
+                                    </p>
+
+                                </div>
+
+                            </div>
+
+                            <a
+                                class="btn btn-outline-primary sp-action-button"
+                                href="{{ url_for('list_drafts') }}"
+                            >
+                                Review Drafts
+                                <i class="bi bi-arrow-right ms-2"></i>
+                            </a>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </div>
 
             <!-- Published articles -->
 
@@ -164,124 +268,6 @@
                 </div>
 
             </div>
-
-
-            <!-- Draft review -->
-
-            <div class="col-12">
-
-                <div class="card shadow-sm">
-
-                    <div class="card-body p-4">
-
-                        <div
-                            class="d-flex flex-wrap justify-content-between
-                                   align-items-center gap-3"
-                        >
-                            <div class="d-flex align-items-start gap-3">
-
-                                <div class="service-icon">
-                                    <i class="bi bi-file-earmark-text"></i>
-                                </div>
-
-                                <div>
-
-                                    <div
-                                        class="d-flex flex-wrap
-                                               align-items-center gap-2 mb-1"
-                                    >
-                                        <h2 class="h4 mb-0">
-                                            Review Draft Articles
-                                        </h2>
-
-                                        <span class="badge text-bg-warning">
-                                            {{ draft_count }}
-                                        </span>
-                                    </div>
-
-                                    <p class="text-muted mb-0">
-                                        Review AI-generated knowledge before publication.
-                                    </p>
-
-                                </div>
-
-                            </div>
-
-                            <a
-                                class="btn btn-primary sp-action-button"
-                                href="{{ url_for('list_drafts') }}"
-                            >
-                                Review Drafts
-                                <i class="bi bi-arrow-right ms-2"></i>
-                            </a>
-
-                        </div>
-
-                    </div>
-
-                </div>
-
-            </div>
-
-
-            <!-- Article Builder -->
-
-            <div class="col-12">
-
-                <div class="card shadow-sm">
-
-                    <div class="card-body p-4">
-
-                        <div
-                            class="d-flex flex-wrap justify-content-between
-                                   align-items-center gap-3"
-                        >
-                            <div class="d-flex align-items-start gap-3">
-
-                                <div class="service-icon">
-                                    <i class="bi bi-pencil-square"></i>
-                                </div>
-
-                                <div>
-
-                                    <div
-                                        class="d-flex flex-wrap
-                                               align-items-center gap-2 mb-1"
-                                    >
-                                        <h2 class="h4 mb-0">
-                                            Article Builder
-                                        </h2>
-
-                                        <span class="badge text-bg-info">
-                                            Preview
-                                        </span>
-                                    </div>
-
-                                    <p class="text-muted mb-0">
-                                        Create structured troubleshooting articles
-                                        using the SupportPilot knowledge format.
-                                    </p>
-
-                                </div>
-
-                            </div>
-
-                            <a
-                                class="btn btn-outline-primary sp-action-button"
-                                href="{{ url_for('article_builder') }}"
-                            >
-                                Open Builder
-                                <i class="bi bi-arrow-right ms-2"></i>
-                            </a>
-
-                        </div>
-
-                    </div>
-
-                </div>
-
-            </div>
-
 
             <!-- Learning Library -->
 

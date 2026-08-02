@@ -924,14 +924,18 @@ Knowledge Studio | SupportPilot
     Edit Draft
 </a>
 
-                                    <button
-                                        class="btn btn-primary"
-                                        type="button"
-                                        disabled
-                                    >
-                                        <i class="bi bi-send me-2"></i>
-                                        Publish
-                                    </button>
+                                    <form
+    method="POST"
+    action="{{ url_for('publish_command_draft') }}"
+>
+    <button
+        class="btn btn-primary"
+        type="submit"
+    >
+        <i class="bi bi-send me-2"></i>
+        Publish
+    </button>
+</form>
 
                                 </div>
 

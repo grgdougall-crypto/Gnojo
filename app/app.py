@@ -31,6 +31,15 @@ from app.services.explanation_service import ExplanationService
 
 from app.services.draft_generation_service import DraftGenerationService
 
+from app.services.publish_validation_service import (
+    PublishValidationService,
+)
+
+from app.services.publication_service import (
+    PublicationService,
+)
+
+
 app = Flask(__name__)
 
 @app.template_filter("highlight")
@@ -68,6 +77,9 @@ search_service = SearchService()
 relationship_service = RelationshipService()
 explanation_service = ExplanationService()
 draft_generation_service = DraftGenerationService()
+publish_validation_service = PublishValidationService()
+publication_service = PublicationService()
+
 
 # Development only
 app.secret_key = "supportpilot-development-key"
@@ -365,6 +377,9 @@ def edit_command_draft():
             "explanation_risk_warning",
             "",
         ).strip()
+
+        current_draft["metadata"].touch()
+
         return redirect(
             url_for("edit_command_draft")
         )
@@ -372,6 +387,42 @@ def edit_command_draft():
     return render_template(
         "command_builder_edit.html",
         draft=current_draft,
+    )
+
+@app.route(
+    "/commands/builder/publish",
+    methods=["POST"],
+)
+def publish_command_draft():
+    """
+    Validate the current command draft for publication.
+    """
+
+    if current_draft is None:
+        return redirect(
+            url_for("command_builder")
+        )
+
+    is_valid, missing_sections = (
+        publish_validation_service.validate_command_draft(
+            current_draft
+        )
+    )
+
+    if not is_valid:
+        return render_template(
+            "publish_validation.html",
+            draft=current_draft,
+            missing_sections=missing_sections,
+        )
+
+    article = publication_service.publish(
+    current_draft
+)
+
+    return render_template(
+        "publish_success.html",
+        article=article,
     )
 
 @app.route("/commands")

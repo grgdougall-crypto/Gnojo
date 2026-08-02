@@ -173,15 +173,40 @@ def command_builder():
         completeness=completeness,
     )
 
-@app.route("/commands/builder/edit")
+@app.route(
+    "/commands/builder/edit",
+    methods=["GET", "POST"],
+)
 def edit_command_draft():
     """
-    Display the most recently generated command draft.
+    Edit the most recently generated command draft.
     """
+
+    global current_draft
 
     if current_draft is None:
         return redirect(
             url_for("command_builder")
+        )
+
+    if request.method == "POST":
+        current_draft["command_name"] = request.form.get(
+            "command_name",
+            "",
+        ).strip()
+
+        current_draft["summary"] = request.form.get(
+            "summary",
+            "",
+        ).strip()
+
+        current_draft["syntax"] = request.form.get(
+            "syntax",
+            "",
+        ).strip()
+
+        return redirect(
+            url_for("edit_command_draft")
         )
 
     return render_template(

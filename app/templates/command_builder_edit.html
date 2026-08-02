@@ -37,50 +37,93 @@ Edit Command Draft | SupportPilot
 
     <div class="card shadow-sm">
 
-       <div class="mb-4">
+        <div class="card-body p-4 p-lg-5">
 
-    <label
-        for="command_name"
-        class="form-label fw-semibold"
-    >
-        Command Name
-    </label>
+            <form
+                method="POST"
+                action="{{ url_for('edit_command_draft') }}"
+            >
 
-    <input
-        id="command_name"
-        type="text"
-        class="form-control"
-        value="{{ draft.command_name }}"
-    >
+                <section class="border rounded p-4 mb-4">
 
-</div>
+                    <div
+                        class="d-flex justify-content-between
+                               align-items-start gap-3 mb-3"
+                    >
+                        <div>
+                            <p
+                                class="text-uppercase text-muted
+                                       small fw-bold mb-1"
+                            >
+                                Command Metadata
+                            </p>
 
-{% include "components/editor_summary.html" %}
+                            <h2 class="h5 mb-0">
+                                Command Name
+                            </h2>
+                        </div>
 
-{% include "components/editor_syntax.html" %}
+                        <span class="badge text-bg-warning">
+                            Draft
+                        </span>
+                    </div>
 
-{% include "components/editor_examples.html" %}
+                    <label
+                        class="visually-hidden"
+                        for="command_name"
+                    >
+                        Command Name
+                    </label>
 
-<div
-    class="d-flex justify-content-end gap-2"
->
+                    <input
+                        id="command_name"
+                        name="command_name"
+                        type="text"
+                        class="form-control"
+                        value="{{ draft.command_name }}"
+                        required
+                    >
 
-    <button
-        class="btn btn-outline-secondary"
-        type="button"
-    >
-        Cancel
-    </button>
+                </section>
 
-    <button
-        class="btn btn-primary"
-        type="button"
-        disabled
-    >
-        Save Changes
-    </button>
+                {% include "components/editor_summary.html" %}
 
-</div>
+                {% include "components/editor_syntax.html" %}
+
+                {% include "components/editor_examples.html" %}
+
+                <div
+                    class="d-flex flex-wrap justify-content-between
+                           align-items-center gap-3 border-top pt-4"
+                >
+                    <p class="small text-muted mb-0">
+                        Save Changes updates the current working draft.
+                    </p>
+
+                    <div class="d-flex gap-2">
+
+                        <a
+                            class="btn btn-outline-secondary"
+                            href="{{ url_for('command_builder') }}"
+                        >
+                            Cancel
+                        </a>
+
+                        <button
+                            class="btn btn-primary"
+                            type="submit"
+                        >
+                            <i class="bi bi-save me-2"></i>
+                            Save Changes
+                        </button>
+
+                    </div>
+
+                </div>
+
+            </form>
+
+        </div>
 
     </div>
 

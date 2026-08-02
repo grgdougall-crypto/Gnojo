@@ -211,7 +211,129 @@ def edit_command_draft():
             "syntax",
             "",
         ).strip()
+        updated_examples = []
 
+        for index, example in enumerate(
+            current_draft.get("examples", []),
+            start=1,
+        ):
+            command_value = request.form.get(
+                f"example_command_{index}",
+                "",
+            ).strip()
+
+            description_value = request.form.get(
+                f"example_description_{index}",
+                "",
+            ).strip()
+
+            updated_examples.append(
+                {
+                    "command": command_value,
+                    "description": description_value,
+                }
+            )
+
+        current_draft["examples"] = updated_examples
+
+        updated_fields = []
+
+        for index, field in enumerate(
+            current_draft.get("important_fields", []),
+            start=1,
+        ):
+            field_name = request.form.get(
+                f"field_name_{index}",
+                "",
+            ).strip()
+
+            field_description = request.form.get(
+                f"field_description_{index}",
+                "",
+            ).strip()
+
+            updated_fields.append(
+                {
+                    "field": field_name,
+                    "description": field_description,
+                }
+            )
+
+        current_draft["important_fields"] = updated_fields
+        updated_errors = []
+
+        for index, error in enumerate(
+            current_draft.get("common_errors", []),
+            start=1,
+        ):
+            error_title = request.form.get(
+                f"error_title_{index}",
+                "",
+            ).strip()
+
+            error_description = request.form.get(
+                f"error_description_{index}",
+                "",
+            ).strip()
+
+            updated_errors.append(
+                {
+                    "error": error_title,
+                    "description": error_description,
+                }
+            )
+
+        current_draft["common_errors"] = updated_errors
+
+        updated_related_commands = []
+
+        for index, command in enumerate(
+            current_draft.get("related_commands", []),
+            start=1,
+        ):
+            command_value = request.form.get(
+                f"related_command_{index}",
+                "",
+            ).strip()
+
+            if command_value:
+                updated_related_commands.append(
+                    command_value
+                )
+
+        current_draft[
+            "related_commands"
+        ] = updated_related_commands
+
+        updated_references = []
+
+        for index, reference in enumerate(
+            current_draft.get(
+                "official_references",
+                [],
+            ),
+            start=1,
+        ):
+            reference_title = request.form.get(
+                f"reference_title_{index}",
+                "",
+            ).strip()
+
+            reference_url = request.form.get(
+                f"reference_url_{index}",
+                "",
+            ).strip()
+
+            updated_references.append(
+                {
+                    "title": reference_title,
+                    "url": reference_url,
+                }
+            )
+
+        current_draft[
+            "official_references"
+        ] = updated_references
         return redirect(
             url_for("edit_command_draft")
         )

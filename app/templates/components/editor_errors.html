@@ -1,0 +1,84 @@
+<section class="border rounded p-4 mb-4">
+
+    <div
+        class="d-flex justify-content-between
+               align-items-start gap-3 mb-3"
+    >
+        <div>
+            <p
+                class="text-uppercase text-muted
+                       small fw-bold mb-1"
+            >
+                Editable Content
+            </p>
+
+            <h2 class="h5 mb-0">
+                Common Errors
+            </h2>
+        </div>
+
+        <span class="badge text-bg-primary">
+            {{ draft.common_errors | length }}
+        </span>
+    </div>
+
+    {% if draft.common_errors %}
+
+        <div class="d-grid gap-3">
+
+            {% for error in draft.common_errors %}
+
+                <div class="border rounded p-3">
+
+                    <div class="mb-3">
+
+                        <label
+                            class="form-label fw-semibold"
+                            for="errorTitle{{ loop.index }}"
+                        >
+                            Error
+                        </label>
+
+                        <input
+                            class="form-control"
+                            id="errorTitle{{ loop.index }}"
+                            name="error_title_{{ loop.index }}"
+                            type="text"
+                            value="{{ error.error | default(error.message) }}"
+                        >
+
+                    </div>
+
+                    <div>
+
+                        <label
+                            class="form-label fw-semibold"
+                            for="errorDescription{{ loop.index }}"
+                        >
+                            Resolution
+                        </label>
+
+                        <textarea
+                            class="form-control"
+                            id="errorDescription{{ loop.index }}"
+                            name="error_description_{{ loop.index }}"
+                            rows="3"
+                        >{{ error.description }}</textarea>
+
+                    </div>
+
+                </div>
+
+            {% endfor %}
+
+        </div>
+
+    {% else %}
+
+        <p class="text-muted mb-0">
+            No common errors were generated.
+        </p>
+
+    {% endif %}
+
+</section>

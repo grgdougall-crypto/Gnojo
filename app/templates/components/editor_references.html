@@ -1,0 +1,86 @@
+<section class="border rounded p-4 mb-4">
+
+    <div
+        class="d-flex justify-content-between
+               align-items-start gap-3 mb-3"
+    >
+        <div>
+            <p
+                class="text-uppercase text-muted
+                       small fw-bold mb-1"
+            >
+                Editable Content
+            </p>
+
+            <h2 class="h5 mb-0">
+                Official References
+            </h2>
+        </div>
+
+        <span class="badge text-bg-primary">
+            {{ draft.official_references | length }}
+        </span>
+    </div>
+
+    {% if draft.official_references %}
+
+        <div class="d-grid gap-3">
+
+            {% for reference in draft.official_references %}
+
+                <div class="border rounded p-3">
+
+                    <div class="mb-3">
+
+                        <label
+                            class="form-label fw-semibold"
+                            for="referenceTitle{{ loop.index }}"
+                        >
+                            Title
+                        </label>
+
+                        <input
+                            class="form-control"
+                            id="referenceTitle{{ loop.index }}"
+                            name="reference_title_{{ loop.index }}"
+                            type="text"
+                            value="{{ reference.title }}"
+                        >
+
+                    </div>
+
+                    <div>
+
+                        <label
+                            class="form-label fw-semibold"
+                            for="referenceUrl{{ loop.index }}"
+                        >
+                            URL
+                        </label>
+
+                        <input
+                            class="form-control"
+                            id="referenceUrl{{ loop.index }}"
+                            name="reference_url_{{ loop.index }}"
+                            type="url"
+                            value="{{ reference.url }}"
+                            placeholder="https://..."
+                        >
+
+                    </div>
+
+                </div>
+
+            {% endfor %}
+
+        </div>
+
+    {% else %}
+
+        <p class="text-muted mb-0">
+            No official references were generated.
+        </p>
+
+    {% endif %}
+
+</section>

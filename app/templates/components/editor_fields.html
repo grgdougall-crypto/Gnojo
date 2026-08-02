@@ -1,0 +1,84 @@
+<section class="border rounded p-4 mb-4">
+
+    <div
+        class="d-flex justify-content-between
+               align-items-start gap-3 mb-3"
+    >
+        <div>
+            <p
+                class="text-uppercase text-muted
+                       small fw-bold mb-1"
+            >
+                Editable Content
+            </p>
+
+            <h2 class="h5 mb-0">
+                Important Fields
+            </h2>
+        </div>
+
+        <span class="badge text-bg-primary">
+            {{ draft.important_fields | length }}
+        </span>
+    </div>
+
+    {% if draft.important_fields %}
+
+        <div class="d-grid gap-3">
+
+            {% for field in draft.important_fields %}
+
+                <div class="border rounded p-3">
+
+                    <div class="mb-3">
+
+                        <label
+                            class="form-label fw-semibold"
+                            for="fieldName{{ loop.index }}"
+                        >
+                            Field
+                        </label>
+
+                        <input
+                            class="form-control"
+                            id="fieldName{{ loop.index }}"
+                            name="field_name_{{ loop.index }}"
+                            type="text"
+                            value="{{ field.field | default(field.name) }}"
+                        >
+
+                    </div>
+
+                    <div>
+
+                        <label
+                            class="form-label fw-semibold"
+                            for="fieldDescription{{ loop.index }}"
+                        >
+                            Description
+                        </label>
+
+                        <textarea
+                            class="form-control"
+                            id="fieldDescription{{ loop.index }}"
+                            name="field_description_{{ loop.index }}"
+                            rows="3"
+                        >{{ field.description }}</textarea>
+
+                    </div>
+
+                </div>
+
+            {% endfor %}
+
+        </div>
+
+    {% else %}
+
+        <p class="text-muted mb-0">
+            No important fields were generated.
+        </p>
+
+    {% endif %}
+
+</section>

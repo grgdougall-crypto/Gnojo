@@ -334,6 +334,37 @@ def edit_command_draft():
         current_draft[
             "official_references"
         ] = updated_references
+        explanation = current_draft["explanation"]
+
+        explanation.purpose = request.form.get(
+            "explanation_purpose",
+            "",
+        ).strip()
+
+        explanation.when_to_use = request.form.get(
+            "explanation_when_to_use",
+            "",
+        ).strip()
+
+        explanation.narrative = request.form.get(
+            "explanation_narrative",
+            "",
+        ).strip()
+
+        explanation.permissions_notes = request.form.get(
+            "explanation_permissions_notes",
+            "",
+        ).strip()
+
+        explanation.risk_level = request.form.get(
+            "explanation_risk_level",
+            "Unknown",
+        ).strip()
+
+        explanation.risk_warning = request.form.get(
+            "explanation_risk_warning",
+            "",
+        ).strip()
         return redirect(
             url_for("edit_command_draft")
         )

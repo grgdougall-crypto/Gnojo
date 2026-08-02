@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 
 {% block title %}
-Edit Command Draft | SupportPilot
+Knowledge Studio | SupportPilot
 {% endblock %}
 
 {% block content %}
@@ -18,12 +18,12 @@ Edit Command Draft | SupportPilot
             </p>
 
             <h1 class="display-6 fw-bold mb-2">
-                Edit Command Draft
-            </h1>
+    Knowledge Studio
+</h1>
 
             <p class="text-muted mb-0">
-                Review and revise AI-generated content before saving.
-            </p>
+    Review, refine, and prepare trusted technical knowledge for publication.
+</p>
         </div>
 
         <a
@@ -100,6 +100,8 @@ Edit Command Draft | SupportPilot
 
                 {% include "components/editor_references.html" %}
 
+                {% include "components/editor_explanation.html" %}
+                
                 <div
                     class="d-flex flex-wrap justify-content-between
                            align-items-center gap-3 border-top pt-4"

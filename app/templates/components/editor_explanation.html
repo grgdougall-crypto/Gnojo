@@ -1,0 +1,145 @@
+<section class="card border-primary mb-4">
+
+    <div class="card-body p-4">
+
+        <div
+            class="d-flex flex-wrap justify-content-between
+                   align-items-start gap-3 mb-4"
+        >
+            <div>
+                <p
+                    class="text-uppercase text-primary
+                           small fw-bold mb-1"
+                >
+                    Knowledge Analysis
+                </p>
+
+                <h2 class="h4 mb-0">
+                    {{ draft.explanation.title }}
+                </h2>
+            </div>
+
+            <span class="badge text-bg-success">
+                AI Generated
+            </span>
+        </div>
+
+        <div class="row g-4">
+
+            <div class="col-12 col-lg-6">
+
+                <label
+                    class="form-label fw-semibold"
+                    for="explanationPurpose"
+                >
+                    Purpose
+                </label>
+
+                <textarea
+                    class="form-control"
+                    id="explanationPurpose"
+                    name="explanation_purpose"
+                    rows="6"
+                >{{ draft.explanation.purpose }}</textarea>
+
+            </div>
+
+            <div class="col-12 col-lg-6">
+
+                <label
+                    class="form-label fw-semibold"
+                    for="explanationWhenToUse"
+                >
+                    When to Use
+                </label>
+
+                <textarea
+                    class="form-control"
+                    id="explanationWhenToUse"
+                    name="explanation_when_to_use"
+                    rows="6"
+                >{{ draft.explanation.when_to_use }}</textarea>
+
+            </div>
+
+            <div class="col-12">
+
+                <label
+                    class="form-label fw-semibold"
+                    for="explanationNarrative"
+                >
+                    Technician Narrative
+                </label>
+
+                <textarea
+                    class="form-control"
+                    id="explanationNarrative"
+                    name="explanation_narrative"
+                    rows="8"
+                >{{ draft.explanation.narrative }}</textarea>
+
+            </div>
+
+            <div class="row g-4 mt-1">
+
+    <div class="col-12 col-lg-6">
+
+        <label
+            class="form-label fw-semibold"
+            for="permissionsNotes"
+        >
+            Permissions Notes
+        </label>
+
+        <textarea
+            class="form-control"
+            id="permissionsNotes"
+            name="explanation_permissions_notes"
+            rows="5"
+        >{{ draft.explanation.permissions_notes }}</textarea>
+
+    </div>
+
+    <div class="col-12 col-lg-6">
+
+        <label
+            class="form-label fw-semibold"
+            for="riskLevel"
+        >
+            Risk Level
+        </label>
+
+        <select
+            class="form-select mb-3"
+            id="riskLevel"
+            name="explanation_risk_level"
+        >
+            {% for level in ["Low", "Moderate", "High", "Unknown"] %}
+                <option
+                    value="{{ level }}"
+                    {% if draft.explanation.risk_level == level %}
+                        selected
+                    {% endif %}
+                >
+                    {{ level }}
+                </option>
+            {% endfor %}
+        </select>
+
+        <label
+            class="form-label fw-semibold"
+            for="riskWarning"
+        >
+            Risk Warning
+        </label>
+
+        <textarea
+            class="form-control"
+            id="riskWarning"
+            name="explanation_risk_warning"
+            rows="4"
+        >{{ draft.explanation.risk_warning }}</textarea>
+
+    </div>
+
+</div>

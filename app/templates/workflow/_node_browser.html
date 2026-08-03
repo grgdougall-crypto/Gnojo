@@ -1,0 +1,139 @@
+<div class="col-lg-9">
+
+    <div class="card shadow-sm border-0">
+
+        <div class="card-body p-4">
+
+            <div
+                class="d-flex flex-wrap
+                       justify-content-between
+                       align-items-center
+                       gap-3
+                       mb-4"
+            >
+                <div>
+
+                    <p
+                        class="text-uppercase
+                               text-muted
+                               small
+                               mb-1"
+                    >
+                        Workflow Structure
+                    </p>
+
+                    <h2 class="h4 mb-0">
+                        Workflow Nodes
+                    </h2>
+
+                </div>
+
+                <span class="badge text-bg-primary">
+                    {{ nodes|length }} Nodes
+                </span>
+
+            </div>
+
+            <div class="mb-4">
+
+                <input
+                    class="form-control"
+                    id="nodeSearch"
+                    type="search"
+                    placeholder="Search workflow nodes..."
+                >
+
+            </div>
+
+            <div class="vstack gap-3">
+
+                {% for node in nodes %}
+
+                    <a
+                        href="#"
+                        class="text-decoration-none
+                               text-reset
+                               workflow-node-link"
+                    >
+                        <div
+                            class="border rounded
+                                   p-3
+                                   workflow-node-card"
+                        >
+                            <div
+                                class="d-flex flex-wrap
+                                       align-items-start
+                                       gap-3"
+                            >
+                                <div class="flex-grow-1">
+
+                                    <div
+                                        class="d-flex
+                                               flex-wrap
+                                               gap-2
+                                               mb-2"
+                                    >
+                                        {% if node.type == "question" %}
+
+                                            <span
+                                                class="badge
+                                                       text-bg-info"
+                                            >
+                                                Question
+                                            </span>
+
+                                        {% elif node.type == "instruction" %}
+
+                                            <span
+                                                class="badge
+                                                       text-bg-secondary"
+                                            >
+                                                Instruction
+                                            </span>
+
+                                        {% elif node.type == "resolution" %}
+
+                                            <span
+                                                class="badge
+                                                       text-bg-success"
+                                            >
+                                                Resolution
+                                            </span>
+
+                                        {% elif node.type == "transition" %}
+
+                                            <span
+                                                class="badge
+                                                       text-bg-warning"
+                                            >
+                                                Transition
+                                            </span>
+
+                                        {% endif %}
+                                    </div>
+
+                                    <h3 class="h6 mb-0">
+                                        {{ node.title }}
+                                    </h3>
+
+                                </div>
+
+                                <i
+                                    class="bi bi-chevron-right
+                                           text-muted"
+                                ></i>
+
+                            </div>
+
+                        </div>
+                    </a>
+
+                {% endfor %}
+
+            </div>
+
+        </div>
+
+    </div>
+
+</div>

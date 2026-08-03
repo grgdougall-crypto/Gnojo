@@ -44,7 +44,6 @@ class WorkflowDraftService:
             "w",
             encoding="utf-8",
         ) as file:
-
             json.dump(
                 workflow,
                 file,
@@ -52,3 +51,54 @@ class WorkflowDraftService:
             )
 
         return filename
+
+    def list_drafts(self):
+        """
+        Return all saved workflow drafts.
+        """
+
+        drafts = []
+
+        for file_path in sorted(
+            self.drafts_path.glob("*.json")
+        ):
+            with open(
+                file_path,
+                "r",
+                encoding="utf-8",
+            ) as file:
+                workflow = json.load(file)
+
+            drafts.append(
+                {
+                    "filename": file_path.name,
+                    "workflow_id": workflow.get(
+                        "workflow_id",
+                    ),
+                    "name": workflow.get(
+                        "name",
+                    ),
+                    "estimated_steps": workflow.get(
+                        "estimated_steps",
+                    ),
+                }
+            )
+
+        return drafts
+
+    def get_draft(self, filename):
+        """
+        Load one saved workflow draft by filename.
+        """
+
+        file_path = self.drafts_path / filename
+
+        if not file_path.exists():
+            return None
+
+        with open(
+            file_path,
+            "r",
+            encoding="utf-8",
+        ) as file:
+            return json.load(file)

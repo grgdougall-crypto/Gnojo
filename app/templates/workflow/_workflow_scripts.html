@@ -1,0 +1,33 @@
+<script>
+    const nodeSearch = document.getElementById("nodeSearch");
+    const nodeLinks = document.querySelectorAll(
+        ".workflow-node-link"
+    );
+
+    if (nodeSearch) {
+
+        nodeSearch.addEventListener(
+            "input",
+            function () {
+
+                const searchValue = this.value
+                    .trim()
+                    .toLowerCase();
+
+                nodeLinks.forEach(function (link) {
+
+                    const cardText = link.textContent
+                        .toLowerCase();
+
+                    link.style.display =
+                        cardText.includes(searchValue)
+                            ? ""
+                            : "none";
+
+                });
+
+            }
+        );
+
+    }
+</script>

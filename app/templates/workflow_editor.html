@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+
+{% block title %}Workflow Designer | SupportPilot{% endblock %}
+
+{% block content %}
+
+<div class="container py-5">
+
+    {% include "workflow/_page_header.html" %}
+
+    <div class="row g-4">
+
+        {% include "workflow/_workflow_summary.html" %}
+
+        {% include "workflow/_node_browser.html" %}
+
+    </div>
+
+</div>
+
+{% include "workflow/_workflow_scripts.html" %}
+
+{% endblock %}

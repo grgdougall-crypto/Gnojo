@@ -207,32 +207,171 @@
 
     {% for item in outline %}
 
-        <div
-            class="list-group-item"
-            style="padding-left: {{ (item.depth * 30) + 16 }}px;"
-        >
+        <div class="d-flex flex-column gap-3">
 
-            {% if item.type == "question" %}
-                ❓
-            {% elif item.type == "instruction" %}
-                📋
-            {% elif item.type == "resolution" %}
-                ✅
-            {% elif item.type == "transition" %}
-                🔀
-            {% elif item.type == "answer" %}
-                ↳
-            {% endif %}
+    {% for item in outline %}
 
-            <strong>{{ item.title }}</strong>
+        <article class="card border">
 
-            {% if item.help_text %}
-                <div class="text-muted small mt-1">
-                    {{ item.help_text }}
+            <div class="card-body p-4">
+
+                <div
+                    class="d-flex flex-wrap
+                           justify-content-between
+                           align-items-start
+                           gap-3 mb-3"
+                >
+                    <div class="d-flex flex-wrap gap-2">
+
+                        {% if item.is_start %}
+                            <span class="badge text-bg-primary">
+                                Start
+                            </span>
+                        {% endif %}
+
+                        {% if item.type == "question" %}
+                            <span class="badge text-bg-info">
+                                Question
+                            </span>
+                        {% elif item.type == "instruction" %}
+                            <span class="badge text-bg-secondary">
+                                Instruction
+                            </span>
+                        {% elif item.type == "resolution" %}
+                            <span class="badge text-bg-success">
+                                Resolution
+                            </span>
+                        {% elif item.type == "transition" %}
+                            <span class="badge text-bg-warning">
+                                Transition
+                            </span>
+                        {% endif %}
+
+                    </div>
+
+                    <code class="small text-muted">
+                        {{ item.id }}
+                    </code>
                 </div>
-            {% endif %}
 
-        </div>
+                <h4 class="h5 mb-2">
+                    {{ item.title }}
+                </h4>
+
+                {% if item.help_text %}
+                    <p class="text-muted mb-3">
+                        {{ item.help_text }}
+                    </p>
+                {% endif %}
+
+                {% if item.instruction %}
+                    <p class="mb-3">
+                        {{ item.instruction }}
+                    </p>
+                {% endif %}
+
+                {% if item.message %}
+                    <p class="mb-3">
+                        {{ item.message }}
+                    </p>
+                {% endif %}
+
+                {% if item.answers %}
+
+                    <p
+                        class="small text-uppercase
+                               text-muted fw-semibold mb-2"
+                    >
+                        Branches
+                    </p>
+
+                    <div class="d-flex flex-column gap-2">
+
+                        {% for answer in item.answers %}
+
+                            <div
+                                class="border rounded p-3
+                                       d-flex flex-wrap
+                                       justify-content-between
+                                       gap-3"
+                            >
+                                <strong>
+                                    {{ answer.label }}
+                                </strong>
+
+                                <span class="text-muted">
+                                    <i
+                                        class="bi
+                                               bi-arrow-right
+                                               me-2"
+                                    ></i>
+                                    {{ answer.next_title }}
+                                </span>
+                            </div>
+
+                        {% endfor %}
+
+                    </div>
+
+                {% endif %}
+
+                {% if item.next %}
+
+                    <div class="border rounded p-3 mt-3">
+
+                        <span
+                            class="small text-uppercase
+                                   text-muted fw-semibold"
+                        >
+                            Next step
+                        </span>
+
+                        <div class="mt-1">
+                            <i
+                                class="bi
+                                       bi-arrow-right
+                                       me-2"
+                            ></i>
+                            {{ item.next.title }}
+                        </div>
+
+                    </div>
+
+                {% endif %}
+
+                {% if item.knowledge_article %}
+
+                    <div class="mt-3">
+
+                        <span class="badge text-bg-dark">
+                            Knowledge:
+                            {{ item.knowledge_article }}
+                        </span>
+
+                    </div>
+
+                {% endif %}
+
+                {% if item.next_workflow %}
+
+                    <div class="mt-3">
+
+                        <span class="badge text-bg-warning">
+                            Next workflow:
+                            {{ item.next_workflow }}
+                        </span>
+
+                    </div>
+
+                {% endif %}
+
+            </div>
+
+        </article>
+
+    {% endfor %}
+
+</div>
 
     {% endfor %}
 

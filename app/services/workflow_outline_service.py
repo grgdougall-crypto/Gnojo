@@ -1,111 +1,136 @@
 class WorkflowOutlineService:
     """
     Converts a workflow JSON document into
-    a human-readable outline.
+    a flat, human-readable review outline.
     """
 
     def build_outline(self, workflow):
-
         nodes = workflow.get("nodes", {})
         start_node = workflow.get("start_node")
 
         outline = []
 
-        visited = set()
-
-        self._walk(
-            node_id=start_node,
-            nodes=nodes,
-            outline=outline,
-            visited=visited,
-            depth=0,
-        )
+        for node_id, node in nodes.items():
+            outline.append(
+                self._build_item(
+                    node_id=node_id,
+                    node=node,
+                    nodes=nodes,
+                    is_start=node_id == start_node,
+                )
+            )
 
         return outline
 
-    def _walk(
+    def _build_item(
         self,
         node_id,
+        node,
         nodes,
-        outline,
-        visited,
-        depth,
+        is_start=False,
     ):
+        node_type = node.get("type")
 
-        if node_id in visited:
-            return
+        item = {
+            "id": node_id,
+            "type": node_type,
+            "title": self._title(node),
+            "help_text": node.get("help_text"),
+            "instruction": node.get("instruction"),
+            "message": node.get("message"),
+            "knowledge_article": node.get(
+                "knowledge_article"
+            ),
+            "next_workflow": node.get(
+                "next_workflow"
+            ),
+            "is_start": is_start,
+            "answers": [],
+            "next": None,
+        }
 
-        node = nodes.get(node_id)
-
-        if node is None:
-            return
-
-        visited.add(node_id)
-
-        outline.append(
-            {
-                "depth": depth,
-                "id": node_id,
-                "type": node.get("type"),
-                "title": self._title(node),
-                "help_text": node.get("help_text"),
-            }
-        )
-
-        if node.get("type") == "question":
-
-            for answer, answer_data in (
-                node.get("answers", {})
+        if node_type == "question":
+            for answer_id, answer_data in (
+                node.get("answers") or {}
             ).items():
 
                 if isinstance(answer_data, dict):
-                    next_node = answer_data.get("next")
                     label = answer_data.get(
                         "label",
-                        answer,
+                        answer_id,
+                    )
+                    next_node_id = answer_data.get(
+                        "next"
                     )
                 else:
-                    next_node = answer_data
-                    label = answer
+                    label = answer_id
+                    next_node_id = answer_data
 
-                outline.append(
+                item["answers"].append(
                     {
-                        "depth": depth + 1,
-                        "type": "answer",
-                        "title": label,
+                        "id": answer_id,
+                        "label": label,
+                        "next_id": next_node_id,
+                        "next_title": self._node_title(
+                            next_node_id,
+                            nodes,
+                        ),
                     }
                 )
 
-                self._walk(
-                    next_node,
+        elif node_type == "instruction":
+            next_node_id = node.get("next")
+
+            item["next"] = {
+                "id": next_node_id,
+                "title": self._node_title(
+                    next_node_id,
                     nodes,
-                    outline,
-                    visited,
-                    depth + 2,
-                )
+                ),
+            }
 
-        elif node.get("type") == "instruction":
+        return item
 
-            self._walk(
-                node.get("next"),
-                nodes,
-                outline,
-                visited,
-                depth + 1,
-            )
+    def _node_title(
+        self,
+        node_id,
+        nodes,
+    ):
+        if not node_id:
+            return None
+
+        node = nodes.get(node_id)
+
+        if not isinstance(node, dict):
+            return node_id
+
+        return self._title(node)
 
     def _title(self, node):
+        node_type = node.get("type")
 
-        if node.get("type") == "question":
-            return node.get("question")
+        if node_type == "question":
+            return (
+                node.get("question")
+                or "Untitled question"
+            )
 
-        if node.get("type") == "instruction":
-            return node.get("title")
+        if node_type == "instruction":
+            return (
+                node.get("title")
+                or "Untitled instruction"
+            )
 
-        if node.get("type") == "resolution":
-            return node.get("title")
+        if node_type == "resolution":
+            return (
+                node.get("title")
+                or "Untitled resolution"
+            )
 
-        if node.get("type") == "transition":
-            return node.get("title")
+        if node_type == "transition":
+            return (
+                node.get("title")
+                or "Untitled transition"
+            )
 
-        return "Unknown"
+        return "Unknown node"

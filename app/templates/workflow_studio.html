@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+
+{% block title %}Workflow Studio | SupportPilot{% endblock %}
+
+{% block content %}
+
+<div class="container py-5">
+
+    <div
+        class="d-flex flex-wrap justify-content-between
+               align-items-start gap-3 mb-5"
+    >
+        <div>
+            <p class="text-uppercase text-muted small mb-2">
+                Content Studio
+            </p>
+
+            <h1 class="display-5 fw-bold mb-2">
+                Workflow Studio
+            </h1>
+
+            <p class="text-muted fs-5 mb-0">
+                Generate, review, and manage troubleshooting workflows.
+            </p>
+        </div>
+
+        <a
+            href="{{ url_for('workflow_builder') }}"
+            class="btn btn-primary"
+        >
+            <i class="bi bi-plus-lg me-2"></i>
+            New Workflow
+        </a>
+    </div>
+
+   {% if drafts %}
+
+    <div class="row g-4">
+
+        {% for draft in drafts %}
+
+            <div class="col-md-6 col-xl-4">
+
+                <div class="card h-100 shadow-sm content-card">
+
+                    <div class="card-body">
+
+                        <span class="badge text-bg-secondary">
+                            Draft
+                        </span>
+
+                        <h3 class="h5 mt-3">
+                            {{ draft.name }}
+                        </h3>
+
+                        <p class="text-muted mb-4">
+                            {{ draft.estimated_steps }} estimated steps
+                        </p>
+
+                        <a
+    href="{{ url_for(
+        'workflow_editor',
+        filename=draft.filename
+    ) }}"
+    class="btn btn-outline-primary btn-sm"
+>
+    Open Workflow
+</a>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        {% endfor %}
+
+    </div>
+
+{% else %}
+
+    <div class="card shadow-sm border-0">
+
+        <div class="card-body p-5 text-center">
+
+            <i class="bi bi-diagram-3 display-2 text-primary"></i>
+
+            <h2 class="h4 mt-4">
+                No workflow drafts yet
+            </h2>
+
+            <p class="text-muted mb-4">
+                Generate your first workflow to begin building your library.
+            </p>
+
+            <a
+                href="{{ url_for('workflow_builder') }}"
+                class="btn btn-primary"
+            >
+                Generate First Workflow
+            </a>
+
+        </div>
+
+    </div>
+
+{% endif %}
+
+</div>
+
+{% endblock %}

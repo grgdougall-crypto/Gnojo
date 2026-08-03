@@ -557,3 +557,30 @@ main {
     outline: 2px solid var(--bs-primary);
     outline-offset: -2px;
 }
+
+.content-card {
+    transition: transform 0.2s ease,
+                box-shadow 0.2s ease;
+    cursor: pointer;
+}
+
+.content-card:hover {
+    transform: translateY(-6px);
+
+    box-shadow: 0 1rem 2rem
+        rgba(0, 0, 0, 0.15);
+}
+
+.workflow-node-card{
+    transition:
+        transform .15s ease,
+        border-color .15s ease,
+        box-shadow .15s ease;
+}
+
+.workflow-node-card:hover{
+    transform: translateY(-2px);
+    border-color: var(--bs-primary) !important;
+    box-shadow: 0 .5rem 1rem rgba(0,0,0,.18);
+    cursor:pointer;
+}

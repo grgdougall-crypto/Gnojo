@@ -55,6 +55,14 @@ from app.services.workflow_outline_service import (
     WorkflowOutlineService,
 )
 
+from app.services.workflow_statistics_service import (
+    WorkflowStatisticsService,
+)
+
+from app.services.workflow_node_service import (
+    WorkflowNodeService,
+)
+
 app = Flask(__name__)
 
 @app.template_filter("highlight")
@@ -129,6 +137,52 @@ def home():
     return render_template(
         "index.html",
         workflows=AVAILABLE_WORKFLOWS,
+    )
+
+@app.route("/content-studio")
+def content_studio():
+
+    return render_template(
+        "content_studio.html",
+    )
+
+@app.route("/workflow-studio")
+def workflow_studio():
+
+    draft_service = WorkflowDraftService()
+
+    return render_template(
+        "workflow_studio.html",
+        drafts=draft_service.list_drafts(),
+    )
+
+@app.route("/workflow-editor/<filename>")
+def workflow_editor(filename):
+
+    draft_service = WorkflowDraftService()
+
+    workflow = draft_service.get_draft(
+        filename
+    )
+
+    if workflow is None:
+        abort(404)
+
+    statistics = (
+        WorkflowStatisticsService()
+        .build(workflow)
+    )
+
+    nodes = (
+        WorkflowNodeService()
+        .build(workflow)
+    )
+
+    return render_template(
+        "workflow_editor.html",
+        workflow=workflow,
+        statistics=statistics,
+        nodes=nodes,
     )
 
 @app.route("/knowledge")

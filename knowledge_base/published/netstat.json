@@ -1,0 +1,248 @@
+{
+  "id": "netstat",
+  "title": "Understanding netstat",
+  "command_name": "netstat",
+  "type": "command",
+  "category": "Networking",
+  "difficulty": "Beginner",
+  "estimated_time": "5–10 minutes",
+  "tags": [
+    "netstat",
+    "networking",
+    "command prompt",
+    "troubleshooting"
+  ],
+  "status": "published",
+  "description": "Displays active TCP/UDP connections, listening ports, routing table, interface statistics, and per-protocol statistics to help diagnose network and port usage on Windows.",
+  "summary": "Displays active TCP/UDP connections, listening ports, routing table, interface statistics, and per-protocol statistics to help diagnose network and port usage on Windows.",
+  "syntax": "netstat [-a] [-b] [-e] [-f] [-n] [-o] [-p Proto] [-q] [-r] [-s] [-t] [-x] [-y] [Interval]",
+  "examples": [
+    {
+      "command": "netstat -ano",
+      "description": "Lists all connections and listening ports with numeric addresses and the owning process ID (PID). Useful to identify which PID has a port open."
+    },
+    {
+      "command": "netstat -an | findstr :80",
+      "description": "Filters numeric output to show connections/listeners on TCP/UDP port 80. Helpful for confirming HTTP port usage or conflicts."
+    },
+    {
+      "command": "netstat -abno",
+      "description": "Shows all connections/listeners with the executable (-b), numeric addresses (-n), and PID (-o). Requires elevation; useful for mapping ports directly to binaries."
+    },
+    {
+      "command": "netstat -r",
+      "description": "Displays the IP routing table (same as route print). Use this to verify default gateways and route precedence."
+    },
+    {
+      "command": "netstat -s -p tcp",
+      "description": "Shows TCP protocol statistics only. Useful for spotting retransmissions, resets, and overall TCP health."
+    },
+    {
+      "command": "netstat -af",
+      "description": "Displays all connections and listening ports and attempts to resolve foreign addresses to FQDNs. Helpful when you need human-readable remote endpoints."
+    }
+  ],
+  "important_fields": [
+    {
+      "field": "-a",
+      "description": "Shows all connections and listening ports. Essential when verifying whether a service is actually listening."
+    },
+    {
+      "field": "-n",
+      "description": "Disables DNS/FQDN lookups and shows numeric addresses. Avoids delays and makes scripting/filtering predictable."
+    },
+    {
+      "field": "-o",
+      "description": "Displays the owning process ID. Critical for correlating ports to processes for remediation."
+    },
+    {
+      "field": "-b",
+      "description": "Displays the executable creating each connection or listener. Often requires elevation; invaluable for identifying the exact binary."
+    },
+    {
+      "field": "-p Proto",
+      "description": "Filters by protocol (TCP, UDP, TCPv6, UDPv6, IP, IPv6, ICMP, ICMPv6). Reduces noise and focuses analysis."
+    },
+    {
+      "field": "Proto",
+      "description": "Output column indicating protocol (TCP or UDP). Helps separate connection-oriented vs connectionless traffic."
+    },
+    {
+      "field": "Local Address",
+      "description": "IP and port bound locally (0.0.0.0 or [::] means all interfaces). Key for exposure/scope of a listening service."
+    },
+    {
+      "field": "Foreign Address",
+      "description": "Remote endpoint IP/port. Identifies who you are connected to or receiving from."
+    },
+    {
+      "field": "State",
+      "description": "TCP connection state (LISTENING, ESTABLISHED, TIME_WAIT, CLOSE_WAIT, etc.). Indicates lifecycle/health of connections."
+    },
+    {
+      "field": "PID",
+      "description": "Owning process identifier (with -o). Needed to map ports to processes via tasklist or Task Manager."
+    },
+    {
+      "field": "-r",
+      "description": "Shows the routing table. Useful for validating default route and specific network paths."
+    },
+    {
+      "field": "-s",
+      "description": "Displays per-protocol statistics. Helps quantify errors, resets, and packet counts."
+    },
+    {
+      "field": "-t",
+      "description": "Shows TCP offload state. Useful when troubleshooting NIC offload/acceleration issues."
+    },
+    {
+      "field": "-q",
+      "description": "Displays all connections, listening ports, and bound non-listening TCP ports. Helps spot sockets in a bound state without a listener."
+    }
+  ],
+  "common_errors": [
+    {
+      "error": "The requested operation requires elevation.",
+      "description": "Occurs when using options like -b (show executable) without an elevated Command Prompt. Run as Administrator."
+    },
+    {
+      "error": "Can not obtain ownership information.",
+      "description": "Seen with netstat -b when the tool cannot map a socket to an executable (insufficient rights or the process exited). Try elevation and rerun promptly."
+    },
+    {
+      "error": "Slow output or long pauses.",
+      "description": "Name resolution delays when not using -n or when using -f to resolve FQDNs. Use -n to disable lookups or ensure DNS is responsive."
+    },
+    {
+      "error": "Invalid protocol specified with -p.",
+      "description": "Using an unsupported protocol token (e.g., netstat -p foo). Use one of: TCP, UDP, TCPv6, UDPv6, IP, IPv6, ICMP, ICMPv6."
+    },
+    {
+      "error": "No active connections.",
+      "description": "Normal condition when there are no current TCP sessions. Verify service is listening (-a) or traffic is present."
+    },
+    {
+      "error": "'netstat' is not recognized as an internal or external command...",
+      "description": "PATH/environment issue or severely minimal Windows environment. Ensure %SystemRoot%\\System32 is in PATH and the binary exists."
+    }
+  ],
+  "related_commands": [
+    "tasklist",
+    "taskkill",
+    "ping",
+    "tracert",
+    "route",
+    "ipconfig"
+  ],
+  "related_articles": [],
+  "official_references": [
+    {
+      "title": "netstat (Windows Commands)",
+      "url": "https://learn.microsoft.com/windows-server/administration/windows-commands/netstat"
+    }
+  ],
+  "explanation": {
+    "title": "Understanding the command",
+    "purpose": "netstat surfaces real-time socket, listener, and routing information, letting technicians verify whether services are listening, identify which processes own ports, and assess TCP/UDP activity and protocol health.",
+    "when_to_use": "Use when diagnosing port-in-use errors, confirming if a service is listening, mapping connections to processes, investigating unexpected remote connections, inspecting TCP state anomalies (e.g., CLOSE_WAIT spikes), checking routing tables, or reviewing protocol statistics.",
+    "what_to_check": [
+      {
+        "name": "Listeners on expected ports",
+        "description": "Verify that required services show LISTENING on the correct Local Address and port (e.g., 0.0.0.0:443 or 127.0.0.1:5432)."
+      },
+      {
+        "name": "Owning PID (-o) and executable (-b)",
+        "description": "Confirms which process/binary holds a port so you can correlate with service configurations or terminate the right process."
+      },
+      {
+        "name": "TCP states",
+        "description": "Look for excessive CLOSE_WAIT, TIME_WAIT, or SYN_SENT which can indicate application issues, high churn, or reachability problems."
+      },
+      {
+        "name": "Foreign endpoints",
+        "description": "Identify unexpected remote IPs or an unusual volume of ESTABLISHED sessions to potential suspicious destinations."
+      },
+      {
+        "name": "Routing table (-r)",
+        "description": "Confirm correct default gateway and route metrics if connectivity works to some networks but not others."
+      },
+      {
+        "name": "Protocol statistics (-s)",
+        "description": "High retransmits, resets, or errors in TCP/UDP can indicate congestion, packet loss, or misconfiguration."
+      },
+      {
+        "name": "Offload state (-t)",
+        "description": "Determine whether NIC offload features are active for connections when investigating performance anomalies."
+      }
+    ],
+    "interpretation": [
+      {
+        "title": "Many sockets in CLOSE_WAIT",
+        "message": "Remote peers closed, but the local app did not close its side. Investigate the application holding sockets open; consider restarts or patches."
+      },
+      {
+        "title": "High TIME_WAIT counts",
+        "message": "Normal after heavy outbound traffic, but persistent high counts can contribute to ephemeral port exhaustion. Review connection reuse and TIME_WAIT tuning."
+      },
+      {
+        "title": "LISTENING on 0.0.0.0 or [::]",
+        "message": "Service is exposed on all interfaces. Validate firewall rules and intended exposure scope."
+      },
+      {
+        "title": "SYN_SENT without ESTABLISHED",
+        "message": "Outbound connection attempts are not completing. Check remote availability, firewall ACLs, routing, or packet loss."
+      },
+      {
+        "title": "No listener on expected port",
+        "message": "Service likely not started, bound to localhost only, or port conflict exists. Verify service config and identify conflicting PID with -o."
+      }
+    ],
+    "common_mistake": "Running netstat without -n during troubleshooting, leading to long delays from reverse DNS lookups and misinterpreting the pause as a network hang.",
+    "requires_elevation": false,
+    "permissions_notes": "Most netstat output is available to standard users. Options like -b (executable mapping) often require an elevated Command Prompt. Some entries may show 'Can not obtain ownership information' without admin rights or if the process exits quickly.",
+    "risk_level": "Low",
+    "risk_warning": "Read-only command; however, it may reveal sensitive process names, IPs, and ports in logs or screenshots. Use -n to avoid unnecessary DNS lookups on production systems.",
+    "next_steps": [
+      {
+        "id": "tasklist",
+        "name": "tasklist",
+        "summary": "Map PIDs from netstat -o to process names to identify the owning application."
+      },
+      {
+        "id": "taskkill",
+        "name": "taskkill",
+        "summary": "Terminate a misbehaving process identified by netstat that is holding a required port."
+      },
+      {
+        "id": "route",
+        "name": "route",
+        "summary": "Inspect or adjust routes after reviewing netstat -r if traffic is taking an unexpected path."
+      },
+      {
+        "id": "ping",
+        "name": "ping",
+        "summary": "Test basic reachability to a Foreign Address seen in netstat to confirm connectivity."
+      },
+      {
+        "id": "tracert",
+        "name": "tracert",
+        "summary": "Trace the network path to remote endpoints identified by netstat to locate routing or hop-by-hop issues."
+      },
+      {
+        "id": "ipconfig",
+        "name": "ipconfig",
+        "summary": "Verify local IP configuration (IP, DNS, gateway) if netstat shows unexpected bindings or routing issues."
+      }
+    ],
+    "narrative": "Start with netstat -ano to list listeners and active connections with PIDs. If a required port is busy or missing, filter with findstr to confirm its state, then use -o to capture the PID and, if needed, -b (elevated) to see the executable. Check TCP states for symptoms like CLOSE_WAIT or SYN_SENT to guide whether the issue is application-side or network-side. Review netstat -r when pathing seems wrong. From there, correlate the PID with tasklist, adjust routes if necessary, or test the remote host with ping/tracert."
+  },
+  "metadata": {
+    "status": "Published",
+    "version": "1.0",
+    "last_saved": "Aug 02, 2026 08:29 PM",
+    "published_at": "Aug 02, 2026 08:30 PM"
+  },
+  "review": {
+    "status": "published"
+  }
+}

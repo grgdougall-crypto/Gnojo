@@ -135,9 +135,10 @@
     },
 
     "advanced_diagnostics": {
-      "type": "resolution",
-      "title": "Additional troubleshooting is needed",
-      "message": "The basic checks did not restore the connection. Additional network adapter, IP address, DNS, or driver diagnostics may be needed."
+      "type": "transition",
+      "title": "Continue to Advanced Network Diagnostics",
+      "message": "The basic checks did not restore the connection. Continue with IP address, gateway, internet reachability, and DNS diagnostics.",
+      "next_workflow": "network_diagnostics"
     }
   }
 }

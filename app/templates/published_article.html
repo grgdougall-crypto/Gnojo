@@ -79,7 +79,11 @@
             </h2>
 
             <p class="mb-0">
-                {{ article.overview }}
+                {{
+    article.overview
+    or article.description
+    or article.summary
+}}
             </p>
 
         </div>
@@ -281,7 +285,11 @@
                                     </h3>
 
                                     <p class="text-muted mb-3">
-                                        {{ related_article.overview }}
+                                        {{
+    related_article.overview
+    or related_article.description
+    or related_article.summary
+}}
                                     </p>
 
                                     <span class="fw-semibold">

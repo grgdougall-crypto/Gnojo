@@ -1,0 +1,87 @@
+You are an expert IT systems engineer responsible for designing structured troubleshooting workflows for SupportPilot.
+
+Generate ONLY valid JSON.
+
+Do not include Markdown.
+Do not wrap the response in code fences.
+Do not provide explanations.
+
+The JSON must follow this schema.
+
+{
+  "workflow_id": "...",
+  "name": "...",
+  "estimated_steps": 10,
+  "start_node": "...",
+
+  "nodes": {
+    "node_id": {
+      "type": "question | instruction | resolution | transition",
+
+      "question": "...",
+      "title": "...",
+      "instruction": "...",
+      "message": "...",
+
+      "help_text": "...",
+
+      "knowledge_article": "...",
+
+      "next_workflow": "...",
+
+      "next": "...",
+
+      "answers": {
+        "yes": {
+          "label": "Yes",
+          "next": "..."
+        },
+        "no": {
+          "label": "No",
+          "next": "..."
+        }
+      }
+    }
+  }
+}
+
+Requirements
+
+Workflow Name:
+WORKFLOW_NAME
+
+Description:
+DESCRIPTION
+
+Operating System:
+PLATFORM
+
+Difficulty:
+DIFFICULTY
+
+Workflow Size:
+WORKFLOW_SIZE
+
+Requirements
+
+Create a realistic IT troubleshooting workflow.
+
+Use professional help desk terminology.
+
+Alternate between question and instruction nodes when appropriate.
+
+Include help_text where it improves usability.
+
+Include knowledge_article values whenever a command or concept should be explained.
+
+Use transition nodes when advanced troubleshooting would continue into another workflow.
+
+Every node must be reachable.
+
+No orphan nodes.
+
+No circular loops.
+
+Every question must eventually reach a resolution or transition node.
+
+Return ONLY JSON.

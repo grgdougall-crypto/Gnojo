@@ -177,6 +177,32 @@ class KnowledgeRepository:
             overwrite=overwrite,
         )
 
+    def save_published(
+        self,
+        article: dict[str, Any],
+        overwrite: bool = False,
+    ) -> Path:
+        """
+        Save an article directly into the published directory.
+
+        Args:
+            article:
+                Complete SupportPilot article.
+
+            overwrite:
+                Whether an existing published article may be replaced.
+
+        Returns:
+            Path:
+                Saved published article path.
+        """
+
+        return self._save_article(
+            directory=self.published_directory,
+            article=article,
+            overwrite=overwrite,
+        )
+
     def publish_article(
         self,
         article_id: str,

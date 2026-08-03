@@ -2,19 +2,32 @@ from copy import deepcopy
 from datetime import datetime
 
 from app.models.published_article import PublishedArticle
+from app.repositories.knowledge_repository import KnowledgeRepository
+from app.services.publication_mapper import PublicationMapper
 
 
 class PublicationService:
     """
-    Convert validated drafts into published articles.
+    Convert validated drafts into published articles
+    and save them to the knowledge repository.
     """
 
-    def publish(self, draft):
+    def __init__(self):
+        self.repository = KnowledgeRepository()
+        self.mapper = PublicationMapper()
+
+    def publish(
+        self,
+        draft,
+        category="Networking",
+    ):
         """
         Publish a validated draft.
         """
 
-        metadata = deepcopy(draft["metadata"])
+        metadata = deepcopy(
+            draft["metadata"]
+        )
 
         metadata.status = "Published"
         metadata.version = "1.0"
@@ -27,7 +40,9 @@ class PublicationService:
             description=draft["description"],
             summary=draft["summary"],
             syntax=draft["syntax"],
-            examples=deepcopy(draft["examples"]),
+            examples=deepcopy(
+                draft["examples"]
+            ),
             important_fields=deepcopy(
                 draft["important_fields"]
             ),
@@ -44,6 +59,18 @@ class PublicationService:
                 draft["explanation"]
             ),
             metadata=metadata,
+        )
+
+        repository_article = (
+            self.mapper.to_repository_article(
+                article,
+                category=category,
+            )
+        )
+
+        self.repository.save_published(
+            repository_article,
+            overwrite=True,
         )
 
         return article

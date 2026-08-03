@@ -13,15 +13,27 @@ class KnowledgeBase:
             / "knowledge_base"
         )
 
+        self.published_path = (
+            self.knowledge_path
+            / "published"
+        )
+
     def load_article(self, article_id):
         """
-        Load a knowledge article by its ID.
+        Load a published knowledge article by its ID.
         """
 
-        article_path = self.knowledge_path / f"{article_id}.json"
+        article_path = (
+            self.published_path
+            / f"{article_id}.json"
+        )
 
         if not article_path.exists():
             return None
 
-        with open(article_path, "r", encoding="utf-8") as file:
+        with open(
+            article_path,
+            "r",
+            encoding="utf-8",
+        ) as file:
             return json.load(file)

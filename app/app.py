@@ -39,6 +39,21 @@ from app.services.publication_service import (
     PublicationService,
 )
 
+from app.engine.workflow_generation_engine import (
+    WorkflowGenerationEngine,
+)
+
+from app.services.workflow_validation_service import (
+    WorkflowValidationService,
+)
+
+from app.services.workflow_draft_service import (
+    WorkflowDraftService,
+)
+
+from app.services.workflow_outline_service import (
+    WorkflowOutlineService,
+)
 
 app = Flask(__name__)
 
@@ -99,6 +114,11 @@ AVAILABLE_WORKFLOWS = {
         ),
         "icon": "bi-printer",
     },
+    "network_diagnostics": {
+        "name": "Advanced Network Diagnostics",
+        "description": "Perform advanced network diagnostics to identify and resolve connectivity issues.",
+        "icon": "bi-wifi",
+    }
 }
 
 
@@ -416,12 +436,53 @@ def publish_command_draft():
             missing_sections=missing_sections,
         )
 
-    article = publication_service.publish(
-    current_draft
-)
+    publication_category = request.form.get(
+        "publication_category",
+        "Networking",
+    )
+
+    published_article = publication_service.publish(
+        current_draft,
+        category=publication_category,
+    )
 
     return render_template(
-        "publish_success.html",
+        "published_command.html",
+        article=published_article,
+    )
+
+@app.route("/knowledge/articles/current")
+def view_published_article():
+    """
+    Display the most recently published article.
+    """
+
+    if current_draft is None:
+        return redirect(
+            url_for("knowledge_center")
+        )
+
+    is_valid, missing_sections = (
+        publish_validation_service.validate_command_draft(
+            current_draft
+        )
+    )
+
+    if not is_valid:
+        return redirect(
+            url_for("edit_command_draft")
+        )
+
+    article = publication_service.publish(
+        current_draft
+    )
+
+    published_article = publication_service.publish(
+        current_draft
+    )
+
+    return render_template(
+        "published_article.html",
         article=article,
     )
 
@@ -730,8 +791,13 @@ def view_published(article_id):
     except KnowledgeRepositoryError:
         abort(500)
 
+    template_name = "published_article.html"
+
+    if article.get("type") == "command":
+        template_name = "published_command.html"
+
     return render_template(
-        "published_article.html",
+        template_name,
         article=article,
         related_articles=related_articles,
         related_commands=related_commands,
@@ -770,18 +836,100 @@ def publish_draft(article_id):
         url_for("knowledge_center")
     )
 
+@app.route(
+    "/workflow-builder",
+    methods=["GET", "POST"],
+)
+def workflow_builder():
+
+    generated_workflow = None
+    validation = None
+    outline = None
+    error = None
+    filename = None
+
+    if request.method == "POST":
+
+        try:
+
+            engine = WorkflowGenerationEngine()
+
+            generated_workflow = engine.generate_workflow(
+                workflow_name=request.form.get(
+                    "workflow_name",
+                    "",
+                ),
+                description=request.form.get(
+                    "description",
+                    "",
+                ),
+                platform=request.form.get(
+                    "platform",
+                    "Windows",
+                ),
+                difficulty=request.form.get(
+                    "difficulty",
+                    "Beginner",
+                ),
+                size=request.form.get(
+                    "size",
+                    "Medium",
+                ),
+            )
+
+            validator = WorkflowValidationService()
+
+            validation = validator.validate(
+                generated_workflow
+            )
+
+            outline_service = WorkflowOutlineService()
+
+            outline = outline_service.build_outline(
+                generated_workflow
+            )
+
+            if validation["is_valid"]:
+
+                draft_service = (
+                    WorkflowDraftService()
+                )
+
+                filename = (
+                    draft_service.save_draft(
+                        generated_workflow
+                    )
+                )
+
+        except Exception as ex:
+
+            error = str(ex)
+
+    return render_template(
+        "workflow_builder.html",
+        generated_workflow=generated_workflow,
+        validation=validation,
+        outline=outline,
+        filename=filename,
+        error=error,
+    )
+
 @app.route("/wizard", methods=["GET", "POST"])
 def wizard():
     engine = DecisionEngine()
     knowledge = KnowledgeBase()
 
     # --------------------------------------------------
-    # Start or restart a workflow
+    # Process an answer or continue an instruction
     # --------------------------------------------------
-    if request.method == "GET":
-        workflow_name = request.args.get("workflow")
+    if request.method == "POST":
+        workflow_name = session.get("workflow")
+        current_node_id = session.get("current_node")
 
-        if workflow_name not in AVAILABLE_WORKFLOWS:
+        if (
+            workflow_name not in AVAILABLE_WORKFLOWS
+            or current_node_id is None
+        ):
             return redirect(url_for("home"))
 
         try:
@@ -789,14 +937,165 @@ def wizard():
         except FileNotFoundError:
             abort(404)
 
-        node = engine.get_start_node()
+        current_node = engine.get_node(current_node_id)
+
+        if current_node is None:
+            return redirect(url_for("home"))
+
+        navigation_action = request.form.get(
+            "navigation_action"
+        )
+
+        if navigation_action == "previous":
+            node_history = session.get(
+                "node_history",
+                [],
+        )
+
+            if node_history:
+                previous_location = node_history.pop()
+
+                previous_workflow = previous_location["workflow"]
+                previous_node_id = previous_location["node_id"]
+
+            if previous_workflow not in AVAILABLE_WORKFLOWS:
+                abort(404)
+
+            try:
+                engine.load_workflow(previous_workflow)
+            except FileNotFoundError:
+                abort(404)
+
+            previous_node = engine.get_node(previous_node_id)
+
+            if previous_node is None:
+                abort(404)
+
+            session["node_history"] = node_history
+            session["workflow"] = previous_workflow
+            session["current_node"] = previous_node_id
+            session["step"] = max(
+                session.get("step", 1) - 1,
+                1,
+            )
+
+            return redirect(
+                url_for(
+                    "wizard",
+                    workflow=previous_workflow,
+                    resume="1",
+                )
+            )
+
+        if current_node.type == "transition":
+            next_workflow = current_node.next_workflow
+
+            if next_workflow not in AVAILABLE_WORKFLOWS:
+                abort(404)
+
+            try:
+                engine.load_workflow(next_workflow)
+            except FileNotFoundError:
+                abort(404)
+
+            next_node = engine.get_start_node()
+
+            if next_node is None:
+                abort(500)
+
+            node_history = session.get(
+                "node_history",
+                [],
+            )
+
+            node_history.append(
+            {
+                    "workflow": workflow_name,
+                    "node_id": current_node.id,
+                }
+            )
+
+            session["node_history"] = node_history
+            session["workflow"] = next_workflow
+            session["current_node"] = next_node.id
+            session["step"] = 0
+
+            return redirect(
+                url_for(
+                    "wizard",
+                    workflow=next_workflow,
+                    resume="1",
+                )
+            )
+
+        answer = request.form.get("answer")
+        next_node = engine.advance(
+            current_node,
+            answer,
+        )
+
+        if next_node is not None:
+            node_history = session.get(
+                "node_history",
+                [],
+            )
+
+            node_history.append(
+                {
+                    "workflow": workflow_name,
+                    "node_id": current_node.id,
+                }
+            )
+        
+            session["node_history"] = node_history
+            session["current_node"] = next_node.id
+
+            estimated_steps = engine.workflow.get(
+                "estimated_steps",
+                5,
+            )
+
+            current_step = session.get("step", 1)
+
+            session["step"] = min(
+                current_step + 1,
+                estimated_steps,
+            )
+
+        return redirect(
+            url_for(
+                "wizard",
+                workflow=workflow_name,
+                resume="1",
+            )
+        )
+
+    # --------------------------------------------------
+    # Resume the current workflow after a redirect
+    # --------------------------------------------------
+    workflow_name = request.args.get("workflow")
+    resume_workflow = request.args.get("resume") == "1"
+
+    if resume_workflow:
+        session_workflow = session.get("workflow")
+        current_node_id = session.get("current_node")
+
+        if (
+            workflow_name != session_workflow
+            or workflow_name not in AVAILABLE_WORKFLOWS
+            or current_node_id is None
+        ):
+            return redirect(url_for("home"))
+
+        try:
+            engine.load_workflow(workflow_name)
+        except FileNotFoundError:
+            abort(404)
+
+        node = engine.get_node(current_node_id)
 
         if node is None:
-            abort(500)
-
-        session["workflow"] = workflow_name
-        session["current_node"] = node.id
-        session["step"] = 1
+            return redirect(url_for("home"))
 
         return render_wizard(
             engine,
@@ -805,15 +1104,9 @@ def wizard():
         )
 
     # --------------------------------------------------
-    # Continue an existing workflow
+    # Start or restart a workflow
     # --------------------------------------------------
-    workflow_name = session.get("workflow")
-    current_node_id = session.get("current_node")
-
-    if (
-        workflow_name not in AVAILABLE_WORKFLOWS
-        or current_node_id is None
-    ):
+    if workflow_name not in AVAILABLE_WORKFLOWS:
         return redirect(url_for("home"))
 
     try:
@@ -821,26 +1114,15 @@ def wizard():
     except FileNotFoundError:
         abort(404)
 
-    current_node = engine.get_node(current_node_id)
-
-    if current_node is None:
-        return redirect(url_for("home"))
-
-    answer = request.form.get("answer")
-    node = engine.advance(current_node, answer)
+    node = engine.get_start_node()
 
     if node is None:
-        node = current_node
-    else:
-        session["current_node"] = node.id
+        abort(500)
 
-        estimated_steps = engine.workflow.get("estimated_steps", 5)
-        current_step = session.get("step", 1)
-
-        session["step"] = min(
-            current_step + 1,
-            estimated_steps,
-        )
+    session["workflow"] = workflow_name
+    session["current_node"] = node.id
+    session["step"] = 1
+    session["node_history"] = []
 
     return render_wizard(
         engine,
@@ -860,6 +1142,7 @@ def render_wizard(engine, node, knowledge):
 
     estimated_steps = engine.workflow.get("estimated_steps", 5)
     current_step = session.get("step", 1)
+    current_step = max(current_step, 1)
 
     if node.type == "resolution":
         current_step = estimated_steps
@@ -880,15 +1163,18 @@ def render_wizard(engine, node, knowledge):
         )
 
     return render_template(
-        "wizard.html",
-        node=node,
-        article=article,
-        workflow_id=workflow_name,
-        workflow_name=workflow_info["name"],
-        current_step=current_step,
-        estimated_steps=estimated_steps,
-        progress_percent=progress_percent,
-    )
+    "wizard.html",
+    node=node,
+    article=article,
+    workflow_id=workflow_name,
+    workflow_name=workflow_info["name"],
+    current_step=current_step,
+    estimated_steps=estimated_steps,
+    progress_percent=progress_percent,
+    can_go_back=bool(
+        session.get("node_history")
+    ),
+)
 
 
 if __name__ == "__main__":

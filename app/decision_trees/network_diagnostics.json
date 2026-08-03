@@ -1,0 +1,116 @@
+{
+  "workflow_id": "network_diagnostics",
+  "name": "Advanced Network Diagnostics",
+  "estimated_steps": 5,
+  "start_node": "inspect_ip_configuration",
+
+  "nodes": {
+    "inspect_ip_configuration": {
+      "type": "instruction",
+      "title": "Inspect the IP configuration",
+      "instruction": "Open Command Prompt and run ipconfig /all. Check whether the active adapter has an IPv4 address, default gateway, and DNS servers.",
+      "knowledge_article": "ipconfig",
+      "next": "check_ip_address"
+    },
+
+    "check_ip_address": {
+      "type": "question",
+      "question": "What kind of IPv4 address does the active adapter have?",
+      "help_text": "An address beginning with 169.254 usually indicates that the computer could not obtain an address from DHCP.",
+      "answers": {
+        "normal": {
+          "label": "A normal private address",
+          "next": "test_gateway"
+        },
+        "apipa": {
+          "label": "A 169.254 address",
+          "next": "dhcp_problem"
+        },
+        "missing": {
+          "label": "No IPv4 address",
+          "next": "adapter_problem"
+        },
+        "unknown": {
+          "label": "I'm Not Sure",
+          "next": "inspect_ip_configuration"
+        }
+      }
+    },
+
+    "test_gateway": {
+      "type": "instruction",
+      "title": "Test the default gateway",
+      "instruction": "Run ping followed by the default gateway address shown in ipconfig /all.",
+      "knowledge_article": "ping",
+      "next": "gateway_result"
+    },
+
+    "gateway_result": {
+      "type": "question",
+      "question": "Did the default gateway respond?",
+      "answers": {
+        "yes": {
+          "label": "Yes",
+          "next": "test_dns"
+        },
+        "no": {
+          "label": "No",
+          "next": "local_network_problem"
+        }
+      }
+    },
+
+    "test_dns": {
+      "type": "instruction",
+      "title": "Test DNS resolution",
+      "instruction": "Run nslookup example.com and confirm that a DNS server returns an address.",
+      "knowledge_article": "nslookup",
+      "next": "dns_result"
+    },
+
+    "dns_result": {
+      "type": "question",
+      "question": "Did nslookup return an IP address?",
+      "answers": {
+        "yes": {
+          "label": "Yes",
+          "next": "advanced_complete"
+        },
+        "no": {
+          "label": "No",
+          "next": "dns_problem"
+        }
+      }
+    },
+
+    "dhcp_problem": {
+      "type": "resolution",
+      "title": "Possible DHCP problem",
+      "message": "The computer has an automatic private IP address. Renew the DHCP lease, verify the network connection, and confirm that a DHCP server is available."
+    },
+
+    "adapter_problem": {
+      "type": "resolution",
+      "title": "Possible adapter problem",
+      "message": "The active adapter does not have an IPv4 address. Check whether the adapter is enabled, its driver is working, and the connection is active."
+    },
+
+    "local_network_problem": {
+      "type": "resolution",
+      "title": "Local network connectivity problem",
+      "message": "The computer could not reach its default gateway. Check the adapter, cable or Wi-Fi connection, switch port, VLAN, and local network equipment."
+    },
+
+    "dns_problem": {
+      "type": "resolution",
+      "title": "DNS resolution problem",
+      "message": "The computer can reach the local network, but DNS resolution failed. Verify the configured DNS servers and test with a known working DNS server."
+    },
+
+    "advanced_complete": {
+      "type": "resolution",
+      "title": "Core network diagnostics passed",
+      "message": "The computer has a valid IP configuration, can reach the default gateway, and can resolve DNS names. Continue with browser, proxy, VPN, firewall, or application-specific troubleshooting if the issue remains."
+    }
+  }
+}

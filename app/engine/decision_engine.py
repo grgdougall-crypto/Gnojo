@@ -50,6 +50,7 @@ class DecisionEngine:
             answers=node_data.get("answers"),
             next=node_data.get("next"),
             knowledge_article=node_data.get("knowledge_article"),
+            next_workflow=node_data.get("next_workflow"),
         )
 
     def get_start_node(self):
@@ -115,6 +116,9 @@ class DecisionEngine:
                 return None
 
             return self.get_node(node.next)
+
+        if node.type == "transition":
+            return self.get_node(node.next_workflow)
 
         if node.type == "resolution":
             return None

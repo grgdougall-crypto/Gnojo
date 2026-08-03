@@ -593,8 +593,12 @@
                                 </h3>
 
                                 <p class="text-muted mb-3">
-                                    {{ article.overview }}
-                                </p>
+    {{
+        article.overview
+        or article.description
+        or article.summary
+    }}
+</p>
 
                                 <a
                                     class="btn btn-outline-primary"

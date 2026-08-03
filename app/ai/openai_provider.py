@@ -3,29 +3,34 @@ import json
 import os
 
 from dotenv import load_dotenv
-from google import genai
+from openai import OpenAI
 
 from app.ai.provider import AIProvider
 
 load_dotenv(override=True)
 
 
-class GeminiProvider(AIProvider):
+class OpenAIProvider(AIProvider):
     """
     Generates structured SupportPilot content
-    using Google's Gemini API.
+    using the OpenAI API.
     """
 
     def __init__(self):
-        api_key = os.getenv("GEMINI_API_KEY")
+        api_key = os.getenv("OPENAI_API_KEY")
 
         if not api_key:
             raise RuntimeError(
-                "GEMINI_API_KEY is not configured."
+                "OPENAI_API_KEY is not configured."
             )
 
-        self.client = genai.Client(
+        self.client = OpenAI(
             api_key=api_key
+        )
+
+        self.model = os.getenv(
+            "OPENAI_MODEL",
+            "gpt-5.5",
         )
 
     def generate_command(
@@ -144,22 +149,22 @@ class GeminiProvider(AIProvider):
         content_type,
     ):
         """
-        Send a prompt to Gemini and return
+        Send a prompt to OpenAI and return
         a validated JSON dictionary.
         """
 
-        response = self.client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=prompt,
+        response = self.client.responses.create(
+            model=self.model,
+            input=prompt,
         )
 
         response_text = (
-            response.text or ""
+            response.output_text or ""
         ).strip()
 
         if not response_text:
             raise RuntimeError(
-                f"Gemini returned an empty {content_type} response."
+                f"OpenAI returned an empty {content_type} response."
             )
 
         response_text = self._remove_code_fence(
@@ -172,12 +177,12 @@ class GeminiProvider(AIProvider):
             )
         except json.JSONDecodeError as error:
             raise RuntimeError(
-                f"Gemini returned invalid {content_type} JSON."
+                f"OpenAI returned invalid {content_type} JSON."
             ) from error
 
         if not isinstance(generated, dict):
             raise RuntimeError(
-                f"Gemini returned an unexpected "
+                f"OpenAI returned an unexpected "
                 f"{content_type} response structure."
             )
 

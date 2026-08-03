@@ -1,0 +1,454 @@
+{% extends "base.html" %}
+
+{% block title %}
+{{ article.command_name }} | SupportPilot
+{% endblock %}
+
+{% block content %}
+
+<section class="content-section">
+
+    <div class="container">
+
+        <div
+            class="d-flex flex-wrap justify-content-between
+                   align-items-start gap-3 mb-5"
+        >
+            <div>
+
+                <p class="section-label">
+                    Published Knowledge
+                </p>
+
+                <h1 class="display-5 fw-bold mb-3">
+                    Understanding {{ article.command_name }}
+                </h1>
+
+                <p class="lead text-muted mb-3">
+                    {{ article.summary }}
+                </p>
+
+                <div class="d-flex flex-wrap gap-2">
+
+                    <span class="badge text-bg-success">
+                        {{ article.metadata.status }}
+                    </span>
+
+                    <span class="badge text-bg-secondary">
+                        Version {{ article.metadata.version }}
+                    </span>
+
+                    <span class="badge text-bg-info">
+                        Published {{ article.metadata.published_at }}
+                    </span>
+
+                </div>
+
+            </div>
+
+            <a
+                class="btn btn-outline-primary"
+                href="{{ url_for('knowledge_center') }}"
+            >
+                <i class="bi bi-arrow-left me-2"></i>
+                Knowledge Center
+            </a>
+
+        </div>
+
+        <article class="mx-auto" style="max-width: 960px;">
+
+            <section class="mb-5" id="overview">
+
+                <p
+                    class="text-uppercase text-primary
+                           small fw-bold mb-2"
+                >
+                    Overview
+                </p>
+
+                <h2 class="h3 mb-3">
+                    What this command does
+                </h2>
+
+                <p class="text-muted mb-0">
+                    {{ article.summary }}
+                </p>
+
+            </section>
+
+            <hr class="my-5">
+
+            <section class="mb-5" id="syntax">
+
+                <p
+                    class="text-uppercase text-primary
+                           small fw-bold mb-2"
+                >
+                    Syntax
+                </p>
+
+                <pre class="mb-0"><code>{{ article.syntax }}</code></pre>
+
+            </section>
+
+            <hr class="my-5">
+
+            <section class="mb-5" id="examples">
+
+                <div
+                    class="d-flex justify-content-between
+                           align-items-center gap-3 mb-3"
+                >
+                    <div>
+
+                        <p
+                            class="text-uppercase text-primary
+                                   small fw-bold mb-2"
+                        >
+                            Examples
+                        </p>
+
+                        <h2 class="h3 mb-0">
+                            Practical usage
+                        </h2>
+
+                    </div>
+
+                    <span class="badge text-bg-primary">
+                        {{ article.examples | length }}
+                    </span>
+
+                </div>
+
+                {% if article.examples %}
+
+                    <div class="d-grid gap-3">
+
+                        {% for example in article.examples %}
+
+                            <div class="border rounded p-4">
+
+                                <pre class="mb-3"><code>{{ example.command }}</code></pre>
+
+                                <p class="text-muted mb-0">
+                                    {{ example.description }}
+                                </p>
+
+                            </div>
+
+                        {% endfor %}
+
+                    </div>
+
+                {% endif %}
+
+            </section>
+
+            <hr class="my-5">
+
+            <section class="mb-5" id="important-fields">
+
+                <p
+                    class="text-uppercase text-primary
+                           small fw-bold mb-2"
+                >
+                    Important Fields
+                </p>
+
+                <h2 class="h3 mb-4">
+                    What to inspect
+                </h2>
+
+                <div class="row g-3">
+
+                    {% for field in article.important_fields %}
+
+                        <div class="col-12 col-lg-6">
+
+                            <div class="border rounded p-4 h-100">
+
+                                <h3 class="h5 mb-2">
+                                    {{
+                                        field.field
+                                        | default(
+                                            field.name
+                                            | default("Field")
+                                        )
+                                    }}
+                                </h3>
+
+                                <p class="text-muted mb-0">
+                                    {{ field.description }}
+                                </p>
+
+                            </div>
+
+                        </div>
+
+                    {% endfor %}
+
+                </div>
+
+            </section>
+
+            <hr class="my-5">
+
+            <section class="mb-5" id="common-errors">
+
+                <p
+                    class="text-uppercase text-primary
+                           small fw-bold mb-2"
+                >
+                    Common Errors
+                </p>
+
+                <h2 class="h3 mb-4">
+                    Troubleshooting guidance
+                </h2>
+
+                <div class="d-grid gap-3">
+
+                    {% for error in article.common_errors %}
+
+                        <div class="border rounded p-4">
+
+                            <h3 class="h5 mb-2">
+                                {{
+                                    error.error
+                                    | default(
+                                        error.message
+                                        | default("Error condition")
+                                    )
+                                }}
+                            </h3>
+
+                            <p class="text-muted mb-0">
+                                {{
+                                    error.description
+                                    | default(
+                                        error.meaning
+                                        | default("")
+                                    )
+                                }}
+                            </p>
+
+                        </div>
+
+                    {% endfor %}
+
+                </div>
+
+            </section>
+
+            <hr class="my-5">
+
+            <section class="mb-5" id="analysis">
+
+                <p
+                    class="text-uppercase text-primary
+                           small fw-bold mb-2"
+                >
+                    Knowledge Analysis
+                </p>
+
+                <h2 class="h3 mb-4">
+                    {{ article.explanation.title }}
+                </h2>
+
+                <div class="row g-4">
+
+                    <div class="col-12 col-lg-6">
+
+                        <h3 class="h5">
+                            Purpose
+                        </h3>
+
+                        <p class="text-muted mb-0">
+                            {{ article.explanation.purpose }}
+                        </p>
+
+                    </div>
+
+                    <div class="col-12 col-lg-6">
+
+                        <h3 class="h5">
+                            When to use it
+                        </h3>
+
+                        <p class="text-muted mb-0">
+                            {{ article.explanation.when_to_use }}
+                        </p>
+
+                    </div>
+
+                    {% if article.explanation.narrative %}
+
+                        <div class="col-12">
+
+                            <div class="alert alert-primary mb-0">
+
+                                <h3 class="h5 mb-2">
+                                    Technician narrative
+                                </h3>
+
+                                <p class="mb-0">
+                                    {{ article.explanation.narrative }}
+                                </p>
+
+                            </div>
+
+                        </div>
+
+                    {% endif %}
+
+                    <div class="col-12 col-lg-6">
+
+                        <h3 class="h5">
+                            Permissions
+                        </h3>
+
+                        <p class="text-muted mb-0">
+                            {{ article.explanation.permissions_notes }}
+                        </p>
+
+                    </div>
+
+                    <div class="col-12 col-lg-6">
+
+                        <h3 class="h5">
+                            Risk and impact
+                        </h3>
+
+                        <p class="mb-2">
+
+                            <span class="badge text-bg-warning">
+                                {{ article.explanation.risk_level }}
+                            </span>
+
+                        </p>
+
+                        <p class="text-muted mb-0">
+                            {{ article.explanation.risk_warning }}
+                        </p>
+
+                    </div>
+
+                </div>
+
+            </section>
+
+            <hr class="my-5">
+
+            <section class="mb-5" id="related">
+
+                <div class="row g-4">
+
+                    <div class="col-12 col-lg-6">
+
+                        <p
+                            class="text-uppercase text-primary
+                                   small fw-bold mb-2"
+                        >
+                            Related Commands
+                        </p>
+
+                        <div class="d-flex flex-wrap gap-2">
+
+                            {% for command in article.related_commands %}
+
+                                <span
+                                    class="badge rounded-pill
+                                           text-bg-secondary"
+                                >
+                                    {{ command }}
+                                </span>
+
+                            {% endfor %}
+
+                        </div>
+
+                    </div>
+
+                    <div class="col-12 col-lg-6">
+
+                        <p
+                            class="text-uppercase text-primary
+                                   small fw-bold mb-2"
+                        >
+                            Official References
+                        </p>
+
+                        <div class="d-grid gap-3">
+
+                            {% for reference in article.official_references %}
+
+                                <div>
+
+                                    <div class="fw-semibold">
+                                        {{ reference.title }}
+                                    </div>
+
+                                    {% if reference.url %}
+
+                                        <a
+                                            class="small"
+                                            href="{{ reference.url }}"
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                        >
+                                            Open official reference
+                                            <i
+                                                class="bi
+                                                       bi-box-arrow-up-right
+                                                       ms-1"
+                                            ></i>
+                                        </a>
+
+                                    {% else %}
+
+                                        <span class="small text-warning">
+                                            URL unavailable
+                                        </span>
+
+                                    {% endif %}
+
+                                </div>
+
+                            {% endfor %}
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </section>
+
+            <div
+                class="d-flex flex-wrap justify-content-between
+                       align-items-center gap-3 border-top pt-4"
+            >
+                <a
+                    class="btn btn-outline-secondary"
+                    href="{{ url_for('knowledge_center') }}"
+                >
+                    Back to Knowledge Center
+                </a>
+
+                <a
+                    class="btn btn-outline-primary"
+                    href="{{ url_for('edit_command_draft') }}"
+                >
+                    <i class="bi bi-pencil-square me-2"></i>
+                    Open in Knowledge Studio
+                </a>
+            </div>
+
+        </article>
+
+    </div>
+
+</section>
+
+{% endblock %}

@@ -1,0 +1,99 @@
+{
+  "id": "hostname",
+  "title": "Understanding hostname",
+  "command_name": "hostname",
+  "type": "command",
+  "category": "Networking",
+  "difficulty": "Beginner",
+  "estimated_time": "5–10 minutes",
+  "tags": [
+    "hostname",
+    "networking",
+    "command prompt",
+    "troubleshooting"
+  ],
+  "status": "published",
+  "description": "Displays the name of the current host computer. This name is used to identify the machine on a network.",
+  "summary": "Displays the name of the current host computer. This name is used to identify the machine on a network.",
+  "syntax": "hostname",
+  "examples": [
+    {
+      "command": "hostname",
+      "description": "Displays the current machine's hostname."
+    }
+  ],
+  "important_fields": [
+    {
+      "field": "Output string (the hostname)",
+      "description": "This is the unique identifier for the machine on the network. It's crucial for identifying which system you are working on, especially in environments with multiple machines, and for network communication."
+    }
+  ],
+  "common_errors": [
+    {
+      "error": "'hostname' is not recognized as an internal or external command, operable program or batch file.",
+      "description": "This error indicates that the system cannot find the `hostname.exe` executable. This is highly uncommon for the `hostname` command, as it's a standard system utility usually located in `C:\\Windows\\System32`, which is typically in the system's PATH. If encountered, check the system's PATH environment variable or verify the presence and integrity of `hostname.exe`."
+    }
+  ],
+  "related_commands": [
+    "ipconfig",
+    "whoami",
+    "systeminfo",
+    "nslookup",
+    "ping"
+  ],
+  "related_articles": [],
+  "official_references": [
+    {
+      "title": "hostname command | Microsoft Learn",
+      "url": "https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/hostname"
+    }
+  ],
+  "explanation": {
+    "title": "Understanding the hostname command",
+    "purpose": "The `hostname` command provides the unique name assigned to a computer on a network. This name is fundamental for identification, communication, and management within IT environments. It's often the first piece of information a technician needs to confirm which machine they are interacting with.",
+    "when_to_use": "To quickly identify the current computer's network name.\nTo verify a machine's identity before performing network-related tasks.\nIn scripts that require the local machine's name for logging or configuration.\nWhen remotely connected to a machine and needing to confirm the correct target.",
+    "what_to_check": [
+      {
+        "name": "The displayed hostname string",
+        "description": "Verify that the hostname matches the expected name for the machine you are troubleshooting or working on. Mismatches can indicate you are on the wrong machine or that the machine's identity is incorrectly configured."
+      }
+    ],
+    "interpretation": [
+      {
+        "title": "Valid hostname returned",
+        "message": "The command successfully returned a specific, recognizable name. This indicates the machine is correctly configured with a hostname and is identifiable on the network. Proceed with other troubleshooting steps or tasks."
+      },
+      {
+        "title": "Generic or unexpected hostname returned",
+        "message": "If the hostname is a generic name (e.g., 'DESKTOP-XXXXXX') or one you don't recognize, it might indicate a default installation, a virtual machine clone that wasn't renamed, or a misconfigured system. Investigate further to ensure the machine's identity is correct for your environment."
+      }
+    ],
+    "common_mistake": "A common mistake is assuming that `hostname` will provide IP address information or other network configuration details. `hostname` solely provides the machine's name, not its network addresses or connectivity status.",
+    "requires_elevation": false,
+    "permissions_notes": "No special administrative permissions are required to run `hostname`. Any user can execute this command.",
+    "risk_level": "Low",
+    "risk_warning": "The `hostname` command is read-only and poses no risk to system stability or network operations.",
+    "next_steps": [
+      {
+        "id": "ipconfig",
+        "name": "ipconfig",
+        "summary": "After identifying the machine by its hostname, `ipconfig` is a logical next step to retrieve its IP address, subnet mask, default gateway, and DNS server information, which are critical for network troubleshooting."
+      },
+      {
+        "id": "ping",
+        "name": "ping",
+        "summary": "Once the hostname is known, `ping` can be used to test network connectivity to other hosts by name or IP, or to verify if the local machine can resolve its own hostname."
+      }
+    ],
+    "narrative": "As a technician, confirming which machine you're working on is paramount. The `hostname` command gives you that critical initial piece of information – the computer's unique network name. You run `hostname`, and it instantly outputs something like 'SERVER01' or 'DEV-WORKSTATION-03'. This tells you, 'Okay, I'm definitely on SERVER01.' If you're expecting a different name, it's a red flag to investigate if you've connected to the wrong machine or if the hostname itself is incorrect. Once you've confirmed the hostname, your next logical step is often to check its network configuration with `ipconfig` or to test its connectivity to other machines using `ping` to ensure it can communicate properly on the network."
+  },
+  "metadata": {
+    "status": "Published",
+    "version": "1.0",
+    "last_saved": "Aug 02, 2026 07:35 PM",
+    "published_at": "Aug 02, 2026 07:38 PM"
+  },
+  "review": {
+    "status": "published"
+  }
+}

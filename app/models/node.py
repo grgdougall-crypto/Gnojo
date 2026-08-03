@@ -22,3 +22,6 @@ class Node:
     next: Optional[str] = None
 
     knowledge_article: Optional[str] = None
+
+    # New: allows one workflow to transition into another
+    next_workflow: Optional[str] = None

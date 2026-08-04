@@ -15,7 +15,32 @@ __pycache__/
 
 # Environment variables
 .env
+.env.*
+!.env.example
+
+# Test and coverage output
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Logs and temporary output
+*.log
+*.tmp
+tmp/
+temp/
+outputs/
+exports/
+app/outputs/
+app/exports/
 
 knowledge_base/drafts/
 
 app/workflow_drafts/
+app/workflow_publications/
+app/device_profiles/
+app/troubleshooting_history/
+
+# OS and editor artifacts
+Thumbs.db
+Desktop.ini

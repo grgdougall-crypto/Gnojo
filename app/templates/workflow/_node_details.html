@@ -1,0 +1,102 @@
+<section id="nodeDetailsPanel" class="workflow-panel workflow-details" data-workflow-panel-name="details" aria-labelledby="nodeDetailsTitle">
+    <div class="workflow-panel__header workflow-details__header">
+        <div>
+            <span class="workflow-panel__eyebrow">Selected node</span>
+            <h2 id="nodeDetailsTitle">Choose a node</h2>
+        </div>
+        <span id="nodeDetailsType" class="node-type-badge" hidden></span>
+    </div>
+
+    <div id="nodeDetailsEmpty" class="workflow-details__empty">
+        <span class="workflow-details__empty-icon"><i class="bi bi-cursor" aria-hidden="true"></i></span>
+        <h3>Nothing selected</h3>
+        <p>Choose a node from the browser to inspect or edit it.</p>
+    </div>
+
+    <form id="nodeEditorForm" class="workflow-details__form" hidden novalidate>
+        <div class="workflow-details__content">
+            <div class="node-field">
+                <label id="nodePrimaryLabel" for="nodePrimaryValue">Title</label>
+                <input id="nodePrimaryValue" class="node-editor-control" type="text" required>
+            </div>
+
+            <div id="nodeHelpField" class="node-field">
+                <label for="nodeHelpValue">Help text</label>
+                <textarea id="nodeHelpValue" class="node-editor-control" rows="3"></textarea>
+            </div>
+
+            <section class="coverage-assistant" aria-labelledby="coverageAssistantTitle">
+                <div class="coverage-assistant__heading"><div><span class="workflow-panel__eyebrow">Content Coverage Assistant</span><h3 id="coverageAssistantTitle">Fill support-content gaps</h3></div><i class="bi bi-magic" aria-hidden="true"></i></div>
+                <p>Generate local draft content from this node. Review all technical guidance before publishing.</p>
+                <div class="coverage-assistant__actions">
+                    <button id="generateHelpTextButton" class="btn btn-sm btn-outline-info" type="button" disabled><i class="bi bi-lightbulb" aria-hidden="true"></i> Generate help text</button>
+                    <button id="createArticleDraftButton" class="btn btn-sm btn-outline-success" type="button" disabled><i class="bi bi-journal-plus" aria-hidden="true"></i> Create article draft</button>
+                    <a id="openArticleDraftLink" class="btn btn-sm btn-success" href="#" hidden>Review article <i class="bi bi-arrow-up-right" aria-hidden="true"></i></a>
+                </div>
+                <span id="coverageAssistantMessage" class="coverage-assistant__message" data-a11y-live>Select a node to see available actions.</span>
+            </section>
+
+            <div id="nodeInstructionField" class="node-field" hidden>
+                <label for="nodeInstructionValue">Instruction</label>
+                <textarea id="nodeInstructionValue" class="node-editor-control" rows="5"></textarea>
+            </div>
+
+            <div id="nodeMessageField" class="node-field" hidden>
+                <label for="nodeMessageValue">Message</label>
+                <textarea id="nodeMessageValue" class="node-editor-control" rows="5"></textarea>
+            </div>
+
+            <section id="nodeAnswersField" class="node-field node-answers-editor" hidden>
+                <div class="node-field__heading">
+                    <span>Answers</span>
+                    <button id="addNodeAnswer" class="btn btn-sm btn-outline-primary" type="button">
+                        <i class="bi bi-plus-lg" aria-hidden="true"></i> Add answer
+                    </button>
+                </div>
+                <div id="nodeAnswersEditor" class="node-answer-editor-list"></div>
+            </section>
+
+            <div class="node-editor-grid">
+                <div id="nodeNextField" class="node-field">
+                    <label for="nodeNextValue">Next node</label>
+                    <input id="nodeNextValue" class="node-editor-control" type="text">
+                </div>
+                <div id="nodeKnowledgeField" class="node-field">
+                    <label for="nodeKnowledgeValue">Knowledge article</label>
+                    <input id="nodeKnowledgeValue" class="node-editor-control" type="text">
+                </div>
+                <div id="nodeWorkflowField" class="node-field">
+                    <label for="nodeWorkflowValue">Next workflow</label>
+                    <input id="nodeWorkflowValue" class="node-editor-control" type="text">
+                </div>
+            </div>
+
+            <section class="node-condition-editor" aria-labelledby="nodeConditionTitle">
+                <div class="node-field__heading">
+                    <span id="nodeConditionTitle">Device conditions <small>Optional</small></span>
+                </div>
+                <p class="node-condition-editor__help">This node appears only when every selected condition matches. Choose a safe skip destination for all other devices.</p>
+                <div class="node-editor-grid">
+                    <div class="node-field"><label for="nodeConditionPlatform">Platform</label><select id="nodeConditionPlatform" class="node-editor-control"><option value="">Any platform</option>{% for value in ['Windows','macOS','Linux','ChromeOS','Other'] %}<option>{{ value }}</option>{% endfor %}</select></div>
+                    <div class="node-field"><label for="nodeConditionDeviceType">Device type</label><select id="nodeConditionDeviceType" class="node-editor-control"><option value="">Any device</option>{% for value in ['Desktop','Laptop','Server','Tablet','Virtual machine','Other'] %}<option>{{ value }}</option>{% endfor %}</select></div>
+                    <div class="node-field"><label for="nodeConditionConnection">Connection</label><select id="nodeConditionConnection" class="node-editor-control"><option value="">Any connection</option>{% for value in ['Ethernet','Wi-Fi','Cellular','VPN','Offline','Other'] %}<option>{{ value }}</option>{% endfor %}</select></div>
+                    <div class="node-field"><label for="nodeSkipToValue">If conditions do not match, skip to</label><input id="nodeSkipToValue" class="node-editor-control" type="text" placeholder="Node ID"></div>
+                </div>
+            </section>
+        </div>
+
+        <div class="workflow-panel__footer workflow-details__actions">
+        <span id="nodeDetailsHint" data-a11y-live>Select a node to begin editing.</span>
+        <div>
+            <button id="improveNodeButton" class="btn btn-sm btn-outline-primary" type="button" disabled>
+                <i class="bi bi-stars" aria-hidden="true"></i> Improve with AI
+            </button>
+            <button id="resetNodeButton" class="btn btn-sm btn-outline-secondary" type="button" disabled>Reset</button>
+                <button id="saveNodeButton" class="btn btn-sm btn-primary" type="submit" disabled>
+                    <span class="save-button__label">Save changes</span>
+                    <span class="save-button__busy" hidden><span class="spinner-border spinner-border-sm" aria-hidden="true"></span> Saving</span>
+                </button>
+            </div>
+        </div>
+    </form>
+</section>

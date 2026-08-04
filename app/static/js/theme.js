@@ -11,7 +11,11 @@ function updateThemeIcon(theme) {
     }
 }
 
-const savedTheme = localStorage.getItem("supportpilot-theme") || "light";
+const savedTheme = (
+    localStorage.getItem("gnojo-theme")
+    || localStorage.getItem("supportpilot-theme")
+    || "light"
+);
 
 root.setAttribute("data-bs-theme", savedTheme);
 updateThemeIcon(savedTheme);
@@ -21,7 +25,8 @@ toggleButton.addEventListener("click", () => {
     const newTheme = currentTheme === "dark" ? "light" : "dark";
 
     root.setAttribute("data-bs-theme", newTheme);
-    localStorage.setItem("supportpilot-theme", newTheme);
+    localStorage.setItem("gnojo-theme", newTheme);
+    localStorage.removeItem("supportpilot-theme");
     updateThemeIcon(newTheme);
 });
 

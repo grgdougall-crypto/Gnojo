@@ -18,6 +18,19 @@
                     Command
                 </span>
 
+            {% elif result.content_type == "Workflow" %}
+
+                <span class="badge text-bg-info">
+                    <i class="bi bi-signpost-split me-1"></i>
+                    Workflow
+                </span>
+
+                {% if active_device and result.difficulty == active_device.platform %}
+                <span class="badge text-bg-success"><i class="bi bi-stars me-1"></i>Recommended for {{ active_device.name }}</span>
+                {% elif active_device and result.difficulty not in ['Cross-platform', active_device.platform] %}
+                <span class="badge text-bg-warning">Different platform</span>
+                {% endif %}
+
             {% else %}
 
                 <span class="badge text-bg-secondary">
@@ -75,6 +88,13 @@
                 class="btn btn-primary"
             >
                 View Command
+                <i class="bi bi-arrow-right ms-2"></i>
+            </a>
+
+        {% elif result.content_type == "Workflow" %}
+
+            <a href="{{ url_for(result.endpoint, workflow=result.id) }}" class="btn btn-primary">
+                Start Workflow
                 <i class="bi bi-arrow-right ms-2"></i>
             </a>
 

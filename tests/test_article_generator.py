@@ -1,6 +1,6 @@
 """
 Purpose:
-    Test the complete SupportPilot article-generation pipeline.
+    Test the complete Gnojo article-generation pipeline.
 
 Responsibilities:
     - Build an article prompt.

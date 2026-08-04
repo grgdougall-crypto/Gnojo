@@ -1,4 +1,4 @@
-# SupportPilot 2.0 Blueprint
+# Gnojo 2.0 Blueprint
 
 **Version:** 1.0  
 **Status:** Living Design Document
@@ -7,11 +7,11 @@
 
 # Vision
 
-SupportPilot is a technician-first IT operations platform that unifies troubleshooting knowledge, command references, workflows, decision trees, scripts, policies, and AI-assisted guidance into one connected knowledge ecosystem.
+Gnojo is a technician-first IT operations platform that unifies troubleshooting knowledge, command references, workflows, decision trees, scripts, policies, and AI-assisted guidance into one connected knowledge ecosystem.
 
 The objective is to reduce resolution time by providing technicians with the right information, tools, and next steps from a single interface.
 
-SupportPilot is designed to evolve beyond a traditional knowledge base into an intelligent operations platform.
+Gnojo is designed to evolve beyond a traditional knowledge base into an intelligent operations platform.
 
 ---
 
@@ -60,7 +60,7 @@ Examples include:
 - Decision Trees reference Commands
 - Scripts reference Workflows
 
-SupportPilot should discover relationships instead of storing duplicate information whenever possible.
+Gnojo should discover relationships instead of storing duplicate information whenever possible.
 
 ---
 
@@ -157,7 +157,7 @@ Each folder should have one clearly defined responsibility.
 
 # Knowledge Objects
 
-SupportPilot organizes information into reusable knowledge objects.
+Gnojo organizes information into reusable knowledge objects.
 
 ## Knowledge Article
 
@@ -291,7 +291,7 @@ Services coordinate repositories and prepare information for presentation.
 
 # Search Architecture
 
-SupportPilot provides one universal search experience.
+Gnojo provides one universal search experience.
 
 Current repositories:
 
@@ -386,7 +386,7 @@ If these questions cannot be answered clearly, the design should be reconsidered
 
 # Long-Term Vision
 
-SupportPilot is being designed as a platform rather than a collection of pages.
+Gnojo is being designed as a platform rather than a collection of pages.
 
 Future capabilities include:
 
@@ -449,7 +449,7 @@ The architecture should support future growth without requiring significant rede
 
 # Guiding Principle
 
-SupportPilot should always make technicians more effective.
+Gnojo should always make technicians more effective.
 
 Every feature should either:
 
@@ -458,4 +458,4 @@ Every feature should either:
 - Increase knowledge accessibility
 - Automate repetitive work
 
-If it does not accomplish one of these goals, it does not belong in SupportPilot.
+If it does not accomplish one of these goals, it does not belong in Gnojo.

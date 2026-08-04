@@ -4,7 +4,7 @@ from app.ai.openai_provider import OpenAIProvider
 
 class WorkflowGenerationEngine:
     """
-    Generate structured SupportPilot workflow drafts.
+    Generate structured Gnojo workflow drafts.
     """
 
     def __init__(self):

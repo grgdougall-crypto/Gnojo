@@ -1,6 +1,6 @@
 class WorkflowValidationService:
     """
-    Validate AI-generated SupportPilot workflow drafts.
+    Validate AI-generated Gnojo workflow drafts.
     """
 
     allowed_node_types = {
@@ -82,6 +82,8 @@ class WorkflowValidationService:
 
             node_type = node.get("type")
 
+            self._validate_conditions(node_id, node, nodes, errors)
+
             if node_type not in self.allowed_node_types:
                 errors.append(
                     f"Node '{node_id}' has unsupported type "
@@ -119,6 +121,8 @@ class WorkflowValidationService:
                     errors,
                 )
 
+        self._validate_conditional_cycles(nodes, errors)
+
         reachable_nodes = self._find_reachable_nodes(
             start_node,
             nodes,
@@ -136,7 +140,7 @@ class WorkflowValidationService:
         terminal_nodes = [
             node_id
             for node_id, node in nodes.items()
-            if node.get("type") in {
+            if isinstance(node, dict) and node.get("type") in {
                 "resolution",
                 "transition",
             }
@@ -157,6 +161,44 @@ class WorkflowValidationService:
             ),
             "unreachable_nodes": unreachable_nodes,
         }
+
+    def _validate_conditions(self, node_id, node, nodes, errors):
+        from app.services.workflow_condition_service import CONDITION_FIELDS
+        conditions = node.get("conditions")
+        if conditions is None:
+            return
+        if not isinstance(conditions, dict) or not conditions:
+            errors.append(f"Node '{node_id}' conditions must be a non-empty object.")
+            return
+        for field, value in conditions.items():
+            if field not in CONDITION_FIELDS or value not in CONDITION_FIELDS.get(field, set()):
+                errors.append(f"Node '{node_id}' has an invalid condition for '{field}'.")
+        skip_to = node.get("skip_to")
+        if not isinstance(skip_to, str) or not skip_to:
+            errors.append(f"Conditional node '{node_id}' requires skip_to.")
+        elif skip_to not in nodes:
+            errors.append(f"Conditional node '{node_id}' references missing skip node '{skip_to}'.")
+        elif skip_to == node_id:
+            errors.append(f"Conditional node '{node_id}' cannot skip to itself.")
+
+    def _validate_conditional_cycles(self, nodes, errors):
+        reported = set()
+        for start_id in nodes:
+            seen = []
+            current_id = start_id
+            while current_id in nodes:
+                node = nodes[current_id]
+                if not isinstance(node, dict) or not node.get("conditions"):
+                    break
+                if current_id in seen:
+                    cycle = tuple(seen[seen.index(current_id):])
+                    signature = tuple(sorted(cycle))
+                    if signature not in reported:
+                        reported.add(signature)
+                        errors.append(f"Conditional skip route contains a loop involving node '{current_id}'.")
+                    break
+                seen.append(current_id)
+                current_id = node.get("skip_to")
 
     def _validate_question_node(
         self,
@@ -327,9 +369,11 @@ class WorkflowValidationService:
         if node_type == "question":
             next_node_ids = []
 
-            for answer_data in (
-                node.get("answers") or {}
-            ).values():
+            answers = node.get("answers")
+            if not isinstance(answers, dict):
+                return next_node_ids
+
+            for answer_data in answers.values():
                 if isinstance(answer_data, dict):
                     next_node_id = answer_data.get("next")
                 else:

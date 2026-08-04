@@ -1,8 +1,8 @@
-# SupportPilot Taxonomy
+# Gnojo Taxonomy
 
 ## Purpose
 
-The SupportPilot taxonomy defines how knowledge is organized throughout the platform.
+The Gnojo taxonomy defines how knowledge is organized throughout the platform.
 
 A consistent taxonomy improves discoverability, search, learning progression, reporting, and long-term maintainability.
 

@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block title %}Browse Workflows | Gnojo{% endblock %}
+
+{% block content %}
+<section class="container workflow-catalog-page" aria-labelledby="catalogTitle">
+    <div class="catalog-heading">
+        <div>
+            <span class="section-eyebrow">Guided troubleshooting library</span>
+            <h1 id="catalogTitle">Browse Workflows</h1>
+            <p>Search the complete Gnojo workflow collection by issue, category, or platform.</p>
+        </div>
+        <span class="catalog-count">{{ workflows|length }} workflow{% if workflows|length != 1 %}s{% endif %}</span>
+    </div>
+
+    {% if active_device %}
+    <div class="history-privacy catalog-device-note" role="note">
+        <i class="bi bi-pc-display" aria-hidden="true"></i>
+        <span>Recommendations are tailored for <strong>{{ active_device.name }}</strong> · {{ active_device.platform }}.</span>
+    </div>
+    {% endif %}
+
+    <div class="workflow-discovery" aria-label="Filter workflows">
+        <div class="workflow-filter-buttons" id="workflowCategoryFilters">
+            <button class="btn btn-sm btn-primary" type="button" data-workflow-category="all" aria-pressed="true">All</button>
+            <button class="btn btn-sm btn-outline-primary" type="button" data-workflow-category="favorites" aria-pressed="false"><i class="bi bi-star-fill me-1" aria-hidden="true"></i>Favorites <span id="favoriteWorkflowCount">{{ favorite_ids|length }}</span></button>
+            <button class="btn btn-sm btn-outline-primary" type="button" data-workflow-category="recent" aria-pressed="false"><i class="bi bi-clock-history me-1" aria-hidden="true"></i>Recently used</button>
+            {% for category in workflows.values()|map(attribute='category')|unique|sort %}
+            <button class="btn btn-sm btn-outline-primary" type="button" data-workflow-category="{{ category }}" aria-pressed="false">{{ category }}</button>
+            {% endfor %}
+        </div>
+        <label class="workflow-filter-search">
+            <i class="bi bi-search" aria-hidden="true"></i>
+            <input id="workflowFilterSearch" type="search" placeholder="Find a workflow" aria-label="Find a workflow">
+        </label>
+    </div>
+
+    <div class="row g-3" id="workflowCardGrid">
+        {% for workflow_id, workflow in workflows.items() %}
+            {% include "partials/workflow_card.html" %}
+        {% endfor %}
+    </div>
+    <div id="workflowFilterEmpty" class="history-empty" role="status" data-a11y-live hidden>
+        <i class="bi bi-search" aria-hidden="true"></i>
+        <h2>No matching workflows</h2>
+        <p>Try another category or a broader search term.</p>
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/workflow_discovery.js') }}"></script>
+<script src="{{ url_for('static', filename='js/workflow_favorites.js') }}"></script>
+{% endblock %}

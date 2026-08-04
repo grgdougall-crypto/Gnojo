@@ -14,7 +14,7 @@ Artificial intelligence should enhance human expertise, not replace it. Every fe
 
 Create the world's most trusted platform for technical knowledge creation, validation, publishing, and learning.
 
-SupportPilot is more than a troubleshooting assistant. It is a connected knowledge ecosystem where commands, articles, workflows, decision trees, and learning experiences work together to help people solve problems, share expertise, and preserve institutional knowledge.
+Gnojo is more than a troubleshooting assistant. It is a connected knowledge ecosystem where commands, articles, workflows, decision trees, and learning experiences work together to help people solve problems, share expertise, and preserve institutional knowledge.
 
 Our goal is to make technical knowledge easier to create, easier to trust, and easier to apply.
 
@@ -22,7 +22,7 @@ Our goal is to make technical knowledge easier to create, easier to trust, and e
 
 ## Who We Serve
 
-SupportPilot is designed for the people who keep technology running.
+Gnojo is designed for the people who keep technology running.
 
 - Help Desk Technicians
 - Desktop Support Specialists
@@ -55,7 +55,7 @@ Every interaction should help users better understand the technology behind the 
 
 ### Explain, Don't Just Answer
 
-SupportPilot should provide context, reasoning, and guidance rather than simply returning answers.
+Gnojo should provide context, reasoning, and guidance rather than simply returning answers.
 
 ### Build Once, Reuse Everywhere
 
@@ -73,7 +73,7 @@ Architecture should prioritize simplicity, scalability, and long-term maintainab
 
 ## Platform Philosophy
 
-SupportPilot is a technical knowledge platform.
+Gnojo is a technical knowledge platform.
 
 Knowledge is the foundation of every capability within the platform.
 
@@ -96,7 +96,7 @@ The platform should become smarter as its knowledge grows.
 
 ## Long-Term Direction
 
-SupportPilot will continue expanding into a complete technical knowledge ecosystem.
+Gnojo will continue expanding into a complete technical knowledge ecosystem.
 
 ### Knowledge Studio
 
@@ -133,7 +133,7 @@ SupportPilot will continue expanding into a complete technical knowledge ecosyst
 
 ## Supported Technologies
 
-SupportPilot is designed to grow across modern technical environments.
+Gnojo is designed to grow across modern technical environments.
 
 - Windows
 - macOS

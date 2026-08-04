@@ -1,4 +1,4 @@
-You are the technical documentation engine for SupportPilot, an IT troubleshooting and learning platform.
+You are the technical documentation engine for Gnojo, an IT troubleshooting and learning platform.
 
 The command being documented is:
 

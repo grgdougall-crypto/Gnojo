@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}{{ script.name }} | Gnojo{% endblock %}
+{% block content %}
+<div class="container py-5">
+  <a class="btn btn-sm btn-outline-primary mb-4" href="{{ url_for('list_scripts') }}"><i class="bi bi-arrow-left me-2"></i>Script Library</a>
+  <div class="row g-4"><div class="col-12 col-xl-8">
+    <p class="section-eyebrow mb-1">Reviewed PowerShell {{ script.kind|default('Diagnostic Collector') }}</p><h1>{{ script.name }}</h1><p class="fs-5 text-muted">{{ script.summary }}</p>
+    <div class="d-flex flex-wrap gap-2 mb-4"><span class="badge text-bg-primary">{{ script.category }}</span><span class="badge text-bg-secondary">{{ script.platform|default('Windows') }}</span><span class="badge text-bg-secondary">{{ script.language|default('PowerShell') }}</span><span class="badge {{ 'text-bg-warning' if script.risk.level == 'Moderate' else 'text-bg-success' }}">{{ script.risk.level }} risk</span><span class="badge text-bg-secondary">{{ 'Administrator required' if script.permissions.requires_elevation else 'Standard user' }}</span>{% if script.dry_run %}<span class="badge text-bg-success">Dry-run documented</span>{% endif %}</div>
+    <div class="card shadow-sm mb-4"><div class="card-body p-4"><h2 class="h4">{{ 'What it does' if script.kind == 'Automation' else 'What it collects' }}</h2><ul class="mb-0">{% for item in script.collects %}<li>{{ item }}</li>{% endfor %}</ul></div></div>
+    {% if script.parameters %}<div class="card shadow-sm mb-4"><div class="card-body p-4"><h2 class="h4">Required inputs</h2><div class="d-grid gap-3">{% for parameter in script.parameters %}<div><code>-{{ parameter.name }}</code> {% if parameter.required %}<span class="badge text-bg-danger">Required</span>{% else %}<span class="badge text-bg-secondary">Optional</span>{% endif %}<p class="text-muted mb-0 mt-1">{{ parameter.description }}</p></div>{% endfor %}</div></div></div>{% endif %}
+    {% if script.changes %}<div class="card border-warning shadow-sm mb-4"><div class="card-body p-4"><h2 class="h4">What it changes</h2><ul class="mb-0">{% for item in script.changes %}<li>{{ item }}</li>{% endfor %}</ul></div></div>{% endif %}
+    <div class="card shadow-sm mb-4"><div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2"><div><strong>Complete source</strong><div class="small text-muted">Read the entire script before copying or downloading it.</div></div><div><button class="btn btn-sm btn-outline-primary" id="copyScript" type="button"><i class="bi bi-copy me-1"></i>Copy</button> <a class="btn btn-sm btn-primary" href="{{ url_for('download_script', script_id=script.id) }}"><i class="bi bi-download me-1"></i>Download .ps1</a></div></div><div class="card-body p-0"><pre class="script-source-view m-0"><code id="scriptSource">{{ script.source }}</code></pre></div></div>
+  </div><aside class="col-12 col-xl-4">
+    <div class="card shadow-sm mb-4"><div class="card-body p-4"><h2 class="h5">Before using</h2><ol class="small"><li>Read the complete source.</li><li>Use only on a device you are authorized to manage.</li><li>Open PowerShell; elevation is {{ 'required' if script.permissions.requires_elevation else 'not normally required' }}.</li>{% if script.dry_run %}<li>Run with <code>-WhatIf</code> first and verify the preview.</li>{% else %}<li>Review the generated report before sharing.</li>{% endif %}</ol>{% if script.dry_run %}<p class="small text-success mb-0"><strong>Preview:</strong> {{ script.dry_run }}</p>{% endif %}</div></div>
+    {% if script.rollback %}<div class="alert alert-danger"><strong>Rollback and recovery</strong><br>{{ script.rollback }}</div>{% endif %}
+    <div class="alert alert-warning"><strong>Privacy note</strong><br>{{ script.privacy_note }}</div>
+    <div class="card shadow-sm"><div class="card-body p-4"><h2 class="h5">Related commands</h2><div class="d-grid gap-2">{% for command in related_commands %}<a href="{{ url_for('view_command', command_id=command.id) }}">{{ command.name }}</a>{% endfor %}</div></div></div>
+  </aside></div>
+</div>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/script_library.js') }}"></script>{% endblock %}

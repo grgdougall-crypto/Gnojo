@@ -1,12 +1,26 @@
 {% extends "base.html" %}
 
-{% block title %}{{ workflow_name }} | SupportPilot{% endblock %}
+{% block title %}{{ workflow_name }} | Gnojo{% endblock %}
 
 {% block content %}
 
 <div class="container py-5">
 
-    <div class="d-flex justify-content-between align-items-start gap-3 mb-4">
+    {% if active_device %}
+    <div class="alert alert-primary d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+        <span><i class="bi bi-pc-display me-2"></i>Troubleshooting <strong>{{ active_device.name }}</strong> · {{ active_device.platform }} {{ active_device.os_version }} · {{ active_device.connection_type }}</span>
+        <a class="btn btn-sm btn-outline-primary" href="{{ url_for('device_profiles') }}">Change device</a>
+    </div>
+    {% endif %}
+
+    {% if skipped_nodes %}
+    <div class="alert alert-info mb-4" role="status">
+        <div class="d-flex gap-2"><i class="bi bi-skip-forward-fill"></i><div><strong>Gnojo adapted this workflow for your device.</strong>
+        <div class="small mt-1">Skipped {{ skipped_nodes|length }} step{% if skipped_nodes|length != 1 %}s{% endif %} that did not apply: {{ skipped_nodes|map(attribute='title')|join(', ') }}.</div></div></div>
+    </div>
+    {% endif %}
+
+    <div class="wizard-page-header d-flex justify-content-between align-items-start gap-3 mb-4">
         <div>
             <p class="text-uppercase text-muted small mb-1">
                 Guided Troubleshooting
@@ -21,14 +35,31 @@
             </p>
         </div>
 
-        <a
-            href="{{ url_for('wizard', workflow=workflow_id) }}"
-            class="btn btn-outline-primary"
-        >
-            <i class="bi bi-arrow-clockwise me-2"></i>
-            Restart
-        </a>
+        <div class="d-flex flex-wrap gap-2 justify-content-end">
+            <a href="{{ url_for('wizard', workflow=workflow_id, resume='1', learning='0' if learning_mode else '1') }}" class="btn {% if learning_mode %}btn-info{% else %}btn-outline-info{% endif %}">
+                <i class="bi bi-mortarboard me-2"></i>{% if learning_mode %}Learning On{% else %}Learning Mode{% endif %}
+            </a>
+            <a href="{{ url_for('wizard', workflow=workflow_id, restart='1') }}" class="btn btn-outline-primary" data-confirm-restart><i class="bi bi-arrow-clockwise me-2"></i>Restart</a>
+        </div>
     </div>
+
+    {% if learning_mode and learning_content %}
+    <section class="learning-step-panel mb-4" aria-labelledby="learningStepTitle">
+        <div class="learning-step-panel__header">
+            <div><span class="text-uppercase small fw-bold">Learning Mode</span><h2 id="learningStepTitle" class="h5 mb-0">Understand this step</h2></div>
+            <span class="badge text-bg-info">{{ concepts_covered|length }} concept{% if concepts_covered|length != 1 %}s{% endif %} covered</span>
+        </div>
+        <div class="learning-step-grid">
+            <article><i class="bi bi-search"></i><div><h3>What this checks</h3><p>{{ learning_content.what_it_checks }}</p></div></article>
+            <article><i class="bi bi-lightbulb"></i><div><h3>Why this matters</h3><p>{{ learning_content.why_it_matters }}</p></div></article>
+        </div>
+        <div class="learning-concepts">
+            {% for concept in learning_content.concepts %}
+            <details {% if loop.first %}open{% endif %}><summary>{{ concept.title }}</summary><p>{{ concept.explanation }}</p></details>
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
 
     <div
         class="progress mb-4"
@@ -193,7 +224,7 @@
                     </ul>
                 {% endif %}
 
-                {% if article.quiz %}
+                {% if article.quiz and learning_mode %}
                     <hr>
 
                     <h6>
@@ -230,17 +261,11 @@
 
     {% endfor %}
 
-    <button
-        class="btn btn-outline-info btn-sm mt-2"
-        type="button"
-        disabled
-    >
+    <button class="btn btn-outline-info btn-sm mt-2 learning-quiz-check" type="button" data-correct-answer="{{ quiz_item.correct_answer }}">
         Check Answer
     </button>
 
-    <p class="small text-muted mt-2 mb-0">
-        Quiz scoring will be added in a future update.
-    </p>
+    <p class="small mt-2 mb-0 learning-quiz-feedback" aria-live="polite"></p>
 <div class="d-flex flex-wrap gap-2 mt-4">
 
     <a
@@ -367,6 +392,45 @@
                     {{ node.message }}
                 </p>
 
+                {% if learning_mode %}
+                <div class="learning-completion mt-4">
+                    <p class="text-uppercase small fw-bold mb-2">Learning recap</p>
+                    <h3 class="h5">Concepts covered in this session</h3>
+                    <div class="d-flex flex-wrap gap-2 mt-3">{% for concept in concepts_covered %}<span class="badge text-bg-info">{{ concept }}</span>{% endfor %}</div>
+                    <p class="small text-muted mt-3 mb-0">Try explaining the diagnostic path in your own words: what evidence did each step provide, and why did it lead to the next action?</p>
+                </div>
+                {% endif %}
+
+                {% if history_record %}
+                    {% if history_record.feedback %}
+                    <div class="workflow-feedback workflow-feedback--complete" role="status">
+                        <i class="bi bi-check-circle-fill" aria-hidden="true"></i>
+                        <div><strong>Thanks for the feedback.</strong><span>Your response is included in Gnojo's local workflow analytics.</span></div>
+                    </div>
+                    {% else %}
+                    <form class="workflow-feedback" id="workflowFeedbackForm" data-feedback-url="{{ url_for('submit_troubleshooting_feedback', history_id=history_record.id) }}">
+                        <div class="workflow-feedback__heading">
+                            <div><span class="section-eyebrow">Help improve Gnojo</span><h3>How did this workflow perform?</h3></div>
+                            <span>Optional · stored locally</span>
+                        </div>
+                        <fieldset>
+                            <legend>Did this solve the problem?</legend>
+                            <div class="feedback-choice-grid">
+                                <label><input type="radio" name="solved" value="yes" required><span><i class="bi bi-check-circle" aria-hidden="true"></i>Yes</span></label>
+                                <label><input type="radio" name="solved" value="partially"><span><i class="bi bi-circle-half" aria-hidden="true"></i>Partially</span></label>
+                                <label><input type="radio" name="solved" value="no"><span><i class="bi bi-x-circle" aria-hidden="true"></i>No</span></label>
+                            </div>
+                        </fieldset>
+                        <div class="feedback-fields">
+                            <label><span>How clear was the guidance?</span><select name="clarity" class="form-select" required><option value="">Choose a rating</option><option value="5">5 · Very clear</option><option value="4">4 · Clear</option><option value="3">3 · Acceptable</option><option value="2">2 · Unclear</option><option value="1">1 · Very unclear</option></select></label>
+                            <label><span>Which step was confusing? <small>Optional</small></span><select name="confusing_step" class="form-select"><option value="">None / not sure</option>{% for node_id in history_record.path %}<option value="{{ node_id }}">{{ node_id|friendly_node }}</option>{% endfor %}</select></label>
+                        </div>
+                        <label class="feedback-comment"><span>Anything else we should improve? <small>Optional</small></span><textarea name="comment" class="form-control" rows="3" maxlength="500" placeholder="Share a brief suggestion without including passwords or private information."></textarea></label>
+                        <div class="workflow-feedback__footer"><span id="workflowFeedbackMessage" data-a11y-live></span><button class="btn btn-outline-primary" type="submit">Send feedback</button></div>
+                    </form>
+                    {% endif %}
+                {% endif %}
+
                 <div class="d-flex flex-wrap gap-2 mt-4">
                     <a
                         href="{{ url_for('home') }}"
@@ -376,7 +440,7 @@
                     </a>
 
                     <a
-                        href="{{ url_for('wizard', workflow=workflow_id) }}"
+                        href="{{ url_for('wizard', workflow=workflow_id, restart='1') }}"
                         class="btn btn-outline-primary"
                     >
                         Restart This Workflow
@@ -390,4 +454,9 @@
 
 </div>
 
+{% endblock %}
+
+{% block scripts %}
+{% if learning_mode %}<script src="{{ url_for('static', filename='js/learning_mode.js') }}"></script>{% endif %}
+<script src="{{ url_for('static', filename='js/workflow_feedback.js') }}"></script>
 {% endblock %}

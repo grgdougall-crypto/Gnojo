@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Script Builder | Gnojo{% endblock %}
+{% block content %}
+<div class="container py-5">
+  <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+    <div><p class="section-eyebrow mb-1">Content Studio</p><h1 class="display-5">Script Builder</h1><p class="text-muted fs-5 mb-0">Author, validate, review, and publish scripts for Windows, Linux, and macOS without executing them.</p></div>
+    <a class="btn btn-outline-primary" href="{{ url_for('list_scripts') }}"><i class="bi bi-arrow-left me-2"></i>Script Library</a>
+  </div>
+  {% if errors %}<div class="alert alert-danger" role="alert"><strong>The draft needs attention</strong><ul class="mb-0 mt-2">{% for error in errors %}<li>{{ error }}</li>{% endfor %}</ul></div>{% endif %}
+  {% if validated %}<div class="alert alert-success"><strong>Validation passed.</strong> Review the preview and source, then publish when ready.</div>{% endif %}
+  <form method="post" action="{{ url_for('script_builder') }}" class="row g-4">
+    <div class="col-12 col-xl-7">
+      <div class="card shadow-sm mb-4"><div class="card-body p-4"><h2 class="h4 mb-3">Identity and purpose</h2><div class="row g-3">
+        <div class="col-md-8"><label class="form-label" for="scriptName">Script name</label><input class="form-control" id="scriptName" name="name" required maxlength="120" value="{{ draft.name if draft else '' }}" placeholder="Example: Clear a stuck print queue"></div>
+        <div class="col-md-4"><label class="form-label" for="scriptId">Script ID</label><input class="form-control" id="scriptId" name="script_id" maxlength="80" value="{{ draft.id if draft else '' }}" placeholder="Generated from name"></div>
+        <div class="col-md-6"><label class="form-label" for="scriptKind">Type</label><select class="form-select" id="scriptKind" name="kind"><option {{ 'selected' if not draft or draft.kind == 'Diagnostic Collector' }}>Diagnostic Collector</option><option {{ 'selected' if draft and draft.kind == 'Automation' }}>Automation</option></select></div>
+        <div class="col-md-6"><label class="form-label" for="scriptCategory">Category</label><input class="form-control" id="scriptCategory" name="category" required value="{{ draft.category if draft else '' }}" placeholder="Maintenance, Configuration, Networking..."></div>
+        <div class="col-md-6"><label class="form-label" for="scriptPlatform">Platform</label><select class="form-select" id="scriptPlatform" name="platform"><option {{ 'selected' if not draft or draft.platform == 'Windows' }}>Windows</option><option {{ 'selected' if draft and draft.platform == 'Linux' }}>Linux</option><option {{ 'selected' if draft and draft.platform == 'macOS' }}>macOS</option><option {{ 'selected' if draft and draft.platform == 'Cross-platform' }}>Cross-platform</option></select></div>
+        <div class="col-md-6"><label class="form-label" for="scriptLanguage">Language</label><select class="form-select" id="scriptLanguage" name="language"><option {{ 'selected' if not draft or draft.language == 'PowerShell' }}>PowerShell</option><option {{ 'selected' if draft and draft.language == 'Bash' }}>Bash</option><option {{ 'selected' if draft and draft.language == 'Zsh' }}>Zsh</option><option {{ 'selected' if draft and draft.language == 'Batch' }}>Batch</option></select><div class="form-text" id="languageCompatibility">Available languages adapt to the selected platform.</div></div>
+        <div class="col-12"><label class="form-label" for="scriptSummary">Summary</label><textarea class="form-control" id="scriptSummary" name="summary" rows="3" required maxlength="500">{{ draft.summary if draft else '' }}</textarea></div>
+      </div></div></div>
+      <div class="card shadow-sm mb-4"><div class="card-body p-4"><h2 class="h4"><span id="sourceLanguageLabel">{{ draft.language if draft else 'PowerShell' }}</span> source</h2><p class="small text-muted">Gnojo validates this source but never executes it during authoring.</p><textarea class="form-control font-monospace" id="scriptSourceInput" name="source" rows="22" required spellcheck="false">{{ draft.source if draft else '[CmdletBinding()]\nparam()\n\n$ErrorActionPreference = "Stop"\n' }}</textarea></div></div>
+      <div class="card shadow-sm"><div class="card-body p-4"><h2 class="h4 mb-3">Relationships</h2><label class="form-label" for="relatedCommands">Related command IDs <span class="text-muted">(comma-separated)</span></label><input class="form-control mb-3" id="relatedCommands" name="related_commands" value="{{ draft.related_commands|join(', ') if draft else '' }}" placeholder="get-service, get-winevent"><label class="form-label" for="relatedWorkflows">Related workflow IDs <span class="text-muted">(comma-separated)</span></label><input class="form-control" id="relatedWorkflows" name="related_workflows" value="{{ draft.related_workflows|join(', ') if draft else '' }}" placeholder="printer, windows_slow"></div></div>
+    </div>
+    <div class="col-12 col-xl-5">
+      <div class="card shadow-sm mb-4"><div class="card-body p-4"><h2 class="h4 mb-3">Behavior and inputs</h2>
+        <label class="form-label" for="collects">Actions or collected evidence <span class="text-muted">(one per line)</span></label><textarea class="form-control mb-3" id="collects" name="collects" rows="5" required>{{ draft.collects|join('\n') if draft else '' }}</textarea>
+        <label class="form-label" for="parameters">Parameters</label><textarea class="form-control font-monospace mb-2" id="parameters" name="parameters" rows="5" placeholder="PrinterName | required | Exact installed printer name">{% if draft %}{% for item in draft.parameters %}{{ item.name }} | {{ 'required' if item.required else 'optional' }} | {{ item.description }}{{ '\n' if not loop.last }}{% endfor %}{% endif %}</textarea>
+        <p class="small text-muted">One per line: <code>name | required or optional | description</code></p>
+        <div class="form-check"><input class="form-check-input" type="checkbox" id="requiresElevation" name="requires_elevation" {{ 'checked' if draft and draft.requires_elevation }}><label class="form-check-label" for="requiresElevation">Requires administrator access</label></div>
+        <label class="form-label mt-3" for="permissionNotes">Permission notes</label><textarea class="form-control" id="permissionNotes" name="permission_notes" rows="2">{{ draft.permission_notes if draft else '' }}</textarea>
+      </div></div>
+      <div class="card shadow-sm border-warning mb-4"><div class="card-body p-4"><h2 class="h4 mb-3">Automation safeguards</h2><p class="small text-muted">Required when Type is Automation.</p>
+        <label class="form-label" for="changes">What it changes <span class="text-muted">(one per line)</span></label><textarea class="form-control mb-3" id="changes" name="changes" rows="4">{{ draft.changes|join('\n') if draft else '' }}</textarea>
+        <label class="form-label" for="dryRun">Preview or dry-run guidance</label><textarea class="form-control mb-3" id="dryRun" name="dry_run" rows="3">{{ draft.dry_run if draft else '' }}</textarea>
+        <label class="form-label" for="rollback">Rollback or recovery</label><textarea class="form-control" id="rollback" name="rollback" rows="4">{{ draft.rollback if draft else '' }}</textarea>
+      </div></div>
+      <div class="card shadow-sm mb-4"><div class="card-body p-4"><h2 class="h4 mb-3">Privacy</h2><label class="form-label" for="privacyNote">Privacy and sharing note</label><textarea class="form-control" id="privacyNote" name="privacy_note" rows="4" required>{{ draft.privacy_note if draft else '' }}</textarea></div></div>
+      {% if draft %}<div class="card shadow-sm mb-4"><div class="card-body p-4"><p class="section-eyebrow mb-1">Preview</p><h2 class="h4">{{ draft.name or 'Untitled script' }}</h2><p class="text-muted">{{ draft.summary }}</p><div class="d-flex flex-wrap gap-2"><span class="badge text-bg-primary">{{ draft.kind }}</span><span class="badge text-bg-secondary">{{ draft.platform }}</span><span class="badge text-bg-secondary">{{ draft.language }}</span><span class="badge {{ 'text-bg-warning' if draft.kind == 'Automation' else 'text-bg-success' }}">{{ 'Moderate' if draft.kind == 'Automation' else 'Low' }} risk</span></div></div></div>{% endif %}
+      <div class="d-grid gap-2"><button class="btn btn-outline-primary btn-lg" type="submit" name="action" value="validate"><i class="bi bi-check2-circle me-2"></i>Validate and preview</button>{% if validated %}<button class="btn btn-success btn-lg" type="submit" name="action" value="publish" onclick="return confirm('Publish this reviewed script to the Script Library?')"><i class="bi bi-cloud-arrow-up me-2"></i>Publish to library</button>{% endif %}</div>
+    </div>
+  </form>
+</div>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/script_builder.js') }}"></script>{% endblock %}

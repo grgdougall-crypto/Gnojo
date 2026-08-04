@@ -1,33 +1,939 @@
 <script>
-    const nodeSearch = document.getElementById("nodeSearch");
-    const nodeLinks = document.querySelectorAll(
-        ".workflow-node-link"
-    );
+(() => {
+    "use strict";
 
-    if (nodeSearch) {
+    const designer = document.querySelector(".workflow-designer");
+    const search = document.getElementById("nodeSearch");
+    const clearSearch = document.getElementById("nodeSearchClear");
+    const emptySearch = document.getElementById("nodeSearchEmpty");
+    const nodes = Array.from(document.querySelectorAll(".workflow-node"));
+    const form = document.getElementById("nodeEditorForm");
+    const resetButton = document.getElementById("resetNodeButton");
+    const saveButton = document.getElementById("saveNodeButton");
+    const generateHelpTextButton = document.getElementById("generateHelpTextButton");
+    const createArticleDraftButton = document.getElementById("createArticleDraftButton");
+    const answerList = document.getElementById("nodeAnswersEditor");
+    const validationDialog = document.getElementById("workflowValidationDialog");
+    const validationButton = document.getElementById("validateWorkflowButton");
+    const simulatorDialog = document.getElementById("workflowSimulatorDialog");
+    const simulatorContent = document.getElementById("simulatorContent");
+    const exportDialog = document.getElementById("workflowExportDialog");
+    let simulatorState = { current: null, path: [], visits: new Map() };
+    const publicationDialog = document.getElementById("workflowPublicationDialog");
+    const publishButton = document.getElementById("publishWorkflowButton");
+    let validationPassed = false;
+    let publicationStatus = { is_published: false, versions: [], has_unpublished_changes: true };
+    const settingsDialog = document.getElementById("workflowSettingsDialog");
+    const settingsForm = document.getElementById("workflowSettingsForm");
+    let workflowSettingsState = null;
+    const aiDialog = document.getElementById("workflowAIDialog");
+    let aiSuggestion = null;
+    let selectedButton = null;
+    let originalNode = null;
+    const mobilePanelQuery = window.matchMedia("(max-width: 767.98px)");
+    const mobilePanelButtons = Array.from(document.querySelectorAll("[data-workflow-panel]"));
+    const mobilePanels = Array.from(document.querySelectorAll("[data-workflow-panel-name]"));
 
-        nodeSearch.addEventListener(
-            "input",
-            function () {
+    const activateMobilePanel = (name, moveFocus = false) => {
+        mobilePanels.forEach((panel) => panel.classList.toggle("is-mobile-active", panel.dataset.workflowPanelName === name));
+        mobilePanelButtons.forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.workflowPanel === name)));
+        if (moveFocus && mobilePanelQuery.matches) {
+            const panel = document.querySelector(`[data-workflow-panel-name="${name}"]`);
+            panel?.setAttribute("tabindex", "-1");
+            panel?.focus({preventScroll: true});
+        }
+    };
+    mobilePanelButtons.forEach((button) => button.addEventListener("click", () => activateMobilePanel(button.dataset.workflowPanel, true)));
 
-                const searchValue = this.value
-                    .trim()
-                    .toLowerCase();
+    const element = (id) => document.getElementById(id);
+    const value = (id) => element(id).value.trim();
+    const hasChanges = () => originalNode && JSON.stringify(buildPayload()) !== JSON.stringify(buildPayload(originalNode));
 
-                nodeLinks.forEach(function (link) {
+    const filterNodes = () => {
+        const query = (search?.value || "").trim().toLocaleLowerCase();
+        let visibleCount = 0;
+        nodes.forEach((node) => {
+            const matches = !query || (node.dataset.search || node.textContent).toLocaleLowerCase().includes(query);
+            node.hidden = !matches;
+            if (matches) visibleCount += 1;
+        });
+        if (clearSearch) clearSearch.hidden = !query;
+        if (emptySearch) emptySearch.hidden = visibleCount !== 0;
+    };
 
-                    const cardText = link.textContent
-                        .toLowerCase();
+    const makeAnswerRow = (answer = {}) => {
+        const row = document.createElement("div");
+        row.className = "node-answer-editor";
+        row.dataset.answerId = answer.id || "";
+        row.innerHTML = `
+            <div class="node-field">
+                <label>Answer label</label>
+                <input class="node-editor-control answer-label" type="text" required>
+            </div>
+            <div class="node-field">
+                <label>Routes to</label>
+                <input class="node-editor-control answer-next" type="text" required>
+            </div>
+            <button class="node-answer-remove" type="button" aria-label="Remove answer">
+                <i class="bi bi-trash" aria-hidden="true"></i>
+            </button>`;
+        row.querySelector(".answer-label").value = answer.label || "";
+        row.querySelector(".answer-next").value = answer.next || "";
+        row.querySelector(".node-answer-remove").addEventListener("click", () => {
+            row.remove();
+            updateDirtyState();
+        });
+        answerList.appendChild(row);
+    };
 
-                    link.style.display =
-                        cardText.includes(searchValue)
-                            ? ""
-                            : "none";
+    const renderAnswers = (answers) => {
+        answerList.replaceChildren();
+        (Array.isArray(answers) ? answers : []).forEach(makeAnswerRow);
+    };
 
-                });
+    const answerPayload = (sourceNode) => {
+        if (sourceNode) {
+            return Object.fromEntries((sourceNode.answers || []).map((answer, index) => [
+                answer.id || `answer_${index + 1}`,
+                { label: answer.label || "", next: answer.next || "" },
+            ]));
+        }
 
+        const result = {};
+        Array.from(answerList.querySelectorAll(".node-answer-editor")).forEach((row, index) => {
+            let id = row.dataset.answerId || `answer_${index + 1}`;
+            while (Object.hasOwn(result, id)) id = `${id}_${index + 1}`;
+            result[id] = {
+                label: row.querySelector(".answer-label").value.trim(),
+                next: row.querySelector(".answer-next").value.trim(),
+            };
+        });
+        return result;
+    };
+
+    const buildPayload = (sourceNode = null) => {
+        const node = sourceNode || originalNode;
+        const primaryField = node.type === "question" ? "question" : "title";
+        const payload = {
+            [primaryField]: sourceNode ? node.title || "" : value("nodePrimaryValue"),
+            help_text: sourceNode ? node.help_text || "" : value("nodeHelpValue"),
+            instruction: sourceNode ? node.instruction || "" : value("nodeInstructionValue"),
+            message: sourceNode ? node.message || "" : value("nodeMessageValue"),
+            next: sourceNode ? node.next || "" : value("nodeNextValue"),
+            knowledge_article: sourceNode ? node.knowledge_article || "" : value("nodeKnowledgeValue"),
+            next_workflow: sourceNode ? node.next_workflow || "" : value("nodeWorkflowValue"),
+            skip_to: sourceNode ? node.skip_to || "" : value("nodeSkipToValue"),
+        };
+        const conditions = sourceNode ? (node.conditions || {}) : {
+            platform: element("nodeConditionPlatform").value,
+            device_type: element("nodeConditionDeviceType").value,
+            connection_type: element("nodeConditionConnection").value,
+        };
+        payload.conditions = Object.fromEntries(Object.entries(conditions).filter(([, conditionValue]) => conditionValue));
+        if (node.type === "question") payload.answers = answerPayload(sourceNode);
+        return payload;
+    };
+
+    const updateDirtyState = () => {
+        const dirty = Boolean(hasChanges());
+        resetButton.disabled = !dirty;
+        saveButton.disabled = !dirty;
+        form.classList.toggle("is-dirty", dirty);
+        element("nodeDetailsHint").classList.remove("is-error");
+        element("nodeDetailsHint").textContent = dirty ? "Unsaved changes" : `Internal ID: ${originalNode?.id || "Not set"}`;
+    };
+
+    const populateForm = (node) => {
+        const isQuestion = node.type === "question";
+        element("nodePrimaryLabel").textContent = isQuestion ? "Question" : "Title";
+        element("nodePrimaryValue").value = node.title || "";
+        element("nodeHelpValue").value = node.help_text || "";
+        element("nodeInstructionValue").value = node.instruction || "";
+        element("nodeMessageValue").value = node.message || "";
+        element("nodeNextValue").value = node.next || "";
+        element("nodeKnowledgeValue").value = node.knowledge_article || "";
+        element("nodeWorkflowValue").value = node.next_workflow || "";
+        element("nodeSkipToValue").value = node.skip_to || "";
+        element("nodeConditionPlatform").value = node.conditions?.platform || "";
+        element("nodeConditionDeviceType").value = node.conditions?.device_type || "";
+        element("nodeConditionConnection").value = node.conditions?.connection_type || "";
+        element("nodeInstructionField").hidden = node.type !== "instruction";
+        element("nodeMessageField").hidden = !["resolution", "transition"].includes(node.type);
+        element("nodeAnswersField").hidden = !isQuestion;
+        element("nodeNextField").hidden = isQuestion || node.type === "resolution";
+        renderAnswers(node.answers);
+        updateDirtyState();
+    };
+
+    const selectNode = (button) => {
+        if (hasChanges() && !window.confirm("Discard your unsaved changes and select another node?")) return;
+
+        try {
+            originalNode = JSON.parse(button.dataset.node);
+        } catch (error) {
+            console.error("Gnojo could not read this workflow node.", error);
+            return;
+        }
+        selectedButton = button;
+        element("improveNodeButton").disabled = false;
+        generateHelpTextButton.disabled = false;
+        createArticleDraftButton.disabled = originalNode.type !== "instruction";
+        element("openArticleDraftLink").hidden = true;
+        element("coverageAssistantMessage").textContent = originalNode.type === "instruction"
+            ? "Generate help text or create a linked article draft."
+            : "Help-text generation is available for this node type.";
+        element("coverageAssistantMessage").classList.remove("is-error");
+        nodes.forEach((item) => {
+            const selected = item === button;
+            item.classList.toggle("is-selected", selected);
+            item.setAttribute("aria-pressed", String(selected));
+        });
+        element("nodeDetailsEmpty").hidden = true;
+        form.hidden = false;
+        element("nodeDetailsTitle").textContent = originalNode.title || originalNode.id || "Untitled node";
+        const badge = element("nodeDetailsType");
+        badge.textContent = originalNode.type || "Node";
+        badge.className = `node-type-badge node-type-badge--${String(originalNode.type || "default").toLowerCase()}`;
+        badge.hidden = false;
+        populateForm(originalNode);
+        if (mobilePanelQuery.matches) activateMobilePanel("details");
+    };
+
+    const setSaving = (saving) => {
+        if (saving) {
+            saveButton.disabled = true;
+            resetButton.disabled = true;
+        }
+        saveButton.querySelector(".save-button__label").hidden = saving;
+        saveButton.querySelector(".save-button__busy").hidden = !saving;
+    };
+
+    const saveNode = async () => {
+        if (!form.reportValidity() || !originalNode) return;
+        let saved = false;
+        setSaving(true);
+        element("nodeDetailsHint").textContent = "Saving changes…";
+        const url = designer.dataset.nodeSaveUrl.replace("__NODE_ID__", encodeURIComponent(originalNode.id));
+
+        try {
+            const response = await fetch(url, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json", "Accept": "application/json" },
+                body: JSON.stringify(buildPayload()),
+            });
+            const result = await response.json();
+            if (!response.ok || !result.ok) throw new Error(result.error || "Changes could not be saved.");
+
+            originalNode = result.node;
+            selectedButton.dataset.node = JSON.stringify(result.node);
+            selectedButton.dataset.search = `${result.node.id} ${result.node.title} ${result.node.type}`;
+            selectedButton.querySelector(".workflow-node__title").textContent = result.node.title;
+            element("nodeDetailsTitle").textContent = result.node.title;
+            populateForm(result.node);
+            validationPassed = false;
+            publicationStatus.has_unpublished_changes = true;
+            updatePublicationBadge();
+            updatePublishAvailability();
+            saved = true;
+            element("nodeDetailsHint").textContent = "Changes saved";
+            element("nodeDetailsHint").classList.remove("is-error");
+        } catch (error) {
+            element("nodeDetailsHint").textContent = error.message;
+            element("nodeDetailsHint").classList.add("is-error");
+        } finally {
+            setSaving(false);
+            if (saved) {
+                updateDirtyState();
+                element("nodeDetailsHint").textContent = "Changes saved";
+            } else {
+                resetButton.disabled = false;
+                saveButton.disabled = false;
             }
-        );
+        }
+    };
 
+    const applyCoverageNode = (node, message) => {
+        originalNode = node;
+        selectedButton.dataset.node = JSON.stringify(node);
+        selectedButton.dataset.search = `${node.id} ${node.title} ${node.type}`;
+        selectedButton.querySelector(".workflow-node__title").textContent = node.title;
+        element("nodeDetailsTitle").textContent = node.title;
+        populateForm(node);
+        validationPassed = false;
+        publicationStatus.has_unpublished_changes = true;
+        updatePublicationBadge();
+        updatePublishAvailability();
+        element("coverageAssistantMessage").textContent = message;
+        element("coverageAssistantMessage").classList.remove("is-error");
+    };
+
+    const runCoverageAction = async (kind) => {
+        if (!originalNode || !selectedButton) return;
+        if (hasChanges()) {
+            element("coverageAssistantMessage").textContent = "Save or reset your current changes first.";
+            element("coverageAssistantMessage").classList.add("is-error");
+            return;
+        }
+        const button = kind === "help" ? generateHelpTextButton : createArticleDraftButton;
+        button.disabled = true;
+        element("coverageAssistantMessage").textContent = kind === "help" ? "Generating and saving help text…" : "Creating and linking article draft…";
+        element("coverageAssistantMessage").classList.remove("is-error");
+        const template = kind === "help" ? designer.dataset.helpTextUrl : designer.dataset.articleDraftUrl;
+        const url = template.replace("__NODE_ID__", encodeURIComponent(originalNode.id));
+        try {
+            const response = await fetch(url, { method: "POST", headers: { "Accept": "application/json" } });
+            const result = await response.json();
+            if (!response.ok || !result.ok) throw new Error(result.error || "Coverage content could not be created.");
+            if (kind === "help") {
+                applyCoverageNode(result.node, "Help text generated and saved. Review it before publishing.");
+            } else {
+                applyCoverageNode(result.node, result.created ? "Article draft created and linked." : "Existing article draft linked.");
+                const link = element("openArticleDraftLink");
+                link.href = result.review_url;
+                link.hidden = false;
+            }
+        } catch (error) {
+            element("coverageAssistantMessage").textContent = error.message;
+            element("coverageAssistantMessage").classList.add("is-error");
+        } finally {
+            generateHelpTextButton.disabled = !originalNode;
+            createArticleDraftButton.disabled = !originalNode || originalNode.type !== "instruction";
+        }
+    };
+
+    const openIssueNode = (nodeId) => {
+        const button = nodes.find((candidate) => {
+            try { return JSON.parse(candidate.dataset.node).id === nodeId; }
+            catch { return false; }
+        });
+        if (!button) return;
+        validationDialog.close();
+        button.hidden = false;
+        selectNode(button);
+        button.scrollIntoView({ behavior: "smooth", block: "center" });
+    };
+
+    const renderValidation = (result) => {
+        const title = element("validationDialogTitle");
+        const summary = element("validationSummary");
+        const issues = element("validationIssues");
+        summary.replaceChildren();
+        issues.replaceChildren();
+
+        title.textContent = result.is_valid ? "Workflow passed" : "Workflow needs attention";
+        const status = document.createElement("div");
+        status.className = `validation-status validation-status--${result.is_valid ? "success" : "error"}`;
+        const statusTitle = document.createElement("strong");
+        statusTitle.textContent = result.is_valid ? "Ready for the next step" : `${result.error_count} error${result.error_count === 1 ? "" : "s"} found`;
+        const statusMeta = document.createElement("span");
+        statusMeta.textContent = `${result.reachable_count} reachable nodes · ${result.warning_count} warning${result.warning_count === 1 ? "" : "s"}`;
+        status.append(statusTitle, statusMeta);
+        summary.appendChild(status);
+
+        if (!result.issues.length) {
+            const empty = document.createElement("div");
+            empty.className = "validation-empty";
+            empty.textContent = "No validation issues were found.";
+            issues.appendChild(empty);
+            return;
+        }
+
+        result.issues.forEach((issue) => {
+            const item = document.createElement(issue.node_id ? "button" : "div");
+            if (issue.node_id) item.type = "button";
+            item.className = `validation-issue validation-issue--${issue.level}`;
+            const icon = document.createElement("i");
+            icon.className = issue.level === "error" ? "bi bi-x-circle-fill" : "bi bi-exclamation-triangle-fill";
+            icon.setAttribute("aria-hidden", "true");
+            const copy = document.createElement("span");
+            copy.textContent = issue.message;
+            item.append(icon, copy);
+            if (issue.node_id) {
+                const arrow = document.createElement("i");
+                arrow.className = "bi bi-arrow-right validation-issue__arrow";
+                arrow.setAttribute("aria-hidden", "true");
+                item.appendChild(arrow);
+                item.addEventListener("click", () => openIssueNode(issue.node_id));
+            }
+            issues.appendChild(item);
+        });
+    };
+
+    const runValidation = async () => {
+        if (hasChanges()) {
+            element("nodeDetailsHint").textContent = "Save or reset changes before validating.";
+            return;
+        }
+        if (!validationDialog.open) validationDialog.showModal();
+        element("validationDialogTitle").textContent = "Checking workflow…";
+        element("validationSummary").replaceChildren();
+        element("validationIssues").replaceChildren();
+        validationButton.disabled = true;
+
+        try {
+            const response = await fetch(designer.dataset.validationUrl, { headers: { "Accept": "application/json" } });
+            const result = await response.json();
+            if (!response.ok || !result.ok) throw new Error(result.error || "Validation could not be completed.");
+            validationPassed = result.is_valid;
+            updatePublishAvailability();
+            renderValidation(result);
+        } catch (error) {
+            validationPassed = false;
+            updatePublishAvailability();
+            element("validationDialogTitle").textContent = "Validation failed";
+            const message = document.createElement("p");
+            message.className = "validation-request-error";
+            message.textContent = error.message;
+            element("validationIssues").replaceChildren(message);
+        } finally {
+            validationButton.disabled = false;
+        }
+    };
+
+    function updatePublicationBadge() {
+        const badge = element("versionHistoryButton");
+        badge.classList.toggle("workflow-status--draft", !publicationStatus.is_published);
+        badge.classList.toggle("workflow-status--published", publicationStatus.is_published && !publicationStatus.has_unpublished_changes);
+        badge.classList.toggle("workflow-status--changed", publicationStatus.is_published && publicationStatus.has_unpublished_changes);
+        if (!publicationStatus.is_published) badge.textContent = "Draft";
+        else if (publicationStatus.has_unpublished_changes) badge.textContent = `Draft changes · v${publicationStatus.current_version} published`;
+        else badge.textContent = `Published · v${publicationStatus.current_version}`;
     }
+
+    function updatePublishAvailability() {
+        const canPublish = validationPassed && publicationStatus.has_unpublished_changes;
+        publishButton.disabled = !canPublish;
+        publishButton.title = canPublish
+            ? "Publish a new immutable version"
+            : publicationStatus.has_unpublished_changes
+                ? "Validate the workflow before publishing"
+                : "The current draft is already published";
+        element("confirmPublicationButton").disabled = !canPublish;
+    }
+
+    const formatPublishedDate = (value) => {
+        if (!value) return "Unknown date";
+        const date = new Date(value);
+        return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+    };
+
+    const renderPublicationHistory = () => {
+        const list = element("publicationHistoryList");
+        list.replaceChildren();
+        const versions = publicationStatus.versions || [];
+        element("publicationVersionCount").textContent = versions.length
+            ? `${versions.length} published version${versions.length === 1 ? "" : "s"}`
+            : "No published versions";
+
+        if (!versions.length) {
+            const empty = document.createElement("p");
+            empty.className = "publication-history__empty";
+            empty.textContent = "The first successful publication will appear here.";
+            list.appendChild(empty);
+            return;
+        }
+
+        versions.forEach((version, index) => {
+            const item = document.createElement("div");
+            item.className = "publication-version";
+            const marker = document.createElement("span");
+            marker.className = "publication-version__number";
+            marker.textContent = `v${version.version}`;
+            const copy = document.createElement("div");
+            const label = document.createElement("strong");
+            label.textContent = version.label;
+            const date = document.createElement("span");
+            date.textContent = formatPublishedDate(version.published_at);
+            copy.append(label, date);
+            item.append(marker, copy);
+            if (index === 0) {
+                const current = document.createElement("span");
+                current.className = "publication-version__current";
+                current.textContent = "Current";
+                item.appendChild(current);
+            }
+            list.appendChild(item);
+        });
+    };
+
+    const loadPublicationStatus = async () => {
+        try {
+            const response = await fetch(designer.dataset.publicationUrl, { headers: { "Accept": "application/json" } });
+            const result = await response.json();
+            if (!response.ok || !result.ok) throw new Error(result.error || "Publication status is unavailable.");
+            publicationStatus = result;
+            updatePublicationBadge();
+            updatePublishAvailability();
+            renderPublicationHistory();
+        } catch (error) {
+            console.error(error);
+        }
+    };
+
+    const openPublicationDialog = (forPublishing = false) => {
+        renderPublicationHistory();
+        element("publicationMessage").classList.remove("is-error");
+        element("publicationDialogTitle").textContent = forPublishing ? "Publish workflow" : "Version history";
+        element("publicationMessage").textContent = forPublishing
+            ? "Publishing creates a permanent snapshot. Your editable draft remains available."
+            : publicationStatus.is_published
+                ? `Version ${publicationStatus.current_version} is currently published.`
+                : "This workflow has not been published yet.";
+        element("publicationLabel").closest(".node-field").hidden = !forPublishing;
+        element("confirmPublicationButton").hidden = !forPublishing;
+        element("cancelPublicationButton").textContent = forPublishing ? "Cancel" : "Close";
+        updatePublishAvailability();
+        if (!publicationDialog.open) publicationDialog.showModal();
+    };
+
+    const publishWorkflow = async () => {
+        if (!validationPassed || !publicationStatus.has_unpublished_changes) return;
+        const confirmButton = element("confirmPublicationButton");
+        element("publicationMessage").classList.remove("is-error");
+        confirmButton.disabled = true;
+        confirmButton.querySelector(".publication-button__label").hidden = true;
+        confirmButton.querySelector(".publication-button__busy").hidden = false;
+        element("publicationMessage").textContent = "Creating immutable publication snapshot…";
+
+        try {
+            const response = await fetch(designer.dataset.publicationUrl, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "Accept": "application/json" },
+                body: JSON.stringify({ label: element("publicationLabel").value.trim() }),
+            });
+            const result = await response.json();
+            if (!response.ok || !result.ok) throw new Error(result.error || "Workflow could not be published.");
+            publicationStatus = result;
+            validationPassed = false;
+            element("publicationLabel").value = "";
+            element("publicationMessage").textContent = `Version ${result.current_version} published successfully.`;
+            updatePublicationBadge();
+            updatePublishAvailability();
+            renderPublicationHistory();
+        } catch (error) {
+            element("publicationMessage").textContent = error.message;
+            element("publicationMessage").classList.add("is-error");
+        } finally {
+            confirmButton.querySelector(".publication-button__label").hidden = false;
+            confirmButton.querySelector(".publication-button__busy").hidden = true;
+            updatePublishAvailability();
+        }
+    };
+
+    const readSettingsForm = () => ({
+        workflow_id: element("workflowIdSetting").value,
+        name: element("workflowNameSetting").value.trim(),
+        description: element("workflowDescriptionSetting").value.trim(),
+        category: element("workflowCategorySetting").value,
+        platform: element("workflowPlatformSetting").value,
+        start_node: element("workflowStartNodeSetting").value,
+        estimated_steps: Number(element("workflowEstimatedStepsSetting").value),
+    });
+
+    const settingsAreDirty = () => workflowSettingsState
+        && JSON.stringify(readSettingsForm()) !== JSON.stringify(workflowSettingsState);
+
+    const populateSettingsForm = (settings) => {
+        element("workflowIdSetting").value = settings.workflow_id;
+        element("workflowNameSetting").value = settings.name || "";
+        element("workflowDescriptionSetting").value = settings.description || "";
+        element("workflowCategorySetting").value = settings.category || "Other";
+        element("workflowPlatformSetting").value = settings.platform || "Cross-platform";
+        element("workflowStartNodeSetting").value = settings.start_node || "";
+        element("workflowEstimatedStepsSetting").value = settings.estimated_steps || 1;
+        workflowSettingsState = readSettingsForm();
+    };
+
+    const openSettings = () => {
+        const current = workflowSettingsState || readSettingsForm();
+        populateSettingsForm(current);
+        element("settingsMessage").hidden = true;
+        if (!settingsDialog.open) settingsDialog.showModal();
+    };
+
+    const closeSettings = () => {
+        if (settingsAreDirty() && !window.confirm("Discard unsaved workflow settings?")) return;
+        populateSettingsForm(workflowSettingsState);
+        settingsDialog.close();
+    };
+
+    const saveWorkflowSettings = async () => {
+        if (!settingsForm.reportValidity()) return;
+        const saveButton = element("saveSettingsButton");
+        const message = element("settingsMessage");
+        saveButton.disabled = true;
+        saveButton.querySelector(".settings-button__label").hidden = true;
+        saveButton.querySelector(".settings-button__busy").hidden = false;
+        message.hidden = true;
+
+        const settings = readSettingsForm();
+        const payload = {
+            name: settings.name,
+            description: settings.description,
+            category: settings.category,
+            platform: settings.platform,
+            start_node: settings.start_node,
+            estimated_steps: settings.estimated_steps,
+        };
+
+        try {
+            const response = await fetch(designer.dataset.settingsUrl, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json", "Accept": "application/json" },
+                body: JSON.stringify(payload),
+            });
+            const result = await response.json();
+            if (!response.ok || !result.ok) throw new Error(result.error || "Workflow settings could not be saved.");
+
+            populateSettingsForm(result.settings);
+            element("workflow-title").textContent = result.settings.name;
+            document.title = `${result.settings.name} | Workflow Designer | Gnojo`;
+            element("workflowEstimatedSteps").textContent = result.settings.estimated_steps;
+            element("workflowStartNodeTitle").textContent = result.settings.start_node_title || result.settings.start_node;
+            designer.dataset.startNode = result.settings.start_node;
+            designer.dataset.estimatedSteps = result.settings.estimated_steps;
+            validationPassed = false;
+            publicationStatus.has_unpublished_changes = true;
+            updatePublicationBadge();
+            updatePublishAvailability();
+            message.textContent = "Workflow settings saved.";
+            message.className = "settings-message settings-message--success";
+            message.hidden = false;
+        } catch (error) {
+            message.textContent = error.message;
+            message.className = "settings-message settings-message--error";
+            message.hidden = false;
+        } finally {
+            saveButton.disabled = false;
+            saveButton.querySelector(".settings-button__label").hidden = false;
+            saveButton.querySelector(".settings-button__busy").hidden = true;
+        }
+    };
+
+    const renderAIContent = (container, content) => {
+        container.replaceChildren();
+        Object.entries(content).forEach(([field, fieldValue]) => {
+            const item = document.createElement("div");
+            item.className = "ai-content-field";
+            const label = document.createElement("strong");
+            label.textContent = field.replaceAll("_", " ");
+            const copy = document.createElement("p");
+            if (fieldValue && typeof fieldValue === "object") {
+                copy.textContent = Object.entries(fieldValue)
+                    .map(([id, answerLabel]) => `${answerLabel} (${id})`)
+                    .join("\n");
+            } else {
+                copy.textContent = fieldValue || "—";
+            }
+            item.append(label, copy);
+            container.appendChild(item);
+        });
+    };
+
+    const openAIAssistant = () => {
+        if (!originalNode) return;
+        if (hasChanges()) {
+            element("nodeDetailsHint").textContent = "Save or reset changes before using AI assistance.";
+            return;
+        }
+        aiSuggestion = null;
+        element("aiComparison").hidden = true;
+        element("applyAISuggestionButton").disabled = true;
+        element("aiProviderLabel").textContent = "";
+        const message = element("aiSuggestionMessage");
+        message.className = "ai-suggestion-message";
+        message.textContent = "AI suggestions are previews. Nothing changes until you apply the suggestion and save the node.";
+        if (!aiDialog.open) aiDialog.showModal();
+    };
+
+    const generateAISuggestion = async () => {
+        if (!originalNode) return;
+        const generateButton = element("generateAISuggestionButton");
+        const message = element("aiSuggestionMessage");
+        generateButton.disabled = true;
+        generateButton.querySelector(".ai-generate__label").hidden = true;
+        generateButton.querySelector(".ai-generate__busy").hidden = false;
+        element("applyAISuggestionButton").disabled = true;
+        element("aiComparison").hidden = true;
+        message.className = "ai-suggestion-message";
+        message.textContent = "Generating a protected writing suggestion…";
+
+        const url = designer.dataset.nodeImproveUrl.replace("__NODE_ID__", encodeURIComponent(originalNode.id));
+        try {
+            const response = await fetch(url, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "Accept": "application/json" },
+                body: JSON.stringify({ style: element("aiImprovementStyle").value }),
+            });
+            const result = await response.json();
+            if (!response.ok || !result.ok) throw new Error(result.error || "AI suggestion could not be generated.");
+
+            aiSuggestion = result;
+            renderAIContent(element("aiOriginalContent"), result.original);
+            renderAIContent(element("aiProposedContent"), result.proposed);
+            element("aiComparison").hidden = false;
+            element("applyAISuggestionButton").disabled = false;
+            element("aiProviderLabel").textContent = `Suggested by ${result.provider}`;
+            message.textContent = "Review the proposed text before applying it.";
+        } catch (error) {
+            aiSuggestion = null;
+            message.className = "ai-suggestion-message is-error";
+            message.textContent = error.message;
+        } finally {
+            generateButton.disabled = false;
+            generateButton.querySelector(".ai-generate__label").hidden = false;
+            generateButton.querySelector(".ai-generate__busy").hidden = true;
+        }
+    };
+
+    const applyAISuggestion = () => {
+        if (!aiSuggestion || !originalNode) return;
+        const proposed = aiSuggestion.proposed;
+        if (originalNode.type === "question" && proposed.question !== undefined) {
+            element("nodePrimaryValue").value = proposed.question;
+        } else if (proposed.title !== undefined) {
+            element("nodePrimaryValue").value = proposed.title;
+        }
+        if (proposed.help_text !== undefined) element("nodeHelpValue").value = proposed.help_text;
+        if (proposed.instruction !== undefined) element("nodeInstructionValue").value = proposed.instruction;
+        if (proposed.message !== undefined) element("nodeMessageValue").value = proposed.message;
+        if (proposed.answer_labels) {
+            answerList.querySelectorAll(".node-answer-editor").forEach((row) => {
+                const label = proposed.answer_labels[row.dataset.answerId];
+                if (label !== undefined) row.querySelector(".answer-label").value = label;
+            });
+        }
+        updateDirtyState();
+        element("nodeDetailsHint").textContent = "AI suggestion applied · Review and save when ready";
+        aiDialog.close();
+    };
+
+    const simulatorNodes = () => new Map(nodes.map((button) => {
+        try {
+            const node = JSON.parse(button.dataset.node);
+            return [node.id, node];
+        } catch {
+            return ["", null];
+        }
+    }).filter(([, node]) => node));
+
+    const simulatorNotice = (title, message, tone = "error") => {
+        simulatorContent.replaceChildren();
+        const notice = document.createElement("div");
+        notice.className = `simulator-notice simulator-notice--${tone}`;
+        const heading = document.createElement("h3");
+        heading.textContent = title;
+        const copy = document.createElement("p");
+        copy.textContent = message;
+        notice.append(heading, copy);
+        simulatorContent.appendChild(notice);
+    };
+
+    const renderSimulatorPath = () => {
+        const path = element("simulatorPath");
+        path.replaceChildren();
+        simulatorState.path.forEach((node, index) => {
+            const item = document.createElement("span");
+            item.className = index === simulatorState.path.length - 1 ? "is-current" : "";
+            item.textContent = node.title || node.id;
+            item.title = node.id;
+            path.appendChild(item);
+        });
+        path.scrollLeft = path.scrollWidth;
+    };
+
+    const simulatorButton = (label, action, primary = false) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = primary ? "simulator-action simulator-action--primary" : "simulator-action";
+        button.textContent = label;
+        button.addEventListener("click", action);
+        return button;
+    };
+
+    const simulatorProfile = () => {
+        const platform = element("simulatorPlatform").value;
+        return platform ? {
+            platform,
+            device_type: element("simulatorDeviceType").value,
+            connection_type: element("simulatorConnection").value,
+        } : null;
+    };
+
+    const simulatorNodeMatches = (node, profile) => {
+        if (!profile || !node.conditions || !Object.keys(node.conditions).length) return true;
+        return Object.entries(node.conditions).every(([field, expected]) => !expected || profile[field] === expected);
+    };
+
+    const goToSimulatorNode = (nodeId) => {
+        const nodeMap = simulatorNodes();
+        const profile = simulatorProfile();
+        const skipped = [];
+        const conditionalVisits = new Set();
+        let node = nodeMap.get(nodeId);
+        while (node && !simulatorNodeMatches(node, profile)) {
+            if (conditionalVisits.has(node.id)) {
+                simulatorNotice("Conditional loop detected", "The simulator cannot find an applicable step because skip routes form a loop.", "warning");
+                return;
+            }
+            conditionalVisits.add(node.id);
+            skipped.push(node.title || node.id);
+            nodeId = node.skip_to;
+            node = nodeMap.get(nodeId);
+        }
+        if (!node) {
+            simulatorNotice("Broken destination", `The workflow references “${nodeId || "an empty node ID"}”, but that node does not exist.`);
+            return;
+        }
+
+        const visits = (simulatorState.visits.get(nodeId) || 0) + 1;
+        simulatorState.visits.set(nodeId, visits);
+        if (visits > 2) {
+            simulatorNotice("Possible loop detected", `The simulator reached “${node.title || nodeId}” more than twice. Restart or inspect this route.`, "warning");
+            return;
+        }
+
+        simulatorState.current = node;
+        simulatorState.path.push(node);
+        element("simulatorStep").textContent = `Step ${simulatorState.path.length}${Number(designer.dataset.estimatedSteps) ? ` of about ${designer.dataset.estimatedSteps}` : ""}`;
+        element("simulatorNodeId").textContent = node.id;
+        renderSimulatorPath();
+        simulatorContent.replaceChildren();
+
+        const badge = document.createElement("span");
+        badge.className = `node-type-badge node-type-badge--${node.type || "default"}`;
+        badge.textContent = node.type || "Node";
+        const title = document.createElement("h3");
+        title.textContent = node.title || node.id;
+        simulatorContent.append(badge, title);
+
+        if (skipped.length) {
+            const skipNotice = document.createElement("div");
+            skipNotice.className = "simulator-skip";
+            skipNotice.textContent = `Profile-aware routing skipped: ${skipped.join(", ")}`;
+            simulatorContent.appendChild(skipNotice);
+        }
+
+        if (node.help_text) {
+            const help = document.createElement("p");
+            help.className = "simulator-help";
+            help.textContent = node.help_text;
+            simulatorContent.appendChild(help);
+        }
+
+        if (node.type === "question") {
+            const answers = document.createElement("div");
+            answers.className = "simulator-actions";
+            (node.answers || []).forEach((answer) => {
+                answers.appendChild(simulatorButton(answer.label || "Untitled answer", () => goToSimulatorNode(answer.next)));
+            });
+            if (!node.answers?.length) simulatorNotice("No answers available", "This question does not have any answer routes.");
+            else simulatorContent.appendChild(answers);
+            return;
+        }
+
+        const bodyText = node.instruction || node.message;
+        if (bodyText) {
+            const body = document.createElement("p");
+            body.className = "simulator-body";
+            body.textContent = bodyText;
+            simulatorContent.appendChild(body);
+        }
+
+        if (node.type === "instruction") {
+            const actions = document.createElement("div");
+            actions.className = "simulator-actions";
+            actions.appendChild(simulatorButton("Continue", () => goToSimulatorNode(node.next), true));
+            simulatorContent.appendChild(actions);
+        } else if (node.type === "resolution") {
+            const complete = document.createElement("div");
+            complete.className = "simulator-complete";
+            complete.innerHTML = '<i class="bi bi-check-circle-fill" aria-hidden="true"></i><span>Workflow completed</span>';
+            simulatorContent.appendChild(complete);
+        } else if (node.type === "transition") {
+            const complete = document.createElement("div");
+            complete.className = "simulator-complete simulator-complete--transition";
+            complete.textContent = `Continues in workflow: ${node.next_workflow || "Not set"}`;
+            simulatorContent.appendChild(complete);
+        } else {
+            simulatorNotice("Unsupported node", `The simulator cannot run node type “${node.type || "unknown"}”.`);
+        }
+    };
+
+    const restartSimulator = () => {
+        simulatorState = { current: null, path: [], visits: new Map() };
+        element("simulatorPath").replaceChildren();
+        goToSimulatorNode(designer.dataset.startNode);
+    };
+
+    const openSimulator = () => {
+        if (hasChanges()) {
+            element("nodeDetailsHint").textContent = "Save or reset changes before simulating.";
+            return;
+        }
+        if (!simulatorDialog.open) simulatorDialog.showModal();
+        restartSimulator();
+    };
+
+    ["simulatorPlatform", "simulatorDeviceType", "simulatorConnection"].forEach((id) => element(id).addEventListener("change", () => {
+        if (simulatorDialog.open) restartSimulator();
+    }));
+
+    search?.addEventListener("input", filterNodes);
+    clearSearch?.addEventListener("click", () => { search.value = ""; filterNodes(); search.focus(); });
+    nodes.forEach((node) => node.addEventListener("click", () => selectNode(node)));
+    const requestedNodeId = new URLSearchParams(window.location.search).get("node");
+    if (requestedNodeId) {
+        const requestedNode = nodes.find((item) => item.dataset.nodeId === requestedNodeId);
+        if (requestedNode) selectNode(requestedNode);
+    }
+    form.addEventListener("input", updateDirtyState);
+    form.addEventListener("submit", (event) => { event.preventDefault(); saveNode(); });
+    generateHelpTextButton.addEventListener("click", () => runCoverageAction("help"));
+    createArticleDraftButton.addEventListener("click", () => runCoverageAction("article"));
+    resetButton.addEventListener("click", () => populateForm(originalNode));
+    element("addNodeAnswer").addEventListener("click", () => { makeAnswerRow(); updateDirtyState(); });
+    validationButton.addEventListener("click", runValidation);
+    element("revalidateWorkflowButton").addEventListener("click", runValidation);
+    element("closeValidationDialog").addEventListener("click", () => validationDialog.close());
+    validationDialog.addEventListener("click", (event) => { if (event.target === validationDialog) validationDialog.close(); });
+    element("simulateWorkflowButton").addEventListener("click", openSimulator);
+    element("exportWorkflowButton").addEventListener("click", () => exportDialog.showModal());
+    element("closeExportDialog").addEventListener("click", () => exportDialog.close());
+    element("cancelExportButton").addEventListener("click", () => exportDialog.close());
+    exportDialog.addEventListener("click", (event) => { if (event.target === exportDialog) exportDialog.close(); });
+    document.querySelectorAll("[data-export-format]").forEach((button) => {
+        button.addEventListener("click", () => {
+            const url = designer.dataset.exportUrl.replace("__FORMAT__", button.dataset.exportFormat);
+            window.location.assign(url);
+            exportDialog.close();
+        });
+    });
+    element("restartSimulatorButton").addEventListener("click", restartSimulator);
+    element("closeSimulatorButton").addEventListener("click", () => simulatorDialog.close());
+    element("closeSimulatorFooterButton").addEventListener("click", () => simulatorDialog.close());
+    simulatorDialog.addEventListener("click", (event) => { if (event.target === simulatorDialog) simulatorDialog.close(); });
+    publishButton.addEventListener("click", () => openPublicationDialog(true));
+    element("versionHistoryButton").addEventListener("click", () => openPublicationDialog(false));
+    element("confirmPublicationButton").addEventListener("click", publishWorkflow);
+    element("cancelPublicationButton").addEventListener("click", () => publicationDialog.close());
+    element("closePublicationDialog").addEventListener("click", () => publicationDialog.close());
+    publicationDialog.addEventListener("click", (event) => { if (event.target === publicationDialog) publicationDialog.close(); });
+    element("workflowSettingsButton").addEventListener("click", openSettings);
+    settingsForm.addEventListener("submit", (event) => { event.preventDefault(); saveWorkflowSettings(); });
+    element("cancelSettingsButton").addEventListener("click", closeSettings);
+    element("closeSettingsDialog").addEventListener("click", closeSettings);
+    settingsDialog.addEventListener("click", (event) => { if (event.target === settingsDialog) closeSettings(); });
+    element("improveNodeButton").addEventListener("click", openAIAssistant);
+    element("generateAISuggestionButton").addEventListener("click", generateAISuggestion);
+    element("applyAISuggestionButton").addEventListener("click", applyAISuggestion);
+    element("rejectAISuggestionButton").addEventListener("click", () => aiDialog.close());
+    element("closeAIDialog").addEventListener("click", () => aiDialog.close());
+    aiDialog.addEventListener("click", (event) => { if (event.target === aiDialog) aiDialog.close(); });
+    workflowSettingsState = readSettingsForm();
+    loadPublicationStatus();
+    window.addEventListener("beforeunload", (event) => {
+        if (hasChanges() || settingsAreDirty()) event.preventDefault();
+    });
+})();
 </script>

@@ -1,8 +1,8 @@
-# SupportPilot UI Wireframes
+# Gnojo UI Wireframes
 
 ## Design Philosophy
 
-SupportPilot should feel like professional enterprise software.
+Gnojo should feel like professional enterprise software.
 
 The interface should be clean, modern, intuitive, and welcoming without being overwhelming.
 
@@ -22,7 +22,7 @@ Introduce the application.
 
 Display:
 
-• SupportPilot logo
+• Gnojo logo
 
 • Tagline
 

@@ -1,377 +1,97 @@
 {% extends "base.html" %}
 
-{% block title %}Review Draft | SupportPilot{% endblock %}
+{% block title %}Review {{ article.title }} | Gnojo{% endblock %}
 
 {% block content %}
-
-<div class="container py-5">
-
-    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
-
-        <div>
-            <p class="text-uppercase text-muted small mb-1">
-                Knowledge Review
-            </p>
-
-            <h1 class="h2 mb-2">
-                {{ article.title }}
-            </h1>
-
-            <div class="d-flex flex-wrap gap-2">
-
-                <span class="badge text-bg-warning">
-                    Draft
-                </span>
-
-                {% if article.category %}
-                    <span class="badge text-bg-primary">
-                        {{ article.category }}
-                    </span>
-                {% endif %}
-
-                {% if article.difficulty %}
-                    <span class="badge text-bg-secondary">
-                        {{ article.difficulty }}
-                    </span>
-                {% endif %}
-
-                {% if article.estimated_time %}
-                    <span class="badge text-bg-light border">
-                        <i class="bi bi-clock me-1"></i>
-                        {{ article.estimated_time }}
-                    </span>
-                {% endif %}
-
-            </div>
-        </div>
-
-        <a
-            href="{{ url_for('list_drafts') }}"
-            class="btn btn-outline-primary"
-        >
-            <i class="bi bi-arrow-left me-2"></i>
-            Back to Drafts
-        </a>
-
+<section class="container article-review-page" aria-labelledby="articleReviewTitle">
+    <div class="article-review-heading">
+        <div><span class="section-eyebrow">Knowledge Review Workspace</span><h1 id="articleReviewTitle">{{ article.title }}</h1><p>Edit, validate, preview, and approve this article without touching its JSON file.</p></div>
+        <a class="btn btn-outline-primary" href="{{ url_for('list_drafts') }}"><i class="bi bi-arrow-left me-2" aria-hidden="true"></i>Back to drafts</a>
     </div>
 
-    <div class="alert alert-warning d-flex align-items-start gap-3 mb-4">
+    {% if error %}<div class="alert alert-danger" role="alert"><strong>Review could not be saved.</strong> {{ error }}</div>{% elif request.args.get('saved') == '1' %}<div class="alert alert-success" role="status">Article review saved.</div>{% endif %}
 
-        <i class="bi bi-exclamation-triangle-fill fs-4"></i>
-
-        <div>
-            <h2 class="h6 mb-1">
-                AI-generated draft
-            </h2>
-
-            <p class="mb-0">
-                Verify technical accuracy, commands, and sources before publication.
-            </p>
-        </div>
-
+    <div class="review-summary-grid">
+        <article><span>Completeness</span><strong>{{ analysis.score }}%</strong><div class="analytics-meter"><span style="width: {{ analysis.score }}%"></span></div></article>
+        <article><span>Review status</span><strong>{{ article.review.status|replace('_', ' ')|title }}</strong></article>
+        <article><span>Validation</span><strong>{{ 'Passed' if not analysis.validation_errors else analysis.validation_errors|length ~ ' issue(s)' }}</strong></article>
+        <article><span>Workflow links</span><strong>{{ workflow_references|length }}</strong></article>
     </div>
 
-    <div class="card shadow-sm mb-4">
-        <div class="card-body p-4">
+    {% if analysis.warnings or analysis.validation_errors %}
+    <section class="review-warning-panel" aria-labelledby="reviewWarningsTitle">
+        <h2 id="reviewWarningsTitle">Review warnings</h2>
+        {% for warning in analysis.warnings %}<div class="review-warning review-warning--{{ warning.level }}"><i class="bi bi-exclamation-triangle-fill" aria-hidden="true"></i><span>{{ warning.message }}</span></div>{% endfor %}
+        {% for validation_error in analysis.validation_errors %}<div class="review-warning review-warning--high"><i class="bi bi-x-circle-fill" aria-hidden="true"></i><span>{{ validation_error }}</span></div>{% endfor %}
+    </section>
+    {% endif %}
 
-            <h2 class="h4 mb-3">
-                Overview
-            </h2>
-
-            <p class="mb-0">
-                {{ article.overview }}
-            </p>
-
-        </div>
+    <div class="review-workspace-tabs" role="tablist" aria-label="Article workspace views">
+        <button class="btn btn-primary" type="button" data-review-view="editor" aria-pressed="true"><i class="bi bi-pencil-square me-1" aria-hidden="true"></i>Edit</button>
+        <button class="btn btn-outline-primary" type="button" data-review-view="preview" aria-pressed="false"><i class="bi bi-eye me-1" aria-hidden="true"></i>Preview</button>
     </div>
 
-    {% if article.checklist %}
-
-        <div class="card shadow-sm mb-4">
-            <div class="card-body p-4">
-
-                <h2 class="h4 mb-3">
-                    Troubleshooting Checklist
-                </h2>
-
-                <div class="vstack gap-3">
-
-                    {% for item in article.checklist %}
-
-                        <div class="form-check">
-
-                            <input
-                                class="form-check-input"
-                                type="checkbox"
-                                id="checklist_item_{{ loop.index }}"
-                            >
-
-                            <label
-                                class="form-check-label"
-                                for="checklist_item_{{ loop.index }}"
-                            >
-                                {{ item }}
-                            </label>
-
-                        </div>
-
-                    {% endfor %}
-
-                </div>
-
+    <form id="articleReviewForm" method="post" class="article-review-form" data-review-panel="editor">
+        <section class="review-editor-section">
+            <span class="section-eyebrow">Article identity</span><h2>Basics</h2>
+            <div class="review-editor-grid">
+                <label><span>Title</span><input class="form-control" name="title" value="{{ article.title }}" required></label>
+                <label><span>Category</span><input class="form-control" name="category" value="{{ article.category }}" required></label>
+                <label><span>Difficulty</span><select class="form-select" name="difficulty">{% for level in ['Beginner','Intermediate','Advanced'] %}<option {% if article.difficulty == level %}selected{% endif %}>{{ level }}</option>{% endfor %}</select></label>
+                <label><span>Estimated time</span><input class="form-control" name="estimated_time" value="{{ article.estimated_time }}" required></label>
             </div>
-        </div>
+            <label><span>Overview</span><textarea class="form-control" name="overview" rows="5" required>{{ article.overview }}</textarea></label>
+        </section>
 
-    {% endif %}
-
-    {% if article.common_indicators %}
-
-        <div class="card shadow-sm mb-4">
-            <div class="card-body p-4">
-
-                <h2 class="h4 mb-3">
-                    Common Indicators
-                </h2>
-
-                <ul class="mb-0">
-
-                    {% for indicator in article.common_indicators %}
-                        <li class="mb-2">
-                            {{ indicator }}
-                        </li>
-                    {% endfor %}
-
-                </ul>
-
+        <section class="review-editor-section">
+            <span class="section-eyebrow">Guidance</span><h2>Troubleshooting content</h2>
+            <div class="review-editor-grid">
+                <label><span>Checklist <small>One step per line</small></span><textarea class="form-control" name="checklist" rows="8">{{ article.checklist|join('\n') }}</textarea></label>
+                <label><span>Common indicators <small>One item per line</small></span><textarea class="form-control" name="common_indicators" rows="8">{{ article.common_indicators|join('\n') }}</textarea></label>
+                <label><span>Related topics <small>One topic per line</small></span><textarea class="form-control" name="related_topics" rows="6">{{ article.related_topics|join('\n') }}</textarea></label>
+                <label><span>Commands <small>One per line: command | explanation</small></span><textarea class="form-control font-monospace" name="commands" rows="6">{% for command in article.commands %}{{ command.command }} | {{ command.description }}{% if not loop.last %}\n{% endif %}{% endfor %}</textarea></label>
+                <label class="review-grid-wide"><span>Sources <small>One per line: title | URL</small></span><textarea class="form-control" name="sources" rows="5">{% for source in article.sources %}{{ source.title }} | {{ source.url }}{% if not loop.last %}\n{% endif %}{% endfor %}</textarea></label>
             </div>
-        </div>
+        </section>
 
-    {% endif %}
-
-    {% if article.commands %}
-
-        <div class="card shadow-sm mb-4">
-            <div class="card-body p-4">
-
-                <h2 class="h4 mb-3">
-                    Commands
-                </h2>
-
-                <div class="vstack gap-4">
-
-                    {% for command in article.commands %}
-
-                        <div>
-
-                            <pre class="border rounded p-3 mb-2"><code>{{ command.command }}</code></pre>
-
-                            <p class="text-muted mb-0">
-                                {{ command.description }}
-                            </p>
-
-                        </div>
-
-                    {% endfor %}
-
-                </div>
-
+        {% set quiz_item = article.quiz[0] if article.quiz else {} %}
+        <section class="review-editor-section">
+            <span class="section-eyebrow">Learning Mode</span><h2>Knowledge check</h2>
+            <label><span>Question</span><input class="form-control" name="quiz_question" value="{{ quiz_item.question or '' }}"></label>
+            <div class="review-editor-grid">
+                <label><span>Answers <small>One answer per line</small></span><textarea class="form-control" name="quiz_answers" rows="5">{{ (quiz_item.answers or [])|join('\n') }}</textarea></label>
+                <label><span>Correct answer <small>Must exactly match one answer</small></span><textarea class="form-control" name="quiz_correct_answer" rows="5">{{ quiz_item.correct_answer or '' }}</textarea></label>
             </div>
+        </section>
+
+        <section class="review-editor-section technical-review" aria-labelledby="technicalReviewTitle">
+            <span class="section-eyebrow">Publication gate</span><h2 id="technicalReviewTitle">Technical review checklist</h2>
+            <p>Approval confirms that a human reviewed the content. All checks are required before publication.</p>
+            {% for check_id, check_label in analysis.required_checks.items() %}<label class="technical-check"><input class="form-check-input" type="checkbox" name="review_{{ check_id }}" {% if article.review.checks and article.review.checks.get(check_id) %}checked{% endif %}><span>{{ check_label }}</span></label>{% endfor %}
+            <label><span>Review notes <small>Required when rejecting</small></span><textarea class="form-control" name="review_notes" rows="4">{{ article.review.notes|join('\n') if article.review.notes else '' }}</textarea></label>
+        </section>
+
+        <div class="review-action-bar">
+            <div><button class="btn btn-outline-secondary" name="review_action" value="save" type="submit">Save draft</button><button class="btn btn-outline-primary" name="review_action" value="submit" type="submit">Submit for review</button></div>
+            <div><button class="btn btn-outline-danger" name="review_action" value="reject" type="submit">Reject</button><button class="btn btn-success" name="review_action" value="approve" type="submit">Approve review</button></div>
         </div>
+    </form>
 
-    {% endif %}
+    <section class="article-live-preview" data-review-panel="preview" hidden aria-labelledby="articlePreviewTitle">
+        <span class="section-eyebrow">User-facing article</span><h2 id="articlePreviewTitle">{{ article.title }}</h2>
+        <p class="article-preview-overview">{{ article.overview }}</p>
+        <div class="article-preview-columns"><article><h3>What to do</h3><ol>{% for item in article.checklist %}<li>{{ item }}</li>{% endfor %}</ol></article><article><h3>Common indicators</h3><ul>{% for item in article.common_indicators %}<li>{{ item }}</li>{% endfor %}</ul></article></div>
+        <article id="articlePreviewCommands" {% if not article.commands %}hidden{% endif %}><h3>Commands</h3><div>{% for command in article.commands %}<pre><code>{{ command.command }}</code></pre><p>{{ command.description }}</p>{% endfor %}</div></article>
+        <article id="articlePreviewSources" {% if not article.sources %}hidden{% endif %}><h3>Sources</h3><ul>{% for source in article.sources %}<li><a href="{{ source.url }}" target="_blank" rel="noopener noreferrer">{{ source.title }}</a></li>{% endfor %}</ul></article>
+    </section>
 
-    {% if article.related_topics %}
+    {% if workflow_references %}<section class="review-editor-section article-workflow-links" aria-labelledby="workflowLinksTitle"><span class="section-eyebrow">Used by workflows</span><h2 id="workflowLinksTitle">Linked workflow nodes</h2>{% for reference in workflow_references %}<article><div><strong>{{ reference.workflow_name }}</strong><span>{{ reference.node_title }}</span></div>{% if reference.filename %}<a class="btn btn-sm btn-outline-primary" href="{{ url_for('workflow_editor', filename=reference.filename, node=reference.node_id) }}">Open node</a>{% else %}<a class="btn btn-sm btn-outline-primary" href="{{ url_for('wizard', workflow=reference.workflow_id, restart='1') }}">Test workflow</a>{% endif %}</article>{% endfor %}</section>{% endif %}
 
-        <div class="card shadow-sm mb-4">
-            <div class="card-body p-4">
-
-                <h2 class="h4 mb-3">
-                    Related Topics
-                </h2>
-
-                <div class="d-flex flex-wrap gap-2">
-
-                    {% for topic in article.related_topics %}
-
-                        <span class="badge text-bg-light border">
-                            {{ topic }}
-                        </span>
-
-                    {% endfor %}
-
-                </div>
-
-            </div>
-        </div>
-
-    {% endif %}
-
-    {% if article.quiz %}
-
-        <div class="card shadow-sm mb-4">
-            <div class="card-body p-4">
-
-                <h2 class="h4 mb-3">
-                    Knowledge Check
-                </h2>
-
-                {% set quiz_item = article.quiz[0] %}
-
-                <p class="fw-semibold">
-                    {{ quiz_item.question }}
-                </p>
-
-                <div class="vstack gap-2">
-
-                    {% for answer in quiz_item.answers %}
-
-                        <div class="form-check">
-
-                            <input
-                                class="form-check-input"
-                                type="radio"
-                                name="draft_quiz"
-                                id="draft_quiz_answer_{{ loop.index }}"
-                                value="{{ answer }}"
-                            >
-
-                            <label
-                                class="form-check-label"
-                                for="draft_quiz_answer_{{ loop.index }}"
-                            >
-                                {{ answer }}
-                            </label>
-
-                        </div>
-
-                    {% endfor %}
-
-                </div>
-
-            </div>
-        </div>
-
-    {% endif %}
-
-    {% if article.sources %}
-
-        <div class="card shadow-sm mb-4">
-            <div class="card-body p-4">
-
-                <h2 class="h4 mb-3">
-                    Sources
-                </h2>
-
-                <ul class="mb-0">
-
-                    {% for source in article.sources %}
-
-                        <li class="mb-2">
-
-                            <a
-                                href="{{ source.url }}"
-                                target="_blank"
-                                rel="noopener noreferrer"
-                            >
-                                {{ source.title }}
-                                <i class="bi bi-box-arrow-up-right ms-1"></i>
-                            </a>
-
-                        </li>
-
-                    {% endfor %}
-
-                </ul>
-
-            </div>
-        </div>
-
-    {% endif %}
-
-    <div class="card shadow-sm mb-4">
-        <div class="card-body p-4">
-
-            <h2 class="h4 mb-3">
-                Generation Details
-            </h2>
-
-            <dl class="row mb-0">
-
-                <dt class="col-sm-3">
-                    Provider
-                </dt>
-
-                <dd class="col-sm-9">
-                    {{ article.generation.provider }}
-                </dd>
-
-                <dt class="col-sm-3">
-                    Model
-                </dt>
-
-                <dd class="col-sm-9">
-                    {{ article.generation.model }}
-                </dd>
-
-                <dt class="col-sm-3">
-                    Generated
-                </dt>
-
-                <dd class="col-sm-9">
-                    {{ article.generation.generated_at }}
-                </dd>
-
-                <dt class="col-sm-3">
-                    Review status
-                </dt>
-
-                <dd class="col-sm-9 mb-0">
-                    {{ article.review.status }}
-                </dd>
-
-            </dl>
-
-        </div>
-    </div>
-
-    <div class="d-flex flex-wrap gap-2">
-
-       <form
-    method="POST"
-    action="{{ url_for(
-        'publish_draft',
-        article_id=article.id
-    ) }}"
->
-    <button
-        class="btn btn-success"
-        type="submit"
-    >
-        <i class="bi bi-check-circle me-2"></i>
-        Approve and Publish
-    </button>
-</form>
-
-        <button
-            class="btn btn-outline-primary"
-            type="button"
-            disabled
-        >
-            <i class="bi bi-pencil-square me-2"></i>
-            Edit Article
-        </button>
-
-        <button
-            class="btn btn-outline-danger"
-            type="button"
-            disabled
-        >
-            <i class="bi bi-x-circle me-2"></i>
-            Reject Draft
-        </button>
-
-    </div>
-
-</div>
-
+    <section class="publish-review-bar">
+        <div><strong>Publication status</strong><span>{% if analysis.can_publish %}Review approved and validation passed.{% else %}Complete validation and approve the technical review first.{% endif %}</span></div>
+        <form method="post" action="{{ url_for('publish_draft', article_id=article.id) }}"><button class="btn btn-success" type="submit" {% if not analysis.can_publish %}disabled{% endif %}><i class="bi bi-send-check me-2" aria-hidden="true"></i>Publish article</button></form>
+    </section>
+</section>
 {% endblock %}
+
+{% block scripts %}<script src="{{ url_for('static', filename='js/article_review.js') }}"></script>{% endblock %}

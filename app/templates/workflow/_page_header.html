@@ -1,44 +1,30 @@
-<div
-    class="d-flex flex-wrap
-           justify-content-between
-           align-items-start
-           gap-3
-           mb-5"
->
-    <div>
-
-        <p class="text-uppercase text-muted small mb-2">
-            Workflow Studio
-        </p>
-
-        <div
-            class="d-flex flex-wrap
-                   align-items-center
-                   gap-3
-                   mb-3"
-        >
-            <h1 class="display-5 fw-bold mb-0">
-                {{ workflow.name }}
-            </h1>
-
-            <span class="badge text-bg-secondary fs-6">
-                Draft
-            </span>
+<header class="workflow-header">
+    <div class="workflow-header__identity">
+        <a class="workflow-header__back" href="{{ url_for('workflow_studio') }}" aria-label="Back to Workflow Studio">
+            <i class="bi bi-arrow-left" aria-hidden="true"></i>
+        </a>
+        <div class="workflow-header__copy">
+            <div class="workflow-header__eyebrow">Workflow Designer</div>
+            <div class="workflow-header__title-row">
+                <h1 id="workflow-title">{{ workflow.name }}</h1>
+                <button id="versionHistoryButton" class="workflow-status workflow-status--draft" type="button">Draft</button>
+            </div>
+            <p>Build and review the support path your team will follow.</p>
         </div>
-
-        <p class="text-muted fs-5 mb-0">
-            Design, review, validate, and publish
-            troubleshooting workflows.
-        </p>
-
     </div>
 
-    <a
-        href="{{ url_for('workflow_studio') }}"
-        class="btn btn-outline-secondary"
-    >
-        <i class="bi bi-arrow-left me-2"></i>
-        Back to Workflow Studio
-    </a>
-
-</div>
+    <div class="workflow-header__actions" aria-label="Workflow actions">
+        <button id="simulateWorkflowButton" class="btn btn-sm btn-outline-primary" type="button">
+            <i class="bi bi-play-circle" aria-hidden="true"></i>
+            <span>Simulate</span>
+        </button>
+        <button id="exportWorkflowButton" class="btn btn-sm btn-outline-secondary" type="button">
+            <i class="bi bi-download" aria-hidden="true"></i>
+            <span>Export</span>
+        </button>
+        <button id="publishWorkflowButton" class="btn btn-sm btn-primary" type="button" disabled title="Validate the workflow before publishing">
+            <i class="bi bi-send" aria-hidden="true"></i>
+            <span>Publish</span>
+        </button>
+    </div>
+</header>

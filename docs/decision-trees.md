@@ -1,8 +1,8 @@
-# SupportPilot Decision Trees
+# Gnojo Decision Trees
 
 ## Purpose
 
-SupportPilot uses guided decision trees to help users troubleshoot technical problems one step at a time.
+Gnojo uses guided decision trees to help users troubleshoot technical problems one step at a time.
 
 Each workflow should:
 
@@ -250,7 +250,7 @@ Ask the user to enter or paste the error message without including passwords or 
 
 ## Step 8: Safe Diagnostic Checks
 
-SupportPilot should initially guide the user through graphical checks.
+Gnojo should initially guide the user through graphical checks.
 
 Command-line checks may be offered under:
 

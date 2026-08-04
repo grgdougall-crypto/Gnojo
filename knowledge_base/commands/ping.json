@@ -98,8 +98,7 @@
   "related_commands": [
     "ipconfig",
     "tracert",
-    "nslookup",
-    "pathping"
+    "nslookup"
   ],
 
   "related_articles": [

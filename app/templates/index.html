@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}SupportPilot | Mission Control{% endblock %}
+{% block title %}Gnojo | Home{% endblock %}
 
 {% block content %}
 <section class="hero-section">
@@ -24,37 +24,42 @@
                         Start Troubleshooting
                     </a>
 
-                    <a class="btn btn-outline-primary btn-lg" href="#">
+                    <a class="btn btn-outline-primary btn-lg" href="{{ url_for('device_profiles') }}">
                         <i class="bi bi-pc-display me-2"></i>
-                        Create Device Profile
+                        {% if active_device %}Device: {{ active_device.name }}{% else %}Create Device Profile{% endif %}
                     </a>
                 </div>
             </div>
 
             <aside class="hero-summary">
                 <p class="section-label mb-2">
-                    SupportPilot can help with
+                    Gnojo can help with
                 </p>
 
                 <ul class="capability-list">
                     <li>
                         <i class="bi bi-check-circle-fill"></i>
-                        Windows 10, Windows 11, and macOS
+                        Windows, macOS, and Linux
                     </li>
 
                     <li>
                         <i class="bi bi-check-circle-fill"></i>
-                        Networking, VPN, DNS, and DHCP
+                        Networking, VPN, DNS, DHCP, and connectivity
                     </li>
 
                     <li>
                         <i class="bi bi-check-circle-fill"></i>
-                        Windows Server and Active Directory
+                        Servers, identity, and access management
                     </li>
 
                     <li>
                         <i class="bi bi-check-circle-fill"></i>
                         Security alerts, logs, and packet analysis
+                    </li>
+
+                    <li>
+                        <i class="bi bi-check-circle-fill"></i>
+                        Guided diagnostics, commands, and evidence collection
                     </li>
                 </ul>
             </aside>
@@ -64,19 +69,36 @@
 
 <section class="mission-section" id="workflows">
     <div class="container">
+        {% if active_session %}
+        <div class="active-session-banner">
+            <div><i class="bi bi-clock-history"></i><span><strong>Continue {{ active_session.workflow_name }}</strong><small>Step {{ active_session.step }} is saved{% if active_session.version %} on published version {{ active_session.version }}{% endif %}{% if active_session.learning_mode %} · Learning Mode on{% endif %}</small></span></div>
+            <div class="active-session-banner__actions">
+                <form method="post" action="{{ url_for('end_troubleshooting_session') }}" onsubmit="return confirm('End this saved troubleshooting session? Its progress cannot be resumed.');"><button class="btn btn-outline-danger" type="submit"><i class="bi bi-x-circle me-1" aria-hidden="true"></i>End session</button></form>
+                <a class="btn btn-primary" href="{{ url_for('wizard', workflow=active_session.workflow_id, resume='1') }}">Resume troubleshooting</a>
+            </div>
+        </div>
+        {% endif %}
+        {% if request.args.get('session_ended') == '1' %}<div class="alert alert-success" role="status">Saved troubleshooting progress cleared.</div>{% endif %}
         <div class="section-heading">
             <p class="section-label">Guided Troubleshooting</p>
 
-            <h2>Choose a workflow</h2>
+            <h2>Recommended workflows</h2>
 
             <p class="section-description">
-                Select the issue that most closely matches the problem.
+                Start with a recent or device-relevant workflow, or browse the complete library.
             </p>
         </div>
 
-        <div class="row g-3 mb-5">
-            {% for workflow_id, workflow in workflows.items() %}
-                <div class="col-12 col-md-6">
+        {% if learning_mode %}
+        <div class="learning-mode-banner">
+            <div><i class="bi bi-mortarboard-fill"></i><span><strong>Learning Mode is on</strong><small>Workflows will explain the reasoning and concepts behind each step.</small></span></div>
+            <a class="btn btn-sm btn-outline-primary" href="{{ url_for('home', learning='0', _anchor='workflows') }}">Turn off</a>
+        </div>
+        {% endif %}
+
+        <div class="row g-3 mb-5" id="workflowCardGrid">
+            {% for workflow_id, workflow in featured_workflows.items() %}
+                <div class="col-12 col-md-6 workflow-card-item" data-category="{{ workflow.category }}" data-platform="{{ workflow.platform }}" data-compatibility="{{ workflow.compatibility }}" data-search="{{ workflow.name }} {{ workflow.description }} {{ workflow.category }} {{ workflow.platform }}">
                     <a
                         class="service-card"
                         href="{{ url_for('wizard', workflow=workflow_id) }}"
@@ -88,6 +110,24 @@
                         <div>
                             <h3>{{ workflow.name }}</h3>
 
+                            {% if workflow_id in favorite_ids %}
+                                <span class="badge text-bg-warning mb-2"><i class="bi bi-star-fill me-1" aria-hidden="true"></i>Favorite</span>
+                            {% endif %}
+
+                            {% if workflow.compatibility == 'recommended' %}
+                                <span class="badge text-bg-success mb-2"><i class="bi bi-stars me-1"></i>Recommended for {{ active_device.name }}</span>
+                            {% elif workflow.compatibility == 'compatible' and active_device %}
+                                <span class="badge text-bg-success mb-2">Compatible</span>
+                            {% elif workflow.compatibility == 'incompatible' %}
+                                <span class="badge text-bg-warning mb-2"><i class="bi bi-exclamation-triangle me-1"></i>Different platform</span>
+                            {% endif %}
+
+                            {% if workflow.source == 'published' %}
+                                <span class="badge text-bg-primary mb-2">Published · v{{ workflow.version }}</span>
+                            {% endif %}
+                            <span class="badge text-bg-secondary mb-2">{{ workflow.category }}</span>
+                            <span class="badge text-bg-light border mb-2">{{ workflow.platform }}</span>
+
                             <p>
                                 {{ workflow.description }}
                             </p>
@@ -98,11 +138,15 @@
                 </div>
             {% endfor %}
         </div>
+        <div class="workflow-library-cta">
+            <div><strong>Looking for something else?</strong><span>Explore all {{ workflow_count }} workflows with category and platform filters.</span></div>
+            <a class="btn btn-outline-primary" href="{{ url_for('workflow_catalog') }}">Browse all workflows <i class="bi bi-arrow-right ms-2" aria-hidden="true"></i></a>
+        </div>
 
         <div class="section-heading">
-            <p class="section-label">Mission Control</p>
+            <p class="section-label">Gnojo Workspace</p>
 
-            <h2>More SupportPilot services</h2>
+            <h2>More Gnojo services</h2>
 
             <p class="section-description">
                 Additional service areas will be connected as the platform grows.
@@ -111,8 +155,7 @@
 
         <div class="row g-3">
             <div class="col-12 col-md-6 col-xl-4">
-                <a class="service-card" href="#">
-    >   
+                <a class="service-card" href="{{ url_for('search', q='Windows macOS applications printers user access', type='all') }}">
                     <div class="service-icon">
                         <i class="bi bi-laptop"></i>
                     </div>
@@ -131,7 +174,7 @@
             </div>
 
             <div class="col-12 col-md-6 col-xl-4">
-                <a class="service-card" href="#">
+                <a class="service-card" href="{{ url_for('search', q='Wi-Fi DNS DHCP VPN routing network diagnostics', type='all') }}">
                     <div class="service-icon">
                         <i class="bi bi-diagram-3"></i>
                     </div>
@@ -150,7 +193,7 @@
             </div>
 
             <div class="col-12 col-md-6 col-xl-4">
-                <a class="service-card" href="#">
+                <a class="service-card" href="{{ url_for('search', q='Windows Server Active Directory Group Policy permissions', type='all') }}">
                     <div class="service-icon">
                         <i class="bi bi-server"></i>
                     </div>
@@ -169,7 +212,7 @@
             </div>
 
             <div class="col-12 col-md-6 col-xl-4">
-                <a class="service-card" href="#">
+                <a class="service-card" href="{{ url_for('search', q='security alerts logs packet captures escalation', type='all') }}">
                     <div class="service-icon">
                         <i class="bi bi-shield-check"></i>
                     </div>
@@ -210,7 +253,7 @@
             </div>
 
             <div class="col-12 col-md-6 col-xl-4">
-                <a class="service-card" href="#">
+                <a class="service-card" href="{{ url_for('home', learning='1', _anchor='workflows') }}">
                     <div class="service-icon">
                         <i class="bi bi-mortarboard"></i>
                     </div>
@@ -222,6 +265,8 @@
                             Practice realistic scenarios and learn
                             why each troubleshooting step matters.
                         </p>
+
+                        <span class="service-card__destination">Explore learning resources</span>
                     </div>
 
                     <i class="bi bi-arrow-right card-arrow"></i>

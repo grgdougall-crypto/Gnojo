@@ -3,7 +3,7 @@ Purpose:
     Provide a local deterministic article generator.
 
 Responsibilities:
-    - Generate a valid SupportPilot draft without using an external API.
+    - Generate a valid Gnojo draft without using an external API.
     - Provide predictable offline behavior.
     - Support provider routing and automated tests.
 
@@ -95,7 +95,7 @@ class FallbackProvider(BaseProvider):
 
         Returns:
             dict:
-                A complete SupportPilot article that passes structural
+                A complete Gnojo article that passes structural
                 validation but clearly requires human completion.
         """
 

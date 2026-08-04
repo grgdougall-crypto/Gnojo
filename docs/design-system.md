@@ -1,8 +1,8 @@
-# SupportPilot Design System
+# Gnojo Design System
 
 ## Design Goal
 
-SupportPilot should feel modern, professional, and approachable.
+Gnojo should feel modern, professional, and approachable.
 
 The interface should be engaging without becoming distracting or confusing. Users should always understand where they are, what they need to do, and what will happen next.
 
@@ -27,7 +27,7 @@ The interface should be engaging without becoming distracting or confusing. User
 
 ### Product Name
 
-SupportPilot
+Gnojo
 
 ### Tagline
 

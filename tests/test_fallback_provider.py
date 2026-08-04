@@ -1,6 +1,6 @@
 """
 Purpose:
-    Test the SupportPilot fallback provider.
+    Test the Gnojo fallback provider.
 
 Responsibilities:
     - Confirm that the provider is always configured.

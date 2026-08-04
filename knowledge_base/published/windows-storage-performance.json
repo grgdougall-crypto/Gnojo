@@ -1,0 +1,74 @@
+{
+  "id": "windows-storage-performance",
+  "title": "Storage Space and Windows Performance",
+  "category": "Desktop Support",
+  "tags": [
+    "windows",
+    "storage",
+    "disk space",
+    "cleanup",
+    "performance"
+  ],
+  "related_articles": [
+    "windows-task-manager-performance"
+  ],
+  "related_commands": [
+    "systeminfo"
+  ],
+  "difficulty": "Beginner",
+  "estimated_time": "5 to 10 minutes",
+  "overview": "Windows needs free storage for updates, temporary files, application caches, and virtual memory. Cleanup recommendations help identify removable content while keeping the user in control of what is deleted.",
+  "checklist": [
+    "Open Settings > System > Storage and review the Windows drive.",
+    "Treat less than about 10 percent free space as a warning sign.",
+    "Open Cleanup recommendations and review every category before selecting files.",
+    "Move important personal files to an approved backup location before removing them.",
+    "Never manually delete Windows, Program Files, or unfamiliar system folders."
+  ],
+  "common_indicators": [
+    "Windows reports low disk space.",
+    "Updates fail because additional space is required.",
+    "Applications cannot save or create temporary files.",
+    "Disk activity remains high while little free space is available.",
+    "Performance improves after safe cleanup and restart."
+  ],
+  "commands": [],
+  "related_topics": [
+    "Cleanup recommendations",
+    "Temporary files",
+    "Windows Update",
+    "Virtual memory",
+    "Data backup"
+  ],
+  "quiz": [
+    {
+      "question": "Which cleanup approach is safest for a beginner?",
+      "answers": [
+        "Review Windows Cleanup recommendations",
+        "Delete the Windows folder",
+        "Remove every unfamiliar file"
+      ],
+      "correct_answer": "Review Windows Cleanup recommendations"
+    }
+  ],
+  "sources": [
+    {
+      "title": "Free up drive space in Windows",
+      "url": "https://support.microsoft.com/windows/free-up-drive-space-in-windows"
+    }
+  ],
+  "schema_version": "1.0",
+  "generation": {
+    "provider": "Legacy content migration",
+    "model": null,
+    "generated_at": null
+  },
+  "review": {
+    "status": "pending_review",
+    "reviewed_by": null,
+    "reviewed_at": null,
+    "notes": [
+      "Migrated to article schema 1.0; technical review is still required."
+    ]
+  }
+}

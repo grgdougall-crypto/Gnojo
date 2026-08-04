@@ -6,7 +6,7 @@ from typing import Any, Optional
 class SearchResult:
     """
     Represents a normalized result returned by SearchService,
-    regardless of the underlying SupportPilot content type.
+    regardless of the underlying Gnojo content type.
     """
 
     id: str

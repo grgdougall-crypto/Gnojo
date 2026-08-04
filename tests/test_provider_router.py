@@ -1,6 +1,6 @@
 """
 Purpose:
-    Test SupportPilot provider routing and failover behavior.
+    Test Gnojo provider routing and failover behavior.
 
 Responsibilities:
     - Confirm that the first successful provider is returned.

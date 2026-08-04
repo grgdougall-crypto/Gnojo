@@ -1,0 +1,121 @@
+{
+  "schema_version": "1.0",
+  "id": "whoami",
+  "name": "whoami",
+  "title": "Understanding whoami",
+  "shell": "Command Prompt",
+  "platforms": [
+    "Windows 10",
+    "Windows 11",
+    "Windows Server"
+  ],
+  "category": "Networking",
+  "difficulty": "Beginner",
+  "summary": "whoami displays information about the currently logged-on user and their security context (account name, SID, groups, and privileges) on Windows.",
+  "syntax": "whoami [/UPN] [/FQDN] [/LOGONID] [/USER] [/GROUPS] [/PRIV] [/ALL]",
+  "examples": [
+    {
+      "command": "whoami",
+      "description": "Shows the current user in DOMAIN\\User or COMPUTERNAME\\User format."
+    },
+    {
+      "command": "whoami /upn",
+      "description": "Displays the current user as a User Principal Name (UPN), e.g., user@contoso.com (requires domain account)."
+    },
+    {
+      "command": "whoami /fqdn",
+      "description": "Displays the user name using the domain's fully qualified domain name (FQDN), e.g., corp.contoso.com\\user (requires domain context)."
+    },
+    {
+      "command": "whoami /user",
+      "description": "Shows the current user and their Security Identifier (SID)."
+    },
+    {
+      "command": "whoami /groups",
+      "description": "Lists group memberships and attributes (e.g., Mandatory, Enabled, Deny-only)."
+    },
+    {
+      "command": "whoami /priv",
+      "description": "Lists security privileges in the current logon token and whether each is enabled or disabled."
+    },
+    {
+      "command": "whoami /all",
+      "description": "Displays comprehensive identity details: user, SID, groups, privileges, and logon information."
+    },
+    {
+      "command": "whoami /logonid",
+      "description": "Shows the hexadecimal logon session ID (LUID) for the current session."
+    }
+  ],
+  "permissions": {
+    "requires_elevation": false,
+    "notes": "whoami reads the current token and does not modify system state. It works for standard users; some fields may vary based on token filtering or service contexts."
+  },
+  "risk": {
+    "level": "Low",
+    "changes_system": false,
+    "warning": "Reveals identity and security details to the console; avoid sharing outputs that contain sensitive SIDs or account names."
+  },
+  "output_fields": [
+    {
+      "name": "/USER",
+      "description": "Reveals the user and SID; useful to confirm which account (and SID) the process is running under."
+    },
+    {
+      "name": "/GROUPS -> Attributes",
+      "description": "Indicates group influence on access (e.g., Deny-only, Mandatory, Enabled by default). Critical when troubleshooting permission issues."
+    },
+    {
+      "name": "/PRIV -> State",
+      "description": "Shows whether sensitive privileges (e.g., SeBackupPrivilege) are enabled; affects ability to perform certain actions."
+    },
+    {
+      "name": "/LOGONID",
+      "description": "Identifies the specific logon session (LUID), helping correlate with security logs or session diagnostics."
+    },
+    {
+      "name": "/UPN",
+      "description": "Outputs user@domain format; helpful for SSO/Kerberos troubleshooting in domain environments."
+    },
+    {
+      "name": "/FQDN",
+      "description": "Displays the user with the domain’s FQDN; helps avoid ambiguity with NetBIOS names."
+    }
+  ],
+  "common_errors": [
+    {
+      "message": "'whoami' is not recognized as an internal or external command, operable program or batch file.",
+      "meaning": "Occurs if system paths to System32 are missing from PATH, the binary is unavailable, or on very old/stripped environments. Run from %SystemRoot%\\System32 or fix PATH."
+    },
+    {
+      "message": "ERROR: Invalid syntax. Type \"WHOAMI /?\" for usage.",
+      "meaning": "Triggered by unsupported or misspelled switches (e.g., /domain). Use whoami /? to see valid options."
+    },
+    {
+      "message": "UPN/FQDN not available for this account.",
+      "meaning": "The account is local or the system cannot contact a domain controller. Ensure the user is a domain account and the DC is reachable."
+    },
+    {
+      "message": "Insufficient resources to complete the operation.",
+      "meaning": "Rare; indicates a transient system resource issue when querying token details. Retry or check system health."
+    }
+  ],
+  "related_commands": [],
+  "related_articles": [],
+  "tags": [
+    "whoami",
+    "networking",
+    "command prompt",
+    "troubleshooting"
+  ],
+  "sources": [
+    {
+      "title": "whoami (Windows Commands)",
+      "organization": "Microsoft Learn",
+      "type": "Official Documentation",
+      "url": "https://learn.microsoft.com/windows-server/administration/windows-commands/whoami"
+    }
+  ],
+  "review_status": "reviewed",
+  "version": "1.0"
+}

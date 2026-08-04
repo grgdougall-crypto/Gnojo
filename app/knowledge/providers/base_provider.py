@@ -1,6 +1,6 @@
 """
 Purpose:
-    Define the common interface for SupportPilot content providers.
+    Define the common interface for Gnojo content providers.
 
 Responsibilities:
     - Establish the methods every provider must implement.
@@ -106,7 +106,7 @@ class ProviderResponseError(ProviderError):
 
 class BaseProvider(ABC):
     """
-    Define the required interface for all SupportPilot providers.
+    Define the required interface for all Gnojo providers.
 
     Every external or local provider must inherit from this class and
     implement its abstract properties and methods.

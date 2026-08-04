@@ -1,13 +1,13 @@
 """
 Purpose:
-    Generate structured SupportPilot articles using Google Gemini.
+    Generate structured Gnojo articles using Google Gemini.
 
 Responsibilities:
     - Load Gemini configuration from environment variables.
-    - Request output that follows the SupportPilot article schema.
+    - Request output that follows the Gnojo article schema.
     - Parse Gemini's structured response.
     - Return a standard ProviderResult.
-    - Translate provider failures into SupportPilot exceptions.
+    - Translate provider failures into Gnojo exceptions.
 
 Does NOT:
     - Build prompts.
@@ -231,7 +231,7 @@ ARTICLE_RESPONSE_SCHEMA: dict[str, Any] = {
 
 class GeminiProvider(BaseProvider):
     """
-    Generate SupportPilot draft articles with Google Gemini.
+    Generate Gnojo draft articles with Google Gemini.
     """
 
     DEFAULT_MODEL = "gemini-2.5-flash"
@@ -286,7 +286,7 @@ class GeminiProvider(BaseProvider):
         prompt: str,
     ) -> ProviderResult:
         """
-        Generate one structured SupportPilot article.
+        Generate one structured Gnojo article.
 
         Args:
             prompt:
@@ -393,7 +393,7 @@ class GeminiProvider(BaseProvider):
         error: Exception,
     ) -> None:
         """
-        Translate Gemini failures into SupportPilot exceptions.
+        Translate Gemini failures into Gnojo exceptions.
         """
 
         error_message = str(error)

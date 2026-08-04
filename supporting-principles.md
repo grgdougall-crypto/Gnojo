@@ -1,6 +1,6 @@
-# SupportPilot Principles
+# Gnojo Principles
 
-These principles define how SupportPilot should evolve over time.
+These principles define how Gnojo should evolve over time.
 
 Every new feature, workflow, interface, and architectural decision should reinforce these principles.
 
@@ -18,7 +18,7 @@ Avoid adding functionality simply because it is technically possible.
 
 # 2. Guide, don't overwhelm.
 
-SupportPilot should reduce complexity.
+Gnojo should reduce complexity.
 
 Users should always know what to do next.
 
@@ -44,7 +44,7 @@ AI generates.
 
 Humans review.
 
-SupportPilot publishes.
+Gnojo publishes.
 
 ---
 
@@ -76,7 +76,7 @@ Each interaction should move the user closer to solving their problem.
 
 # 8. Build for growth.
 
-SupportPilot should grow naturally.
+Gnojo should grow naturally.
 
 New workflows, operating systems, vendors, AI providers, and learning experiences should integrate without requiring major architectural changes.
 
@@ -94,7 +94,7 @@ Published knowledge should be reviewed, versioned, maintained, and treated as lo
 
 # 10. Learning should happen naturally.
 
-SupportPilot should not simply provide answers.
+Gnojo should not simply provide answers.
 
 Whenever appropriate, it should explain why a step matters so users become more capable over time.
 
@@ -118,7 +118,7 @@ Avoid unnecessary complexity.
 
 # 13. Professional by default.
 
-SupportPilot should feel calm, deliberate, and dependable.
+Gnojo should feel calm, deliberate, and dependable.
 
 Avoid gimmicks, excessive animation, unnecessary notifications, and distracting interface elements.
 
@@ -128,7 +128,7 @@ Avoid gimmicks, excessive animation, unnecessary notifications, and distracting 
 
 Technology changes.
 
-SupportPilot should be built to evolve without frequent redesign.
+Gnojo should be built to evolve without frequent redesign.
 
 Favor reusable components, flexible data structures, and maintainable architecture over short-term convenience.
 
@@ -138,7 +138,7 @@ Every decision should consider how well it will age.
 
 # 15. Never sacrifice trust for convenience.
 
-SupportPilot should never hide uncertainty.
+Gnojo should never hide uncertainty.
 
 If information is incomplete, outdated, or AI-generated, users should know.
 
@@ -156,4 +156,4 @@ It is finished when it:
 - Fits naturally into the existing experience.
 - Follows these principles.
 - Can be maintained in the future.
-- Makes SupportPilot better than it was before.
+- Makes Gnojo better than it was before.

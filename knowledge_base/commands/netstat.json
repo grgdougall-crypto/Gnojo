@@ -1,0 +1,158 @@
+{
+  "schema_version": "1.0",
+  "id": "netstat",
+  "name": "netstat",
+  "title": "Understanding netstat",
+  "shell": "Command Prompt",
+  "platforms": [
+    "Windows 10",
+    "Windows 11",
+    "Windows Server"
+  ],
+  "category": "Networking",
+  "difficulty": "Beginner",
+  "summary": "Displays active TCP/UDP connections, listening ports, routing table, interface statistics, and per-protocol statistics to help diagnose network and port usage on Windows.",
+  "syntax": "netstat [-a] [-b] [-e] [-f] [-n] [-o] [-p Proto] [-q] [-r] [-s] [-t] [-x] [-y] [Interval]",
+  "examples": [
+    {
+      "command": "netstat -ano",
+      "description": "Lists all connections and listening ports with numeric addresses and the owning process ID (PID). Useful to identify which PID has a port open."
+    },
+    {
+      "command": "netstat -an | findstr :80",
+      "description": "Filters numeric output to show connections/listeners on TCP/UDP port 80. Helpful for confirming HTTP port usage or conflicts."
+    },
+    {
+      "command": "netstat -abno",
+      "description": "Shows all connections/listeners with the executable (-b), numeric addresses (-n), and PID (-o). Requires elevation; useful for mapping ports directly to binaries."
+    },
+    {
+      "command": "netstat -r",
+      "description": "Displays the IP routing table (same as route print). Use this to verify default gateways and route precedence."
+    },
+    {
+      "command": "netstat -s -p tcp",
+      "description": "Shows TCP protocol statistics only. Useful for spotting retransmissions, resets, and overall TCP health."
+    },
+    {
+      "command": "netstat -af",
+      "description": "Displays all connections and listening ports and attempts to resolve foreign addresses to FQDNs. Helpful when you need human-readable remote endpoints."
+    }
+  ],
+  "permissions": {
+    "requires_elevation": false,
+    "notes": "Most netstat output is available to standard users. Options like -b (executable mapping) often require an elevated Command Prompt. Some entries may show 'Can not obtain ownership information' without admin rights or if the process exits quickly."
+  },
+  "risk": {
+    "level": "Low",
+    "changes_system": false,
+    "warning": "Read-only command; however, it may reveal sensitive process names, IPs, and ports in logs or screenshots. Use -n to avoid unnecessary DNS lookups on production systems."
+  },
+  "output_fields": [
+    {
+      "name": "-a",
+      "description": "Shows all connections and listening ports. Essential when verifying whether a service is actually listening."
+    },
+    {
+      "name": "-n",
+      "description": "Disables DNS/FQDN lookups and shows numeric addresses. Avoids delays and makes scripting/filtering predictable."
+    },
+    {
+      "name": "-o",
+      "description": "Displays the owning process ID. Critical for correlating ports to processes for remediation."
+    },
+    {
+      "name": "-b",
+      "description": "Displays the executable creating each connection or listener. Often requires elevation; invaluable for identifying the exact binary."
+    },
+    {
+      "name": "-p Proto",
+      "description": "Filters by protocol (TCP, UDP, TCPv6, UDPv6, IP, IPv6, ICMP, ICMPv6). Reduces noise and focuses analysis."
+    },
+    {
+      "name": "Proto",
+      "description": "Output column indicating protocol (TCP or UDP). Helps separate connection-oriented vs connectionless traffic."
+    },
+    {
+      "name": "Local Address",
+      "description": "IP and port bound locally (0.0.0.0 or [::] means all interfaces). Key for exposure/scope of a listening service."
+    },
+    {
+      "name": "Foreign Address",
+      "description": "Remote endpoint IP/port. Identifies who you are connected to or receiving from."
+    },
+    {
+      "name": "State",
+      "description": "TCP connection state (LISTENING, ESTABLISHED, TIME_WAIT, CLOSE_WAIT, etc.). Indicates lifecycle/health of connections."
+    },
+    {
+      "name": "PID",
+      "description": "Owning process identifier (with -o). Needed to map ports to processes via tasklist or Task Manager."
+    },
+    {
+      "name": "-r",
+      "description": "Shows the routing table. Useful for validating default route and specific network paths."
+    },
+    {
+      "name": "-s",
+      "description": "Displays per-protocol statistics. Helps quantify errors, resets, and packet counts."
+    },
+    {
+      "name": "-t",
+      "description": "Shows TCP offload state. Useful when troubleshooting NIC offload/acceleration issues."
+    },
+    {
+      "name": "-q",
+      "description": "Displays all connections, listening ports, and bound non-listening TCP ports. Helps spot sockets in a bound state without a listener."
+    }
+  ],
+  "common_errors": [
+    {
+      "message": "The requested operation requires elevation.",
+      "meaning": "Occurs when using options like -b (show executable) without an elevated Command Prompt. Run as Administrator."
+    },
+    {
+      "message": "Can not obtain ownership information.",
+      "meaning": "Seen with netstat -b when the tool cannot map a socket to an executable (insufficient rights or the process exited). Try elevation and rerun promptly."
+    },
+    {
+      "message": "Slow output or long pauses.",
+      "meaning": "Name resolution delays when not using -n or when using -f to resolve FQDNs. Use -n to disable lookups or ensure DNS is responsive."
+    },
+    {
+      "message": "Invalid protocol specified with -p.",
+      "meaning": "Using an unsupported protocol token (e.g., netstat -p foo). Use one of: TCP, UDP, TCPv6, UDPv6, IP, IPv6, ICMP, ICMPv6."
+    },
+    {
+      "message": "No active connections.",
+      "meaning": "Normal condition when there are no current TCP sessions. Verify service is listening (-a) or traffic is present."
+    },
+    {
+      "message": "'netstat' is not recognized as an internal or external command...",
+      "meaning": "PATH/environment issue or severely minimal Windows environment. Ensure %SystemRoot%\\System32 is in PATH and the binary exists."
+    }
+  ],
+  "related_commands": [
+    "tasklist",
+    "ping",
+    "tracert",
+    "ipconfig"
+  ],
+  "related_articles": [],
+  "tags": [
+    "netstat",
+    "networking",
+    "command prompt",
+    "troubleshooting"
+  ],
+  "sources": [
+    {
+      "title": "netstat (Windows Commands)",
+      "organization": "Microsoft Learn",
+      "type": "Official Documentation",
+      "url": "https://learn.microsoft.com/windows-server/administration/windows-commands/netstat"
+    }
+  ],
+  "review_status": "reviewed",
+  "version": "1.0"
+}

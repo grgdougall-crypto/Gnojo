@@ -1,52 +1,92 @@
-# SupportPilot
+# Gnojo
 
-## Navigate. Diagnose. Resolve.
+**Navigate. Diagnose. Resolve.**
 
-SupportPilot is an AI-assisted IT troubleshooting platform designed to help users diagnose, understand, and resolve technology issues through guided workflows, a structured knowledge base, and intelligent assistance.
+Gnojo is an AI-assisted IT troubleshooting and content-authoring platform. It combines guided decision-tree workflows with reviewed knowledge articles, command references, diagnostic scripts, device-aware recommendations, and learning tools.
 
-Unlike traditional AI chatbots, SupportPilot combines expert troubleshooting logic with AI to provide accurate, step-by-step guidance across multiple operating systems and enterprise technologies.
+The name combines **gnosis** (knowledge through understanding) and **dojo** (a place for disciplined practice and improvement). Gnojo is pronounced **NO-joe**.
 
----
+## Current status
 
-## Current Status
+Gnojo is a pre-1.0 application under active development. The current build includes:
 
-Version 0.1 – Planning & Architecture
+- Guided troubleshooting with resumable sessions, history, feedback, and device profiles
+- A searchable and filterable workflow catalog
+- Workflow authoring, editing, validation, simulation, publishing, versioning, and export
+- Knowledge article drafting and review
+- A reviewed command library
+- A Windows, Linux, and macOS script library and script builder
+- Learning mode, workflow coverage, and content-quality analytics
+- Optional Gemini and OpenAI assistance with local fallbacks
+- Responsive light and dark themes with accessibility support
 
----
+Content marked `pending_review` is intentionally not represented as fully reviewed. Technical content should be validated in a safe test environment before production use.
 
-## Planned Features
+## Local setup
 
-- Guided troubleshooting workflows
-- Device profiles
-- Windows 10 support
-- Windows 11 support
-- macOS support
-- Linux support
-- Interactive knowledge base
-- AI-assisted diagnostics
-- Ticket summaries
-- Screenshot-guided instructions
-- Learning mode
-- Enterprise administration tools
+Requirements: Python 3.11 or newer and Git.
 
----
+1. Clone the repository and open its folder.
+2. Create a virtual environment:
 
-## Technologies
+   ```powershell
+   py -m venv .venv
+   ```
 
-- Python
-- Flask
-- HTML / CSS / JavaScript
-- SQLite
-- OpenAI API
-- Git
-- GitHub
+3. Activate it and install dependencies:
 
----
+   ```powershell
+   .\.venv\Scripts\Activate.ps1
+   python -m pip install -r requirements.txt
+   ```
 
-## Project Goals
+4. Copy `.env.example` to `.env`. Add API keys only if AI generation is needed.
+5. Start Gnojo:
 
-- Help users solve IT problems confidently.
-- Reduce troubleshooting time.
-- Teach users while resolving issues.
-- Support both end users and IT professionals.
-- Demonstrate modern software development and AI integration.
+   ```powershell
+   python run.py
+   ```
+
+6. Open `http://127.0.0.1:5000` in a browser.
+
+`.env` and local runtime data are ignored by Git. Never commit API keys, saved profiles, troubleshooting histories, or unpublished local drafts.
+
+## Configuration
+
+| Variable | Purpose |
+| --- | --- |
+| `FLASK_SECRET_KEY` | Stable session-signing key; use a strong private value outside local development |
+| `GNOJO_DEBUG` | Set to `true` only for local debugging |
+| `GEMINI_API_KEY` | Optional Gemini access |
+| `GEMINI_MODEL` | Optional Gemini model override |
+| `OPENAI_API_KEY` | Optional OpenAI access |
+| `OPENAI_MODEL` | Optional OpenAI model override |
+
+## Validation
+
+Run the complete automated test suite before committing:
+
+```powershell
+.\.venv\Scripts\python.exe -m unittest discover -s tests -p 'test_*.py'
+.\.venv\Scripts\python.exe -m pip check
+```
+
+The suite covers workflows, publishing, search, device-aware routing, history, knowledge review, commands, scripts, accessibility, responsive behavior, error recovery, and content integrity.
+
+## Project structure
+
+- `app/` – Flask application, services, templates, static assets, and built-in workflows
+- `knowledge_base/` – reviewed commands, scripts, published articles, and local draft storage
+- `tests/` – automated application and content-integrity tests
+- `docs/` – product, architecture, design, taxonomy, and brand documentation
+- `run.py` – local development entry point
+
+## Product principles
+
+- Guide users through evidence-based troubleshooting instead of guessing.
+- Explain why a step matters while helping resolve the problem.
+- Prefer safe, reversible diagnostics and clearly label risk.
+- Keep generated content in review until a person validates it.
+- Support end users, technicians, administrators, students, and security professionals.
+
+More detail is available in [`docs/architecture.md`](docs/architecture.md), [`docs/brand.md`](docs/brand.md), and [`docs/roadmap.md`](docs/roadmap.md).

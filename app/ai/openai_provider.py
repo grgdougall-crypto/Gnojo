@@ -12,7 +12,7 @@ load_dotenv(override=True)
 
 class OpenAIProvider(AIProvider):
     """
-    Generates structured SupportPilot content
+    Generates structured Gnojo content
     using the OpenAI API.
     """
 
@@ -118,6 +118,13 @@ class OpenAIProvider(AIProvider):
         return self._generate_json(
             prompt=prompt,
             content_type="workflow",
+        )
+
+    def generate_workflow_node_suggestion(self, prompt):
+        """Return one structured workflow-node writing suggestion."""
+        return self._generate_json(
+            prompt=prompt,
+            content_type="workflow node suggestion",
         )
 
     def _load_prompt(

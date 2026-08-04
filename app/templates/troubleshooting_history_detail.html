@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block title %}Session Details | Gnojo{% endblock %}
+
+{% block content %}
+<section class="container history-page history-detail" aria-labelledby="sessionTitle">
+    <a class="back-link" href="{{ url_for('troubleshooting_history') }}"><i class="bi bi-arrow-left" aria-hidden="true"></i>Back to history</a>
+    <div class="history-heading">
+        <div>
+            <span class="section-eyebrow">Troubleshooting session</span>
+            <h1 id="sessionTitle">{{ record.workflow_name }}</h1>
+            <p>Started {{ record.started_at|friendly_datetime }}</p>
+        </div>
+        <span class="detail-status detail-status--{{ record.status }}">{{ record.status|title }}</span>
+    </div>
+
+    <div class="session-summary-grid">
+        <article><span>Outcome</span><strong>{{ record.outcome or 'In progress' }}</strong></article>
+        <article><span>Steps visited</span><strong>{{ record.steps }}</strong></article>
+        <article><span>Backtracks</span><strong>{{ record.backtracks }}</strong></article>
+        <article><span>Learning Mode</span><strong>{{ 'On' if record.learning_mode else 'Off' }}</strong></article>
+    </div>
+
+    {% if record.device %}
+    <section class="history-section">
+        <span class="section-eyebrow">Device context</span>
+        <h2>{{ record.device.name }}</h2>
+        <p>{{ record.device.platform }} · {{ record.device.device_type }} · {{ record.device.connection_type }}</p>
+    </section>
+    {% endif %}
+
+    {% if record.feedback %}
+    <section class="history-section session-feedback" aria-labelledby="sessionFeedbackTitle">
+        <span class="section-eyebrow">User feedback</span>
+        <h2 id="sessionFeedbackTitle">Workflow quality</h2>
+        <dl>
+            <div><dt>Problem solved</dt><dd>{{ record.feedback.solved|title }}</dd></div>
+            <div><dt>Guidance clarity</dt><dd>{{ record.feedback.clarity }}/5</dd></div>
+            {% if record.feedback.confusing_step %}<div><dt>Confusing step</dt><dd>{{ record.feedback.confusing_step|friendly_node }}</dd></div>{% endif %}
+            {% if record.feedback.comment %}<div><dt>Comment</dt><dd>{{ record.feedback.comment }}</dd></div>{% endif %}
+        </dl>
+    </section>
+    {% endif %}
+
+    <section class="history-section" aria-labelledby="pathTitle">
+        <span class="section-eyebrow">Diagnostic journey</span>
+        <h2 id="pathTitle">Session path</h2>
+        <ol class="session-path">
+            {% for node_id in record.path %}
+            <li><span>{{ loop.index }}</span><strong>{{ node_id|friendly_node }}</strong></li>
+            {% endfor %}
+        </ol>
+    </section>
+
+    <div class="history-detail__actions">
+        <a class="btn btn-primary" href="{{ url_for('wizard', workflow=record.workflow_id, restart='1') }}">Run workflow again</a>
+        <form method="post" action="{{ url_for('delete_troubleshooting_history', history_id=record.id) }}" onsubmit="return confirm('Delete this history record?');">
+            <button class="btn btn-outline-danger" type="submit">Delete record</button>
+        </form>
+    </div>
+</section>
+{% endblock %}

@@ -1,0 +1,101 @@
+{
+  "schema_version": "1.0",
+  "id": "systeminfo",
+  "name": "systeminfo",
+  "title": "Understanding systeminfo",
+  "shell": "Command Prompt",
+  "platforms": [
+    "Windows 10",
+    "Windows 11",
+    "Windows Server"
+  ],
+  "category": "Networking",
+  "difficulty": "Beginner",
+  "summary": "The `systeminfo` command displays detailed configuration information about a local or remote computer system, including operating system version, installed hotfixes, network card details, system boot time, and hardware specifications. It's a fundamental tool for quickly assessing a system's baseline state.",
+  "syntax": "systeminfo [/s <computer> [/u <username> [/p <password>]]] [/fo {TABLE|LIST|CSV}] [/nh]",
+  "examples": [
+    {
+      "command": "systeminfo",
+      "description": "Displays detailed system information for the local machine in the default LIST format."
+    },
+    {
+      "command": "systeminfo /fo CSV > C:\\temp\\system_info.csv",
+      "description": "Exports system information to a CSV file named 'system_info.csv' in the C:\\temp directory. This is useful for data analysis or importing into other tools."
+    },
+    {
+      "command": "systeminfo /s RemotePC01 /u Domain\\AdminUser /p MyPassword123",
+      "description": "Retrieves system information from a remote computer named 'RemotePC01' using specified domain credentials. Replace 'RemotePC01', 'Domain\\AdminUser', and 'MyPassword123' with actual values."
+    }
+  ],
+  "permissions": {
+    "requires_elevation": false,
+    "notes": "For local execution, `systeminfo` generally does not require elevated permissions, as it reads publicly accessible system information. However, for querying remote systems, the user account specified with `/u` must typically have local administrator privileges on the target machine, and the network path must allow WMI or RPC traffic (often port 135 for RPC and dynamic ports for WMI), which can be blocked by firewalls."
+  },
+  "risk": {
+    "level": "Low",
+    "changes_system": false,
+    "warning": "`systeminfo` is a read-only command and gathers information without modifying system configurations or affecting system performance. There is no direct risk to the system or network functionality from executing this command."
+  },
+  "output_fields": [
+    {
+      "name": "OS Name",
+      "description": "Identifies the exact operating system installed (e.g., Microsoft Windows 10 Pro, Microsoft Windows Server 2019 Standard). Critical for software compatibility and troubleshooting OS-specific issues."
+    },
+    {
+      "name": "OS Version",
+      "description": "Provides the detailed build number of the operating system. This is crucial for determining if the system is up-to-date with specific patches or service packs, especially when troubleshooting known bugs."
+    },
+    {
+      "name": "System Boot Time",
+      "description": "Shows the exact date and time the system was last started. Useful for determining system uptime, identifying recent reboots, or diagnosing prolonged boot issues."
+    },
+    {
+      "name": "Total Physical Memory",
+      "description": "Indicates the amount of RAM installed in the system. Essential for diagnosing performance bottlenecks, verifying hardware specifications, or ensuring adequate resources for applications."
+    },
+    {
+      "name": "Hotfix(s)",
+      "description": "Lists all installed Windows updates and security patches. Important for verifying if a critical update has been applied, checking for known vulnerabilities, or troubleshooting issues related to specific updates."
+    },
+    {
+      "name": "Network Card(s)",
+      "description": "Provides information about installed network adapters, including their MAC addresses and IP configurations. Useful for initial network troubleshooting and verifying network connectivity settings."
+    }
+  ],
+  "common_errors": [
+    {
+      "message": "ERROR: Access is denied.",
+      "meaning": "This typically occurs when attempting to query a remote system without sufficient administrative privileges or if the specified user credentials are incorrect. It can also be caused by a firewall blocking WMI (Windows Management Instrumentation) or RPC (Remote Procedure Call) traffic on the target machine."
+    },
+    {
+      "message": "ERROR: The network path was not found.",
+      "meaning": "This error means the specified remote computer name or IP address could not be resolved or reached over the network. Causes include the remote system being offline, incorrect hostname, network connectivity issues, or firewall blocking ping/resolution."
+    },
+    {
+      "message": "Invalid switch.",
+      "meaning": "Indicates that one of the command-line options provided (e.g., `/s`, `/u`, `/fo`) is misspelled or not recognized by the `systeminfo` command. Review the syntax for correct usage."
+    }
+  ],
+  "related_commands": [
+    "hostname",
+    "ipconfig",
+    "get-computerinfo"
+  ],
+  "related_articles": [],
+  "tags": [
+    "systeminfo",
+    "networking",
+    "command prompt",
+    "troubleshooting"
+  ],
+  "sources": [
+    {
+      "title": "systeminfo | Microsoft Learn",
+      "organization": "Microsoft Learn",
+      "type": "Official Documentation",
+      "url": "https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/systeminfo"
+    }
+  ],
+  "review_status": "reviewed",
+  "version": "1.0"
+}

@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Check Device Compatibility | Gnojo{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+    <div class="mx-auto" style="max-width: 720px;">
+        <div class="card shadow-sm border-warning">
+            <div class="card-body p-5">
+                <div class="d-flex gap-3 align-items-start">
+                    <div class="service-icon text-warning"><i class="bi bi-exclamation-triangle"></i></div>
+                    <div>
+                        <p class="text-uppercase text-warning small fw-bold mb-1">Compatibility check</p>
+                        <h1 class="h3 mb-3">This workflow targets a different platform</h1>
+                        <p><strong>{{ workflow.name }}</strong> is designed for <strong>{{ workflow.platform }}</strong>, but <strong>{{ active_device.name }}</strong> uses <strong>{{ active_device.platform }}</strong>.</p>
+                        <p class="text-muted">Some steps or commands may not apply to this device. You can still continue if you intentionally want to use this workflow.</p>
+                        <div class="d-flex flex-wrap gap-2 mt-4">
+                            <a class="btn btn-warning" href="{{ url_for('wizard', workflow=workflow_id, override='1', restart='1') }}">Continue anyway</a>
+                            <a class="btn btn-outline-primary" href="{{ url_for('home') }}#workflows">Choose another workflow</a>
+                            <a class="btn btn-outline-secondary" href="{{ url_for('device_profiles') }}">Change device</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

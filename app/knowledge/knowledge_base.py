@@ -4,7 +4,7 @@ from pathlib import Path
 
 class KnowledgeBase:
     """
-    Loads reusable SupportPilot knowledge articles.
+    Loads reusable Gnojo knowledge articles.
     """
 
     def __init__(self):
@@ -31,9 +31,9 @@ class KnowledgeBase:
         if not article_path.exists():
             return None
 
-        with open(
-            article_path,
-            "r",
-            encoding="utf-8",
-        ) as file:
-            return json.load(file)
+        try:
+            with article_path.open("r", encoding="utf-8") as file:
+                article = json.load(file)
+        except (OSError, json.JSONDecodeError):
+            return None
+        return article if isinstance(article, dict) else None

@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+
+{% block title %}Troubleshooting History | Gnojo{% endblock %}
+
+{% block content %}
+<section class="container history-page" aria-labelledby="historyTitle">
+    <div class="history-heading">
+        <div>
+            <span class="section-eyebrow">Local activity</span>
+            <h1 id="historyTitle">Troubleshooting History</h1>
+            <p>Review previous sessions and see how Gnojo workflows are performing.</p>
+        </div>
+        {% if records %}
+        <form method="post" action="{{ url_for('clear_troubleshooting_history') }}" onsubmit="return confirm('Clear all troubleshooting history? This cannot be undone.');">
+            <button class="btn btn-outline-danger" type="submit"><i class="bi bi-trash3 me-2" aria-hidden="true"></i>Clear history</button>
+        </form>
+        {% endif %}
+    </div>
+
+    <div class="history-privacy" role="note">
+        <i class="bi bi-shield-check" aria-hidden="true"></i>
+        <span><strong>Stored locally.</strong> Gnojo records workflow activity and outcomes, but not the answers you enter.</span>
+    </div>
+
+    <section class="analytics-grid" aria-label="Troubleshooting analytics">
+        <article><span>Total sessions</span><strong>{{ analytics.total }}</strong></article>
+        <article><span>Completion rate</span><strong>{{ analytics.completion_rate }}%</strong></article>
+        <article><span>Average steps</span><strong>{{ analytics.average_steps }}</strong></article>
+        <article><span>Currently active</span><strong>{{ analytics.active }}</strong></article>
+    </section>
+
+    {% if analytics.feedback_count %}
+    <section class="feedback-analytics" aria-labelledby="feedbackAnalyticsTitle">
+        <div class="history-section__heading"><div><span class="section-eyebrow">Quality</span><h2 id="feedbackAnalyticsTitle">Workflow feedback</h2></div><span>{{ analytics.feedback_count }} response{% if analytics.feedback_count != 1 %}s{% endif %}</span></div>
+        <div class="analytics-grid">
+            <article><span>Problem solved</span><strong>{{ analytics.solved_rate }}%</strong></article>
+            <article><span>Partially solved</span><strong>{{ analytics.partial_rate }}%</strong></article>
+            <article><span>Average clarity</span><strong>{{ analytics.average_clarity }}<small>/5</small></strong></article>
+            <article><span>Survey responses</span><strong>{{ analytics.feedback_count }}</strong></article>
+        </div>
+        {% if analytics.confusing_steps %}
+        <div class="confusing-step-list"><h3>Most-reported confusing steps</h3>{% for item in analytics.confusing_steps %}<div><span>{{ item.node_id|friendly_node }}</span><strong>{{ item.count }} report{% if item.count != 1 %}s{% endif %}</strong></div>{% endfor %}</div>
+        {% endif %}
+    </section>
+    {% endif %}
+
+    {% if analytics.popular_workflows %}
+    <section class="history-section" aria-labelledby="popularTitle">
+        <div class="history-section__heading">
+            <div><span class="section-eyebrow">Usage</span><h2 id="popularTitle">Most-used workflows</h2></div>
+        </div>
+        <div class="workflow-analytics-list">
+            {% for item in analytics.popular_workflows %}
+            <article>
+                <div><strong>{{ item.name }}</strong><span>{{ item.sessions }} session{% if item.sessions != 1 %}s{% endif %}</span></div>
+                <div class="analytics-meter" aria-label="{{ item.completion_rate }} percent completion"><span style="width: {{ item.completion_rate }}%"></span></div>
+                <strong>{{ item.completion_rate }}%</strong>
+            </article>
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
+
+    <section class="history-section" aria-labelledby="recentTitle">
+        <div class="history-section__heading">
+            <div><span class="section-eyebrow">Sessions</span><h2 id="recentTitle">Recent activity</h2></div>
+            {% if records %}<span>{{ records|length }} saved</span>{% endif %}
+        </div>
+        {% if records %}
+        <div class="history-list">
+            {% for record in records %}
+            <article class="history-card">
+                <div class="history-card__status history-card__status--{{ record.status }}">
+                    <i class="bi {% if record.status == 'completed' %}bi-check-circle-fill{% elif record.status == 'active' %}bi-play-circle-fill{% else %}bi-dash-circle-fill{% endif %}" aria-hidden="true"></i>
+                </div>
+                <div class="history-card__content">
+                    <div><strong>{{ record.workflow_name }}</strong><span class="history-status">{{ record.status|title }}</span>{% if record.feedback %}<span class="history-status history-status--feedback"><i class="bi bi-chat-square-heart me-1" aria-hidden="true"></i>Feedback</span>{% endif %}</div>
+                    <p>{{ record.started_at|friendly_datetime }} · {{ record.steps }} step{% if record.steps != 1 %}s{% endif %}{% if record.device %} · {{ record.device.name }}{% endif %}</p>
+                </div>
+                <a class="btn btn-outline-primary" href="{{ url_for('troubleshooting_history_detail', history_id=record.id) }}">View details</a>
+            </article>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="history-empty">
+            <i class="bi bi-clock-history" aria-hidden="true"></i>
+            <h3>No troubleshooting history yet</h3>
+            <p>Your sessions will appear here after you start a workflow.</p>
+            <a class="btn btn-primary" href="{{ url_for('home') }}#workflows">Start troubleshooting</a>
+        </div>
+        {% endif %}
+    </section>
+</section>
+{% endblock %}

@@ -1,0 +1,67 @@
+{
+  "schema_version": "1.0",
+  "id": "hostname",
+  "name": "hostname",
+  "title": "Understanding hostname",
+  "shell": "Command Prompt",
+  "platforms": [
+    "Windows 10",
+    "Windows 11",
+    "Windows Server"
+  ],
+  "category": "Networking",
+  "difficulty": "Beginner",
+  "summary": "Displays the name of the current host computer. This name is used to identify the machine on a network.",
+  "syntax": "hostname",
+  "examples": [
+    {
+      "command": "hostname",
+      "description": "Displays the current machine's hostname."
+    }
+  ],
+  "permissions": {
+    "requires_elevation": false,
+    "notes": "No special administrative permissions are required to run `hostname`. Any user can execute this command."
+  },
+  "risk": {
+    "level": "Low",
+    "changes_system": false,
+    "warning": "The `hostname` command is read-only and poses no risk to system stability or network operations."
+  },
+  "output_fields": [
+    {
+      "name": "Output string (the hostname)",
+      "description": "This is the unique identifier for the machine on the network. It's crucial for identifying which system you are working on, especially in environments with multiple machines, and for network communication."
+    }
+  ],
+  "common_errors": [
+    {
+      "message": "'hostname' is not recognized as an internal or external command, operable program or batch file.",
+      "meaning": "This error indicates that the system cannot find the `hostname.exe` executable. This is highly uncommon for the `hostname` command, as it's a standard system utility usually located in `C:\\Windows\\System32`, which is typically in the system's PATH. If encountered, check the system's PATH environment variable or verify the presence and integrity of `hostname.exe`."
+    }
+  ],
+  "related_commands": [
+    "ipconfig",
+    "whoami",
+    "systeminfo",
+    "nslookup",
+    "ping"
+  ],
+  "related_articles": [],
+  "tags": [
+    "hostname",
+    "networking",
+    "command prompt",
+    "troubleshooting"
+  ],
+  "sources": [
+    {
+      "title": "hostname command | Microsoft Learn",
+      "organization": "Microsoft Learn",
+      "type": "Official Documentation",
+      "url": "https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/hostname"
+    }
+  ],
+  "review_status": "reviewed",
+  "version": "1.0"
+}

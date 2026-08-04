@@ -1,0 +1,97 @@
+{
+  "schema_version": "1.0",
+  "id": "tracert",
+  "name": "tracert",
+  "title": "Understanding tracert",
+  "shell": "Command Prompt",
+  "platforms": [
+    "Windows 10",
+    "Windows 11",
+    "Windows Server"
+  ],
+  "category": "Networking",
+  "difficulty": "Beginner",
+  "summary": "Traceroute (tracert) is a command-line utility that displays the path (route) and measures transit delays of packets across an Internet Protocol (IP) network to a target host. It records the route through the network by measuring the time-in-flight for packets to reach each successive router (hop) along the path and reports the IP address or hostname of each hop.",
+  "syntax": "tracert [-d] [-h maximum_hops] [-j host-list] [-w timeout] [-R] [-S srcaddr] [-4] [-6] target_name",
+  "examples": [
+    {
+      "command": "tracert google.com",
+      "description": "Performs a standard traceroute to the hostname 'google.com', resolving IP addresses to hostnames by default."
+    },
+    {
+      "command": "tracert -d 8.8.8.8",
+      "description": "Performs a traceroute to the IP address '8.8.8.8' without attempting to resolve IP addresses to hostnames. This can speed up the trace."
+    },
+    {
+      "command": "tracert -h 10 microsoft.com",
+      "description": "Traces the route to 'microsoft.com' but limits the maximum number of hops to 10. Useful for checking reachability within a specific network segment."
+    }
+  ],
+  "permissions": {
+    "requires_elevation": false,
+    "notes": "The `tracert` command typically does not require elevated administrator privileges to run. Standard user permissions are sufficient to send ICMP packets and receive replies."
+  },
+  "risk": {
+    "level": "Low",
+    "changes_system": false,
+    "warning": "Running `tracert` sends a series of ICMP echo request packets, which has minimal impact on network performance and is generally considered safe. It does not modify system configurations or pose security risks."
+  },
+  "output_fields": [
+    {
+      "name": "Hop Number",
+      "description": "Indicates the sequential position of the router in the path from source to destination. Each increment represents a new network device."
+    },
+    {
+      "name": "Round Trip Time (RTT)",
+      "description": "Three measurements of the time, in milliseconds, it takes for a packet to travel from the source to a specific hop and back. High or inconsistent RTTs at a particular hop can indicate network congestion or a problematic device."
+    },
+    {
+      "name": "IP Address / Hostname",
+      "description": "Identifies the network device (router) at a particular hop. The IP address is always shown, and the hostname is shown if resolution is successful (and not suppressed by the -d option)."
+    },
+    {
+      "name": "-d (Don't resolve addresses)",
+      "description": "An option that prevents tracert from attempting to resolve IP addresses to hostnames. This can significantly speed up the execution of the command by avoiding DNS lookups."
+    },
+    {
+      "name": "-w timeout",
+      "description": "Sets the amount of time, in milliseconds, to wait for a reply from each hop. Increasing this value can help capture replies from slow or congested networks, reducing 'Request timed out' messages."
+    }
+  ],
+  "common_errors": [
+    {
+      "message": "Request timed out.",
+      "meaning": "This message indicates that a packet sent to a particular hop did not receive a reply within the specified timeout period. This can be caused by network congestion, a firewall blocking ICMP echo requests (which tracert uses), a router being down or misconfigured, or a route blackhole."
+    },
+    {
+      "message": "Unable to resolve target system name <hostname>",
+      "meaning": "The specified hostname could not be translated into an IP address. This typically points to a DNS resolution issue, an incorrect hostname, or a problem with the local DNS server configuration."
+    },
+    {
+      "message": "Destination host unreachable.",
+      "meaning": "This error means that the local system or a router on the path does not have a route to the target IP address. It often indicates a routing table issue or that the destination network is entirely inaccessible."
+    }
+  ],
+  "related_commands": [
+    "ping",
+    "ipconfig",
+    "netstat"
+  ],
+  "related_articles": [],
+  "tags": [
+    "tracert",
+    "networking",
+    "command prompt",
+    "troubleshooting"
+  ],
+  "sources": [
+    {
+      "title": "tracert | Microsoft Learn",
+      "organization": "Microsoft Learn",
+      "type": "Official Documentation",
+      "url": "https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/tracert"
+    }
+  ],
+  "review_status": "reviewed",
+  "version": "1.0"
+}

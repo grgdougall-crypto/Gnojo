@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 
 class AIProvider(ABC):
     """
-    Base interface for all AI providers used by SupportPilot.
+    Base interface for all AI providers used by Gnojo.
     """
 
     @abstractmethod

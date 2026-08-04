@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Command Library | SupportPilot{% endblock %}
+{% block title %}Command Library | Gnojo{% endblock %}
 
 {% block content %}
 
@@ -98,13 +98,13 @@
                                                     </span>
                                                 {% endif %}
 
-                                                {% if command.risk_level %}
+                                                {% if command.risk %}
                                                     <span
                                                         class="badge
                                                                text-bg-warning"
                                                     >
                                                         Risk:
-                                                        {{ command.risk_level }}
+                                                        {{ command.risk.level }}
                                                     </span>
                                                 {% endif %}
                                             </div>

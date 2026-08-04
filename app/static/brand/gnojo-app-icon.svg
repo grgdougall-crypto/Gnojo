@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">Gnojo application icon</title>
+  <rect width="64" height="64" rx="16" fill="#0B2E59"/>
+  <defs>
+    <mask id="open-gate-icon-mask">
+      <rect width="64" height="64" fill="black"/>
+      <rect x="10" y="10" width="44" height="44" rx="12" fill="white"/>
+      <path d="M22 22H54V30H34V46H22Z" fill="black"/>
+      <path d="M34 34L41 41V54H34Z" fill="black"/>
+    </mask>
+  </defs>
+  <rect width="64" height="64" fill="#FFFFFF" mask="url(#open-gate-icon-mask)"/>
+  <path d="M41 41V54H47V47Z" fill="#1473E6"/>
+</svg>

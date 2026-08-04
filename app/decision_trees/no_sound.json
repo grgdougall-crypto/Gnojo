@@ -1,0 +1,107 @@
+{
+  "workflow_id": "no_sound",
+  "name": "No Sound",
+  "description": "Restore Windows audio by checking output, volume, connections, and built-in diagnostics.",
+  "category": "Desktop Support",
+  "platform": "Windows",
+  "estimated_steps": 7,
+  "start_node": "identify_scope",
+  "nodes": {
+    "identify_scope": {
+      "type": "question",
+      "question": "Where is sound missing?",
+      "help_text": "Testing more than one application helps determine whether the issue belongs to one app or to Windows audio.",
+      "answers": {
+        "one_app": {"label": "One application", "next": "check_app_volume"},
+        "all_apps": {"label": "Every application", "next": "check_mute"},
+        "unsure": {"label": "I'm not sure", "next": "test_system_sound"}
+      }
+    },
+    "test_system_sound": {
+      "type": "instruction",
+      "title": "Test sound in another application",
+      "instruction": "Play a familiar system sound or a trusted local media file in a second application. Keep the volume at a moderate level.",
+      "next": "identify_scope"
+    },
+    "check_app_volume": {
+      "type": "instruction",
+      "title": "Check the application's audio controls",
+      "instruction": "Confirm the application or browser tab is not muted. Right-click the speaker icon, open Volume mixer, and confirm that the application volume is above zero.",
+      "help_text": "Windows can store a separate volume and mute setting for each application.",
+      "next": "app_result"
+    },
+    "app_result": {
+      "type": "question",
+      "question": "Can you hear the application now?",
+      "answers": {
+        "yes": {"label": "Yes", "next": "resolved_app"},
+        "no": {"label": "No", "next": "check_mute"}
+      }
+    },
+    "resolved_app": {"type": "resolution", "title": "Application audio restored", "message": "The application's mute or volume setting caused the issue. Windows audio is working normally."},
+    "check_mute": {
+      "type": "instruction",
+      "title": "Check volume and mute",
+      "instruction": "Select the speaker icon near the clock. Make sure audio is not muted and slowly raise the volume to a comfortable level. Also check any physical mute key or headset control.",
+      "help_text": "Software and hardware mute controls can operate independently.",
+      "next": "mute_result"
+    },
+    "mute_result": {
+      "type": "question",
+      "question": "Is sound working now?",
+      "answers": {
+        "yes": {"label": "Yes", "next": "resolved_controls"},
+        "no": {"label": "No", "next": "select_output"}
+      }
+    },
+    "resolved_controls": {"type": "resolution", "title": "Sound restored", "message": "A volume or mute control was preventing playback. Audio is now working."},
+    "select_output": {
+      "type": "instruction",
+      "title": "Select the intended audio output",
+      "instruction": "Select the speaker icon, open the output-device list, and choose the speakers or headset you intend to use. Disconnect an unused Bluetooth audio device if Windows keeps selecting it.",
+      "help_text": "Windows may send sound to a monitor, dock, headset, or Bluetooth device that is not currently being used.",
+      "next": "output_result"
+    },
+    "output_result": {
+      "type": "question",
+      "question": "Does the selected device play sound?",
+      "answers": {
+        "yes": {"label": "Yes", "next": "resolved_output"},
+        "no": {"label": "No", "next": "check_connection"}
+      }
+    },
+    "resolved_output": {"type": "resolution", "title": "Correct audio output selected", "message": "Windows had been sending audio to another device. The intended speakers or headset are now active."},
+    "check_connection": {
+      "type": "instruction",
+      "title": "Check the speaker or headset connection",
+      "instruction": "Reconnect the headset, speaker cable, USB device, or dock firmly. If the device has power, turn it off and back on. Do not force a plug into an unfamiliar port.",
+      "next": "connection_result"
+    },
+    "connection_result": {
+      "type": "question",
+      "question": "Is sound working after reconnecting the device?",
+      "answers": {
+        "yes": {"label": "Yes", "next": "resolved_connection"},
+        "no": {"label": "No", "next": "run_troubleshooter"}
+      }
+    },
+    "resolved_connection": {"type": "resolution", "title": "Audio connection restored", "message": "Reseating or restarting the audio device restored its connection."},
+    "run_troubleshooter": {
+      "type": "instruction",
+      "title": "Run the Windows audio troubleshooter",
+      "instruction": "Open Settings > System > Troubleshoot > Other troubleshooters, then run Audio. Follow the recommended checks and restart only if prompted after saving your work.",
+      "help_text": "The built-in troubleshooter checks services and device configuration without requiring third-party software.",
+      "next": "troubleshooter_result"
+    },
+    "troubleshooter_result": {
+      "type": "question",
+      "question": "Did the Windows troubleshooter restore sound?",
+      "answers": {
+        "yes": {"label": "Yes", "next": "resolved_troubleshooter"},
+        "no": {"label": "No", "next": "escalate"}
+      }
+    },
+    "resolved_troubleshooter": {"type": "resolution", "title": "Windows audio repaired", "message": "The built-in diagnostic corrected the audio configuration. Note its reported fix if the issue returns."},
+    "escalate": {"type": "resolution", "title": "Audio device support is recommended", "message": "Record the selected output, connection type, device model, and troubleshooter result. A technician can safely examine drivers, services, hardware, or organizational settings."}
+  }
+}

@@ -4,7 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <title>{% block title %}SupportPilot{% endblock %}</title>
+    <title>{% block title %}Gnojo{% endblock %}</title>
+
+    <link rel="icon" href="{{ url_for('static', filename='brand/gnojo-app-icon.svg') }}" type="image/svg+xml">
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -31,8 +33,10 @@
 </head>
 
 <body>
+    <a class="skip-link" href="#mainContent">Skip to main content</a>
+    <div id="a11yStatus" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></div>
     <header class="app-header">
-        <nav class="navbar">
+        <nav class="navbar" aria-label="Primary navigation">
             <div class="container">
 
                 <a
@@ -40,10 +44,10 @@
                     href="/"
                 >
                     <span class="brand-icon">
-                        <i class="bi bi-compass"></i>
+                        <img src="{{ url_for('static', filename='brand/gnojo-mark-reverse.svg') }}" alt="">
                     </span>
 
-                    <span>SupportPilot</span>
+                    <span>Gnojo</span>
                 </a>
 
                 <div class="global-search-wrapper">
@@ -67,9 +71,9 @@
                                 id="globalSearchInput"
                                 type="search"
                                 name="q"
-                                placeholder="Search SupportPilot..."
+                                placeholder="Search Gnojo..."
                                 value="{{ request.args.get('q', '') }}"
-                                aria-label="Search SupportPilot"
+                                aria-label="Search Gnojo"
                                 aria-autocomplete="list"
                                 aria-controls="searchSuggestions"
                                 aria-expanded="false"
@@ -104,12 +108,22 @@
 
                     <span class="header-status">
                         <span class="status-dot"></span>
-                        Mission Control ready
+                        Gnojo ready
                     </span>
+
+                    <a
+                        class="btn btn-outline-secondary btn-sm header-history-link"
+                        href="{{ url_for('troubleshooting_history') }}"
+                        {% if request.endpoint in ('troubleshooting_history', 'troubleshooting_history_detail') %}aria-current="page"{% endif %}
+                    >
+                        <i class="bi bi-clock-history" aria-hidden="true"></i>
+                        <span>History</span>
+                    </a>
 
                     <a
     class="btn btn-outline-primary btn-sm"
     href="{{ url_for('content_studio') }}"
+    {% if request.endpoint == 'content_studio' %}aria-current="page"{% endif %}
 >
     <i class="bi bi-pencil-square me-1"></i>
     Content Studio
@@ -130,14 +144,14 @@
         </nav>
     </header>
 
-    <main>
+    <main id="mainContent" tabindex="-1">
         {% block content %}{% endblock %}
     </main>
 
-    <footer class="app-footer">
+    <footer class="app-footer" aria-label="Gnojo footer">
         <div class="container">
             <p class="mb-0">
-                SupportPilot · Navigate. Diagnose. Resolve.
+                Gnojo · Navigate. Diagnose. Resolve.
             </p>
         </div>
     </footer>
@@ -148,5 +162,8 @@
 
     <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
     <script src="{{ url_for('static', filename='js/search.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/session_protection.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/accessibility.js') }}"></script>
+    {% block scripts %}{% endblock %}
 </body>
 </html>

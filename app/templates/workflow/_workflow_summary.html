@@ -1,105 +1,54 @@
-<div class="col-lg-3">
-
-    <div class="card shadow-sm border-0">
-
-        <div class="card-body p-4">
-
-            <h2 class="h5 mb-4">
-                Workflow Summary
-            </h2>
-
-            <div class="row g-3">
-
-                <div class="col-6">
-
-                    <div class="border rounded p-3 h-100">
-
-                        <p class="small text-uppercase text-muted mb-1">
-                            Total Nodes
-                        </p>
-
-                        <p class="h4 mb-0">
-                            {{ statistics.total_nodes }}
-                        </p>
-
-                    </div>
-
-                </div>
-
-                <div class="col-6">
-
-                    <div class="border rounded p-3 h-100">
-
-                        <p class="small text-uppercase text-muted mb-1">
-                            Questions
-                        </p>
-
-                        <p class="h4 mb-0">
-                            {{ statistics.questions }}
-                        </p>
-
-                    </div>
-
-                </div>
-
-                <div class="col-6">
-
-                    <div class="border rounded p-3 h-100">
-
-                        <p class="small text-uppercase text-muted mb-1">
-                            Instructions
-                        </p>
-
-                        <p class="h4 mb-0">
-                            {{ statistics.instructions }}
-                        </p>
-
-                    </div>
-
-                </div>
-
-                <div class="col-6">
-
-                    <div class="border rounded p-3 h-100">
-
-                        <p class="small text-uppercase text-muted mb-1">
-                            Resolutions
-                        </p>
-
-                        <p class="h4 mb-0">
-                            {{ statistics.resolutions }}
-                        </p>
-
-                    </div>
-
-                </div>
-
-            </div>
-
-            <hr class="my-4">
-
-            <dl class="mb-0">
-
-                <dt class="mb-1">
-                    Estimated Steps
-                </dt>
-
-                <dd class="text-muted mb-3">
-                    {{ workflow.estimated_steps }}
-                </dd>
-
-                <dt class="mb-1">
-                    Start Node
-                </dt>
-
-                <dd class="text-muted mb-0">
-                    {{ statistics.start_node_title }}
-                </dd>
-
-            </dl>
-
+<aside class="workflow-panel workflow-summary" data-workflow-panel-name="summary" aria-labelledby="workflow-summary-title">
+    <div class="workflow-panel__header">
+        <div>
+            <span class="workflow-panel__eyebrow">Overview</span>
+            <h2 id="workflow-summary-title">Workflow summary</h2>
         </div>
-
     </div>
 
-</div>
+    <div class="workflow-summary__body">
+        <dl class="workflow-stats" aria-label="Workflow statistics">
+            <div class="workflow-stat"><dt>Nodes</dt><dd>{{ statistics.total_nodes }}</dd></div>
+            <div class="workflow-stat"><dt>Questions</dt><dd>{{ statistics.questions }}</dd></div>
+            <div class="workflow-stat"><dt>Instructions</dt><dd>{{ statistics.instructions }}</dd></div>
+            <div class="workflow-stat"><dt>Resolutions</dt><dd>{{ statistics.resolutions }}</dd></div>
+        </dl>
+
+        <dl class="workflow-metadata">
+            <div>
+                <dt>Estimated steps</dt>
+                <dd id="workflowEstimatedSteps">{{ workflow.estimated_steps or '—' }}</dd>
+            </div>
+            <div>
+                <dt>Start node</dt>
+                <dd id="workflowStartNodeTitle">{{ statistics.start_node_title or 'Not set' }}</dd>
+            </div>
+        </dl>
+    </div>
+
+    <div class="workflow-panel__footer workflow-summary__actions">
+        <button id="validateWorkflowButton" class="btn btn-sm btn-outline-primary w-100" type="button">
+            <i class="bi bi-check2-circle" aria-hidden="true"></i> Validate workflow
+        </button>
+        <button id="workflowSettingsButton" class="btn btn-sm btn-outline-secondary w-100" type="button">
+            <i class="bi bi-gear" aria-hidden="true"></i> Settings
+        </button>
+    </div>
+</aside>
+
+<dialog id="workflowValidationDialog" class="workflow-validation-dialog" aria-labelledby="validationDialogTitle">
+    <div class="validation-dialog__header">
+        <div>
+            <span class="workflow-panel__eyebrow">Workflow validation</span>
+            <h2 id="validationDialogTitle">Checking workflow…</h2>
+        </div>
+        <button id="closeValidationDialog" class="validation-dialog__close" type="button" aria-label="Close validation results">
+            <i class="bi bi-x-lg" aria-hidden="true"></i>
+        </button>
+    </div>
+        <div id="validationSummary" class="validation-summary" data-a11y-live></div>
+    <div id="validationIssues" class="validation-issues"></div>
+    <div class="validation-dialog__footer">
+        <button id="revalidateWorkflowButton" class="btn btn-sm btn-primary" type="button">Run validation again</button>
+    </div>
+</dialog>

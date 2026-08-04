@@ -1,0 +1,101 @@
+{
+  "schema_version": "1.0",
+  "id": "nslookup",
+  "name": "nslookup",
+  "title": "Understanding nslookup",
+  "shell": "Command Prompt",
+  "platforms": [
+    "Windows 10",
+    "Windows 11",
+    "Windows Server"
+  ],
+  "category": "Networking",
+  "difficulty": "Beginner",
+  "summary": "The nslookup (name server lookup) command is a network administration command-line tool available for many computer operating systems for querying the Domain Name System (DNS) to obtain domain name or IP address mapping or for any other specific DNS record. It is used to troubleshoot DNS-related issues, such as verifying that a domain name resolves to the correct IP address or checking the availability and responsiveness of DNS servers.",
+  "syntax": "nslookup [options] [hostname | IP_address] [DNS_server]",
+  "examples": [
+    {
+      "command": "nslookup www.google.com",
+      "description": "Resolves the hostname 'www.google.com' using the default DNS server configured on the system."
+    },
+    {
+      "command": "nslookup 8.8.8.8",
+      "description": "Performs a reverse DNS lookup for the IP address '8.8.8.8' using the default DNS server. This attempts to find the hostname associated with the IP."
+    },
+    {
+      "command": "nslookup -query=mx example.com 1.1.1.1",
+      "description": "Queries for Mail Exchanger (MX) records for 'example.com' using '1.1.1.1' (Cloudflare DNS) as the specific DNS server, rather than the system's default."
+    }
+  ],
+  "permissions": {
+    "requires_elevation": false,
+    "notes": "The `nslookup` command does not require elevated administrative privileges to run. However, network access to a DNS server (typically UDP port 53) is necessary for it to function correctly."
+  },
+  "risk": {
+    "level": "Low",
+    "changes_system": false,
+    "warning": "Using `nslookup` poses minimal to no risk. It performs read-only queries against DNS servers and does not alter system or network configurations. Repeated queries could marginally increase network traffic, but this is negligible in almost all scenarios."
+  },
+  "output_fields": [
+    {
+      "name": "Server",
+      "description": "Indicates the IP address of the DNS server that responded to the query. This is crucial for verifying which server is providing DNS resolution."
+    },
+    {
+      "name": "Address",
+      "description": "For a forward lookup, this is the IP address(es) resolved for the queried hostname. For a reverse lookup, it's the IP address being queried. This field confirms the resolved IP."
+    },
+    {
+      "name": "Name",
+      "description": "The hostname that was queried or the hostname found during a reverse lookup. Ensures the correct name is being resolved or returned."
+    },
+    {
+      "name": "Non-authoritative answer",
+      "description": "This message indicates that the DNS server that provided the answer is not authoritative for the domain. The answer came from a cached entry or a DNS server that forwarded the request to an authoritative server. It's usually not an error but important to note for trust and freshness of data."
+    },
+    {
+      "name": "-querytype=X (or set type=X)",
+      "description": "An option to specify the type of DNS record to query (e.g., A for host address, MX for mail exchange, NS for name server, CNAME for canonical name, SOA for start of authority). Essential for diagnosing specific service issues."
+    }
+  ],
+  "common_errors": [
+    {
+      "message": "*** Can't find hostname: Non-existent domain",
+      "meaning": "This error means the DNS server could not find a record for the specified hostname. This could be due to a typo in the hostname, the domain not being registered, or the DNS records not being published or propagated yet."
+    },
+    {
+      "message": "*** Can't find hostname: No response from server",
+      "meaning": "The DNS server specified (or the default server) did not respond to the query. This could indicate that the DNS server is offline, unreachable due to network issues, or its firewall is blocking DNS requests."
+    },
+    {
+      "message": "DNS request timed out.",
+      "meaning": "Similar to 'No response from server', this indicates that the DNS server did not reply within the default timeout period. Possible causes include network congestion, an overloaded DNS server, or a firewall blocking UDP port 53."
+    },
+    {
+      "message": "Server: Unknown",
+      "meaning": "When nslookup cannot determine the name of the default DNS server. This often happens if the local system's DNS configuration is incorrect or corrupted, or if the DNS server itself has no reverse lookup entry for its own IP."
+    }
+  ],
+  "related_commands": [
+    "ping",
+    "ipconfig",
+    "tracert"
+  ],
+  "related_articles": [],
+  "tags": [
+    "nslookup",
+    "networking",
+    "command prompt",
+    "troubleshooting"
+  ],
+  "sources": [
+    {
+      "title": "nslookup | Microsoft Learn",
+      "organization": "Microsoft Learn",
+      "type": "Official Documentation",
+      "url": "https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/nslookup"
+    }
+  ],
+  "review_status": "reviewed",
+  "version": "1.0"
+}

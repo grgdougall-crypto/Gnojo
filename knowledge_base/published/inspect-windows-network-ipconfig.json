@@ -4,20 +4,20 @@
   "title": "Use ipconfig to inspect Windows network configuration",
   "category": "Networking",
   "tags": [
-  "ipconfig",
-  "windows networking",
-  "ip address",
-  "dns",
-  "dhcp",
-  "default gateway",
-  "network configuration"
-],
-"related_articles": [
-  "ethernet-connection-check"
-],
-"related_commands": [
-  "ipconfig"
-],
+    "ipconfig",
+    "windows networking",
+    "ip address",
+    "dns",
+    "dhcp",
+    "default gateway",
+    "network configuration"
+  ],
+  "related_articles": [
+    "ethernet-connection-check"
+  ],
+  "related_commands": [
+    "ipconfig"
+  ],
   "difficulty": "Beginner",
   "estimated_time": "15-20 minutes",
   "overview": "The 'ipconfig' command-line tool is essential for Windows users and IT professionals to quickly view and manage network adapter settings. This article will guide entry-level IT support technicians and learners through using 'ipconfig' to inspect IP addresses, subnet masks, default gateways, DNS servers, and other crucial network configuration details. Understanding these basics is fundamental for diagnosing common network connectivity issues.",
@@ -91,9 +91,11 @@
     "generated_at": "2026-07-31T08:33:31.640653+00:00"
   },
   "review": {
-    "status": "published",
+    "status": "pending_review",
     "reviewed_by": null,
     "reviewed_at": null,
-    "notes": []
+    "notes": [
+      "Migrated to article schema 1.0; technical review is still required."
+    ]
   }
 }

@@ -1,6 +1,6 @@
 """
 Purpose:
-    Generate validated SupportPilot knowledge articles.
+    Generate validated Gnojo knowledge articles.
 
 Responsibilities:
     - Request prompts from ArticlePromptBuilder.
@@ -29,7 +29,7 @@ from app.prompts.article_prompt_builder import ArticlePromptBuilder
 
 class ArticleGenerator:
     """
-    Coordinate SupportPilot article generation.
+    Coordinate Gnojo article generation.
     """
 
     def __init__(
@@ -58,21 +58,21 @@ class ArticleGenerator:
         difficulty: str,
     ) -> dict[str, Any]:
         """
-        Generate and validate a SupportPilot article.
+        Generate and validate a Gnojo article.
 
         Args:
             topic:
                 Technical subject of the article.
 
             category:
-                SupportPilot knowledge category.
+                Gnojo knowledge category.
 
             difficulty:
                 Intended difficulty level.
 
         Returns:
             dict:
-                Valid SupportPilot draft article.
+                Valid Gnojo draft article.
 
         Raises:
             RuntimeError:
@@ -129,12 +129,12 @@ class ArticleGenerator:
         """
         Add reliable generation metadata to an article.
 
-        Provider-generated metadata is overwritten here so SupportPilot,
+        Provider-generated metadata is overwritten here so Gnojo,
         rather than the AI model, records the actual provider and time.
 
         Args:
             article:
-                Generated SupportPilot article.
+                Generated Gnojo article.
 
             provider_name:
                 Provider that successfully returned the article.

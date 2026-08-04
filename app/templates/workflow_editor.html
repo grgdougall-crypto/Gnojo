@@ -1,23 +1,244 @@
 {% extends "base.html" %}
 
-{% block title %}Workflow Designer | SupportPilot{% endblock %}
+{% block title %}{{ workflow.name }} | Workflow Designer | Gnojo{% endblock %}
 
 {% block content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/workflow_designer.css') }}">
 
-<div class="container py-5">
-
+<main
+    class="workflow-designer container-fluid"
+    aria-labelledby="workflow-title"
+    data-node-save-url="{{ url_for('update_workflow_node', filename=filename, node_id='__NODE_ID__') }}"
+    data-validation-url="{{ url_for('validate_workflow_draft', filename=filename) }}"
+    data-start-node="{{ workflow.start_node }}"
+    data-estimated-steps="{{ workflow.estimated_steps or 0 }}"
+    data-publication-url="{{ url_for('workflow_publication_status', filename=filename) }}"
+    data-settings-url="{{ url_for('update_workflow_settings', filename=filename) }}"
+    data-node-improve-url="{{ url_for('improve_workflow_node', filename=filename, node_id='__NODE_ID__') }}"
+    data-help-text-url="{{ url_for('generate_workflow_help_text', filename=filename, node_id='__NODE_ID__') }}"
+    data-article-draft-url="{{ url_for('create_workflow_article_draft', filename=filename, node_id='__NODE_ID__') }}"
+    data-export-url="{{ url_for('export_workflow_draft', filename=filename, export_format='__FORMAT__') }}"
+>
     {% include "workflow/_page_header.html" %}
 
-    <div class="row g-4">
+    <nav class="workflow-mobile-tabs" aria-label="Workflow Designer panels">
+        <button type="button" data-workflow-panel="summary" aria-pressed="false"><i class="bi bi-bar-chart"></i><span>Summary</span></button>
+        <button type="button" data-workflow-panel="browser" aria-pressed="true"><i class="bi bi-list-ul"></i><span>Nodes</span></button>
+        <button type="button" data-workflow-panel="details" aria-pressed="false"><i class="bi bi-pencil-square"></i><span>Details</span></button>
+    </nav>
 
+    <div class="workflow-designer__grid">
         {% include "workflow/_workflow_summary.html" %}
-
         {% include "workflow/_node_browser.html" %}
-
+        {% include "workflow/_node_details.html" %}
     </div>
+</main>
 
-</div>
+<dialog id="workflowExportDialog" class="workflow-publication-dialog" aria-labelledby="exportDialogTitle">
+    <div class="publication-dialog__header">
+        <div>
+            <span class="workflow-panel__eyebrow">Share and archive</span>
+            <h2 id="exportDialogTitle">Export workflow</h2>
+        </div>
+        <button id="closeExportDialog" class="validation-dialog__close" type="button" aria-label="Close export dialog">
+            <i class="bi bi-x-lg" aria-hidden="true"></i>
+        </button>
+    </div>
+    <div class="publication-dialog__body">
+        <p class="publication-message">Choose the format that best fits how you plan to use this workflow.</p>
+        <div class="workflow-export-options">
+            <button class="workflow-export-option" type="button" data-export-format="json">
+                <i class="bi bi-braces" aria-hidden="true"></i><span><strong>JSON</strong><small>Complete workflow data for backup or reuse</small></span>
+            </button>
+            <button class="workflow-export-option" type="button" data-export-format="markdown">
+                <i class="bi bi-markdown" aria-hidden="true"></i><span><strong>Markdown</strong><small>Portable documentation for repositories and knowledge bases</small></span>
+            </button>
+            <button class="workflow-export-option" type="button" data-export-format="pdf">
+                <i class="bi bi-file-earmark-pdf" aria-hidden="true"></i><span><strong>PDF</strong><small>Readable guide for sharing and review</small></span>
+            </button>
+        </div>
+    </div>
+    <div class="publication-dialog__footer">
+        <button id="cancelExportButton" class="btn btn-sm btn-outline-secondary" type="button">Cancel</button>
+    </div>
+</dialog>
+
+<dialog id="workflowSimulatorDialog" class="workflow-simulator-dialog" aria-labelledby="simulatorTitle">
+    <div class="simulator-dialog__header">
+        <div>
+            <span class="workflow-panel__eyebrow">Workflow simulator</span>
+            <h2 id="simulatorTitle">Test workflow</h2>
+        </div>
+        <button id="closeSimulatorButton" class="validation-dialog__close" type="button" aria-label="Close simulator">
+            <i class="bi bi-x-lg" aria-hidden="true"></i>
+        </button>
+    </div>
+    <div class="simulator-progress">
+        <span id="simulatorStep">Step 1</span>
+        <span id="simulatorNodeId"></span>
+    </div>
+    <div class="simulator-profile-controls" aria-label="Simulation device profile">
+        <span>Test as</span>
+        <select id="simulatorPlatform"><option value="">No profile</option>{% for value in ['Windows','macOS','Linux','ChromeOS','Other'] %}<option>{{ value }}</option>{% endfor %}</select>
+        <select id="simulatorDeviceType"><option value="Laptop">Laptop</option>{% for value in ['Desktop','Server','Tablet','Virtual machine','Other'] %}<option>{{ value }}</option>{% endfor %}</select>
+        <select id="simulatorConnection"><option value="Wi-Fi">Wi-Fi</option>{% for value in ['Ethernet','Cellular','VPN','Offline','Other'] %}<option>{{ value }}</option>{% endfor %}</select>
+    </div>
+    <div id="simulatorPath" class="simulator-path" aria-label="Simulated path"></div>
+    <div id="simulatorContent" class="simulator-content"></div>
+    <div class="simulator-dialog__footer">
+        <button id="restartSimulatorButton" class="btn btn-sm btn-outline-secondary" type="button">
+            <i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i> Restart
+        </button>
+        <button id="closeSimulatorFooterButton" class="btn btn-sm btn-primary" type="button">Done</button>
+    </div>
+</dialog>
+
+<dialog id="workflowPublicationDialog" class="workflow-publication-dialog" aria-labelledby="publicationDialogTitle">
+    <div class="publication-dialog__header">
+        <div>
+            <span class="workflow-panel__eyebrow">Release management</span>
+            <h2 id="publicationDialogTitle">Publish workflow</h2>
+        </div>
+        <button id="closePublicationDialog" class="validation-dialog__close" type="button" aria-label="Close publication dialog">
+            <i class="bi bi-x-lg" aria-hidden="true"></i>
+        </button>
+    </div>
+    <div class="publication-dialog__body">
+        <div id="publicationMessage" class="publication-message" data-a11y-live>
+            Publishing creates a permanent snapshot. Your editable draft remains available.
+        </div>
+        <div class="node-field">
+            <label for="publicationLabel">Version label (optional)</label>
+            <input id="publicationLabel" class="node-editor-control" type="text" maxlength="80" placeholder="For example: Initial VPN release">
+        </div>
+        <section class="publication-history" aria-labelledby="publicationHistoryTitle">
+            <div class="publication-history__heading">
+                <h3 id="publicationHistoryTitle">Version history</h3>
+                <span id="publicationVersionCount">No published versions</span>
+            </div>
+            <div id="publicationHistoryList" class="publication-history__list"></div>
+        </section>
+    </div>
+    <div class="publication-dialog__footer">
+        <button id="cancelPublicationButton" class="btn btn-sm btn-outline-secondary" type="button">Cancel</button>
+        <button id="confirmPublicationButton" class="btn btn-sm btn-primary" type="button" disabled>
+            <span class="publication-button__label">Publish version</span>
+            <span class="publication-button__busy" hidden><span class="spinner-border spinner-border-sm" aria-hidden="true"></span> Publishing</span>
+        </button>
+    </div>
+</dialog>
+
+<dialog id="workflowSettingsDialog" class="workflow-settings-dialog" aria-labelledby="settingsDialogTitle">
+    <div class="settings-dialog__header">
+        <div>
+            <span class="workflow-panel__eyebrow">Workflow configuration</span>
+            <h2 id="settingsDialogTitle">Workflow settings</h2>
+        </div>
+        <button id="closeSettingsDialog" class="validation-dialog__close" type="button" aria-label="Close workflow settings">
+            <i class="bi bi-x-lg" aria-hidden="true"></i>
+        </button>
+    </div>
+    <form id="workflowSettingsForm" class="settings-dialog__form">
+        <div id="settingsMessage" class="settings-message" data-a11y-live hidden></div>
+        <div class="node-field">
+            <label for="workflowIdSetting">Workflow ID</label>
+            <input id="workflowIdSetting" class="node-editor-control" type="text" value="{{ workflow.workflow_id }}" readonly>
+            <small>Protected because published versions depend on this ID.</small>
+        </div>
+        <div class="node-field">
+            <label for="workflowNameSetting">Workflow name</label>
+            <input id="workflowNameSetting" class="node-editor-control" type="text" value="{{ workflow.name }}" maxlength="120" required>
+        </div>
+        <div class="node-field">
+            <label for="workflowDescriptionSetting">Description</label>
+            <textarea id="workflowDescriptionSetting" class="node-editor-control" rows="3" maxlength="500">{{ workflow.description or '' }}</textarea>
+        </div>
+        <div class="settings-dialog__grid">
+            <div class="node-field">
+                <label for="workflowCategorySetting">Category</label>
+                <select id="workflowCategorySetting" class="node-editor-control" required>
+                    {% for category in ['Desktop Support', 'Networking', 'Servers & Identity', 'Security', 'Printers', 'Other'] %}
+                    <option value="{{ category }}" {% if workflow_category == category %}selected{% endif %}>{{ category }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="node-field">
+                <label for="workflowPlatformSetting">Platform</label>
+                <select id="workflowPlatformSetting" class="node-editor-control" required>
+                    {% for platform in ['Windows', 'macOS', 'Linux', 'Cross-platform'] %}
+                    <option value="{{ platform }}" {% if workflow_platform == platform %}selected{% endif %}>{{ platform }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="node-field">
+                <label for="workflowStartNodeSetting">Start node</label>
+                <select id="workflowStartNodeSetting" class="node-editor-control" required>
+                    {% for node in nodes %}
+                    <option value="{{ node.id }}" {% if node.id == workflow.start_node %}selected{% endif %}>{{ node.title }} · {{ node.id }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="node-field">
+                <label for="workflowEstimatedStepsSetting">Estimated steps</label>
+                <input id="workflowEstimatedStepsSetting" class="node-editor-control" type="number" value="{{ workflow.estimated_steps or 1 }}" min="1" max="999" required>
+            </div>
+        </div>
+        <div class="settings-dialog__footer">
+            <button id="cancelSettingsButton" class="btn btn-sm btn-outline-secondary" type="button">Cancel</button>
+            <button id="saveSettingsButton" class="btn btn-sm btn-primary" type="submit">
+                <span class="settings-button__label">Save settings</span>
+                <span class="settings-button__busy" hidden><span class="spinner-border spinner-border-sm" aria-hidden="true"></span> Saving</span>
+            </button>
+        </div>
+    </form>
+</dialog>
+
+<dialog id="workflowAIDialog" class="workflow-ai-dialog" aria-labelledby="aiDialogTitle">
+    <div class="ai-dialog__header">
+        <div>
+            <span class="workflow-panel__eyebrow">AI writing assistant</span>
+            <h2 id="aiDialogTitle">Improve selected node</h2>
+        </div>
+        <button id="closeAIDialog" class="validation-dialog__close" type="button" aria-label="Close AI assistant">
+            <i class="bi bi-x-lg" aria-hidden="true"></i>
+        </button>
+    </div>
+    <div class="ai-dialog__controls">
+        <div class="node-field">
+            <label for="aiImprovementStyle">Improvement style</label>
+            <select id="aiImprovementStyle" class="node-editor-control">
+                <option value="clarity">Improve clarity</option>
+                <option value="concise">Make concise</option>
+                <option value="technician">Help-desk technician</option>
+                <option value="end_user">Non-technical end user</option>
+            </select>
+        </div>
+        <button id="generateAISuggestionButton" class="btn btn-sm btn-primary" type="button">
+            <span class="ai-generate__label"><i class="bi bi-stars" aria-hidden="true"></i> Generate suggestion</span>
+            <span class="ai-generate__busy" hidden><span class="spinner-border spinner-border-sm" aria-hidden="true"></span> Generating</span>
+        </button>
+    </div>
+    <div id="aiSuggestionMessage" class="ai-suggestion-message" data-a11y-live>
+        AI suggestions are previews. Nothing changes until you apply the suggestion and save the node.
+    </div>
+    <div id="aiComparison" class="ai-comparison" hidden>
+        <section>
+            <h3>Original</h3>
+            <div id="aiOriginalContent" class="ai-comparison__content"></div>
+        </section>
+        <section>
+            <h3>Proposed</h3>
+            <div id="aiProposedContent" class="ai-comparison__content"></div>
+        </section>
+    </div>
+    <div class="ai-dialog__footer">
+        <span id="aiProviderLabel"></span>
+        <div>
+            <button id="rejectAISuggestionButton" class="btn btn-sm btn-outline-secondary" type="button">Close</button>
+            <button id="applyAISuggestionButton" class="btn btn-sm btn-primary" type="button" disabled>Apply to editor</button>
+        </div>
+    </div>
+</dialog>
 
 {% include "workflow/_workflow_scripts.html" %}
-
 {% endblock %}

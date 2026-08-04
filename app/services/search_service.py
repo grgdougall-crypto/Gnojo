@@ -1,11 +1,13 @@
 from app.models.search_result import SearchResult
 from app.repositories.command_repository import CommandRepository
 from app.repositories.knowledge_repository import KnowledgeRepository
+from app.services.workflow_publication_service import WorkflowPublicationError, WorkflowPublicationService
+from app.services.workflow_metadata_service import workflow_category, workflow_platform
 
 
 class SearchService:
     """
-    Searches and ranks results across SupportPilot repositories.
+    Searches and ranks results across Gnojo repositories.
     """
 
     def __init__(self):
@@ -28,9 +30,10 @@ class SearchService:
         return {
             "articles": self._search_articles(normalized_query),
             "commands": self._search_commands(normalized_query),
+            "workflows": self._search_workflows(normalized_query),
         }
 
-    def search_all(self, query):
+    def search_all(self, query, context=None):
         """
         Return all matching content as one relevance-ranked list.
         """
@@ -49,6 +52,18 @@ class SearchService:
         results.extend(
             self._search_commands(normalized_query)
         )
+        results.extend(self._search_workflows(normalized_query))
+
+        if context:
+            platform = str(context.get("platform", "")).lower()
+            connection = str(context.get("connection_type", "")).lower()
+            for result in results:
+                source_platform = str((result.source or {}).get("platform", "")).lower()
+                searchable = f"{result.title} {result.summary}".lower()
+                if platform and (platform == source_platform or platform in searchable):
+                    result.score += 18
+                if connection and connection in searchable:
+                    result.score += 8
 
         results.sort(
             key=lambda result: (
@@ -137,6 +152,46 @@ class SearchService:
             )
         )
 
+        return ranked_results
+
+    def _search_workflows(self, query):
+        ranked_results = []
+        try:
+            snapshots = WorkflowPublicationService().list_current()
+        except (OSError, WorkflowPublicationError):
+            snapshots = []
+        for snapshot in snapshots:
+            workflow = snapshot.get("workflow", {})
+            name = workflow.get("name", "")
+            description = workflow.get("description", "")
+            workflow_id = workflow.get("workflow_id", "")
+            category = workflow_category(workflow)
+            platform = workflow_platform(workflow)
+            searchable_nodes = " ".join(
+                " ".join(str(node.get(key, "")) for key in ("title", "question", "instruction", "message", "help_text"))
+                for node in (workflow.get("nodes") or {}).values()
+                if isinstance(node, dict)
+            )
+            score = self._score_text(query, name, 140, 105, 75)
+            score += self._score_text(query, workflow_id.replace("_", " "), 80, 60, 40)
+            score += self._score_text(query, description, 45, 30, 20)
+            score += self._score_text(query, category, 60, 45, 30)
+            score += self._score_text(query, platform, 55, 40, 25)
+            score += self._score_text(query, searchable_nodes, 20, 15, 10)
+            if score:
+                version = snapshot.get("publication", {}).get("version")
+                ranked_results.append(SearchResult(
+                    id=workflow_id,
+                    title=name or workflow_id,
+                    summary=description or "Open this published guided troubleshooting workflow.",
+                    content_type="Workflow",
+                    endpoint="wizard",
+                    category=category,
+                    difficulty=platform,
+                    icon="bi-signpost-split",
+                    score=score,
+                    source=workflow,
+                ))
         return ranked_results
 
     def _search_commands(self, query):
@@ -276,6 +331,15 @@ class SearchService:
 
         if query in normalized_value:
             return contains_score
+
+        query_terms = {
+            term for term in query.split()
+            if len(term) >= 2 and term not in {"and", "the", "for", "with"}
+        }
+        if query_terms:
+            matched = sum(1 for term in query_terms if term in normalized_value)
+            if matched:
+                return max(1, round(contains_score * matched / len(query_terms)))
 
         return 0
 

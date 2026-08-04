@@ -1,0 +1,142 @@
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+from app.app import app
+from app.repositories.knowledge_repository import KnowledgeRepository
+from app.services.article_review_service import ArticleReviewService
+from app.services.workflow_coverage_service import WorkflowCoverageService
+
+
+def review_article():
+    workflow = {
+        "workflow_id": "review_test", "name": "Review Test",
+        "category": "Desktop Support",
+    }
+    node = {
+        "type": "instruction", "title": "Inspect Startup Apps",
+        "instruction": "Open Task Manager and inspect Startup apps.",
+    }
+    return WorkflowCoverageService().create_article_draft(workflow, "inspect_startup", node)
+
+
+def review_form(action="save", *, sources="Microsoft Support | https://support.microsoft.com/windows"):
+    values = {
+        "title": "How to Inspect Startup Apps",
+        "category": "Desktop Support",
+        "difficulty": "Beginner",
+        "estimated_time": "5 minutes",
+        "overview": "Review startup applications safely and identify optional high-impact entries.",
+        "checklist": "Save open work\nOpen Task Manager\nReview Startup apps",
+        "common_indicators": "Slow sign-in\nHigh resource use after startup",
+        "related_topics": "Task Manager\nWindows performance",
+        "commands": "tasklist | Lists running processes without changing them",
+        "sources": sources,
+        "quiz_question": "What should you disable?",
+        "quiz_answers": "Only optional applications you recognize\nEvery Windows process",
+        "quiz_correct_answer": "Only optional applications you recognize",
+        "review_notes": "Reviewed against Microsoft guidance.",
+        "review_action": action,
+    }
+    for key in ArticleReviewService.CHECKS:
+        values[f"review_{key}"] = "on"
+    return values
+
+
+class ArticleReviewServiceTests(unittest.TestCase):
+    def test_analysis_flags_missing_sources_and_calculates_completeness(self):
+        article = review_article()
+        analysis = ArticleReviewService().analyze(article)
+        self.assertGreaterEqual(analysis["score"], 80)
+        self.assertTrue(any(item["kind"] == "sources" for item in analysis["warnings"]))
+        self.assertFalse(analysis["can_publish"])
+
+    def test_approval_requires_every_review_check(self):
+        article = review_article()
+        values = review_form("approve")
+        values.pop("review_sources_verified")
+        with self.assertRaises(ValueError):
+            ArticleReviewService().update_from_form(article, values)
+
+    def test_editing_normalizes_fields_and_approves_valid_article(self):
+        article = ArticleReviewService().update_from_form(review_article(), review_form("approve"))
+        self.assertEqual(article["review"]["status"], "approved")
+        self.assertEqual(article["commands"][0]["command"], "tasklist")
+        self.assertEqual(article["sources"][0]["title"], "Microsoft Support")
+        self.assertTrue(ArticleReviewService().analyze(article)["can_publish"])
+
+
+class ArticleReviewWorkspacePageTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.repository = KnowledgeRepository(Path(self.temporary.name) / "knowledge_base")
+        self.article = review_article()
+        self.repository.save_draft(self.article)
+        self.repository_patch = patch("app.app.knowledge_repository", self.repository)
+        self.repository_patch.start()
+        app.config.update(TESTING=True)
+        self.client = app.test_client()
+
+    def tearDown(self):
+        self.repository_patch.stop()
+        self.temporary.cleanup()
+
+    def test_workspace_renders_editor_preview_warnings_and_controls(self):
+        response = self.client.get(f"/knowledge/drafts/{self.article['id']}")
+        html = response.get_data(as_text=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Knowledge Review Workspace", html)
+        self.assertIn("Review warnings", html)
+        self.assertIn("Technical review checklist", html)
+        self.assertIn('data-review-view="preview"', html)
+        self.assertIn("article_review.js", html)
+        self.assertIn("Publish article", html)
+        self.assertIn("disabled", html)
+
+    def test_save_approve_and_publish_lifecycle(self):
+        article_id = self.article["id"]
+        save = self.client.post(
+            f"/knowledge/drafts/{article_id}", data=review_form("save")
+        )
+        self.assertEqual(save.status_code, 302)
+        self.assertEqual(self.repository.get_draft(article_id)["review"]["status"], "draft")
+
+        approve = self.client.post(
+            f"/knowledge/drafts/{article_id}", data=review_form("approve")
+        )
+        self.assertEqual(approve.status_code, 302)
+        approved = self.repository.get_draft(article_id)
+        self.assertEqual(approved["review"]["status"], "approved")
+
+        ready_page = self.client.get(f"/knowledge/drafts/{article_id}").get_data(as_text=True)
+        self.assertIn("Review approved and validation passed", ready_page)
+
+        published = self.client.post(f"/knowledge/drafts/{article_id}/publish")
+        self.assertEqual(published.status_code, 302)
+        with self.assertRaises(Exception):
+            self.repository.get_draft(article_id)
+        self.assertEqual(
+            self.repository.get_published_article(article_id)["review"]["status"],
+            "approved",
+        )
+
+    def test_publish_is_blocked_before_approval(self):
+        response = self.client.post(
+            f"/knowledge/drafts/{self.article['id']}/publish"
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Complete validation", response.get_data(as_text=True))
+
+    def test_rejection_requires_review_notes(self):
+        values = review_form("reject")
+        values["review_notes"] = ""
+        response = self.client.post(
+            f"/knowledge/drafts/{self.article['id']}", data=values
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Add a review note", response.get_data(as_text=True))
+
+
+if __name__ == "__main__":
+    unittest.main()

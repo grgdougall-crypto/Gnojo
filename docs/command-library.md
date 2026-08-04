@@ -1,8 +1,8 @@
-# SupportPilot Command Library
+# Gnojo Command Library
 
 ## Purpose
 
-The Command Library provides a curated collection of command-line tools and commands used throughout SupportPilot.
+The Command Library provides a curated collection of command-line tools and commands used throughout Gnojo.
 
 Commands should be stored once, documented clearly, and reused across:
 
@@ -70,7 +70,7 @@ Preferred sources include:
 - GNU documentation
 - RFCs and standards organizations
 
-References support the Command Library. They do not replace the explanation provided by SupportPilot.
+References support the Command Library. They do not replace the explanation provided by Gnojo.
 
 ## 5. Commands should support learning
 

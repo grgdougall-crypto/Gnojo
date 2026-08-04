@@ -1,8 +1,8 @@
 """
-SupportPilot knowledge article validator.
+Gnojo knowledge article validator.
 
 This module checks whether a knowledge article follows the required
-SupportPilot article schema before it can move through the review and
+Gnojo article schema before it can move through the review and
 publishing process.
 """
 
@@ -22,7 +22,7 @@ class ArticleValidationError(Exception):
 
 class ArticleValidator:
     """
-    Validate SupportPilot knowledge articles.
+    Validate Gnojo knowledge articles.
 
     The validator returns a list of human-readable errors so multiple
     problems can be corrected at the same time.

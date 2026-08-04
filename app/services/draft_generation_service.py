@@ -5,7 +5,7 @@ from app.models.draft_metadata import DraftMetadata
 
 class DraftGenerationService:
     """
-    Creates structured SupportPilot drafts before publication.
+    Creates structured Gnojo drafts before publication.
     """
 
     def __init__(self):

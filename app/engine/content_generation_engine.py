@@ -4,7 +4,7 @@ from app.ai.openai_provider import OpenAIProvider
 
 class ContentGenerationEngine:
     """
-    Generates structured SupportPilot content drafts.
+    Generates structured Gnojo content drafts.
     """
 
     def __init__(self):

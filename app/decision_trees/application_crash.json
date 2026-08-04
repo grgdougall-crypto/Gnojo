@@ -1,0 +1,137 @@
+{
+  "workflow_id": "application_crash",
+  "name": "Application Keeps Crashing",
+  "description": "Safely diagnose repeated application freezes, crashes, and startup failures.",
+  "category": "Desktop Support",
+  "platform": "Windows",
+  "estimated_steps": 8,
+  "start_node": "prepare",
+  "nodes": {
+    "prepare": {
+      "type": "instruction",
+      "title": "Protect your work first",
+      "instruction": "Save work in other applications. Note the affected application's name and what you were doing when it failed. Do not download cleanup or repair utilities.",
+      "help_text": "A repeatable description helps distinguish a damaged application from a file-specific or system-wide problem.",
+      "next": "failure_type"
+    },
+    "failure_type": {
+      "type": "question",
+      "question": "What happens when you use the application?",
+      "answers": {
+        "wont_open": {"label": "It will not open", "next": "restart_computer"},
+        "crashes": {"label": "It opens, then closes or freezes", "next": "check_scope"},
+        "one_file": {"label": "It fails with one particular file", "next": "test_other_file"}
+      }
+    },
+    "test_other_file": {
+      "type": "instruction",
+      "title": "Test a different file safely",
+      "instruction": "Leave the original file unchanged. Open a small, known-good file of the same type or create a blank document, then perform the same basic action.",
+      "help_text": "This separates an application problem from a damaged, oversized, or unsupported file.",
+      "next": "other_file_result"
+    },
+    "other_file_result": {
+      "type": "question",
+      "question": "Does the application work with the other file?",
+      "answers": {
+        "yes": {"label": "Yes", "next": "file_specific"},
+        "no": {"label": "No", "next": "restart_computer"}
+      }
+    },
+    "file_specific": {
+      "type": "resolution",
+      "title": "The issue appears file-specific",
+      "message": "The application works with other files. Restore an earlier copy, ask the file owner to recreate it, or use the application's built-in repair or recovery option. Keep the original for recovery and do not overwrite it."
+    },
+    "check_scope": {
+      "type": "question",
+      "question": "Are other applications also freezing or closing?",
+      "answers": {
+        "yes": {"label": "Yes", "next": "system_wide"},
+        "no": {"label": "No", "next": "restart_application"},
+        "unsure": {"label": "I'm not sure", "next": "restart_application"}
+      }
+    },
+    "system_wide": {
+      "type": "resolution",
+      "title": "Use the computer performance workflow",
+      "message": "Multiple applications are affected, which suggests a broader Windows resource or stability issue. Open Computer Running Slowly and record any sustained CPU, memory, or disk use."
+    },
+    "restart_application": {
+      "type": "instruction",
+      "title": "Close and reopen the application",
+      "instruction": "Close the application normally. If it remains frozen, open Task Manager with Ctrl+Shift+Esc, select only the affected application, choose End task, wait ten seconds, and reopen it.",
+      "help_text": "Restarting clears the application's temporary state without changing its settings or files.",
+      "knowledge_article": "windows-task-manager-performance",
+      "next": "restart_result"
+    },
+    "restart_result": {
+      "type": "question",
+      "question": "Does the application now work normally?",
+      "answers": {
+        "yes": {"label": "Yes", "next": "resolved_restart"},
+        "no": {"label": "No", "next": "restart_computer"}
+      }
+    },
+    "resolved_restart": {
+      "type": "resolution",
+      "title": "Temporary application problem cleared",
+      "message": "The application is responding again. If the problem returns, note the exact action, file, and error message that preceded it."
+    },
+    "restart_computer": {
+      "type": "instruction",
+      "title": "Restart Windows",
+      "instruction": "Save all open work, select Start > Power > Restart, sign back in, and test the application before opening other programs.",
+      "help_text": "A restart reloads application dependencies and clears locked temporary resources.",
+      "next": "computer_restart_result"
+    },
+    "computer_restart_result": {
+      "type": "question",
+      "question": "Does the application work after restarting Windows?",
+      "answers": {
+        "yes": {"label": "Yes", "next": "resolved_restart"},
+        "no": {"label": "No", "next": "check_update"}
+      }
+    },
+    "check_update": {
+      "type": "instruction",
+      "title": "Check for an approved application update",
+      "instruction": "Use the application's Help or About menu, Microsoft Store, or your organization's software portal to check for an update. Do not download installers from advertisements or unfamiliar sites.",
+      "help_text": "A vendor update may correct a known compatibility or stability defect.",
+      "next": "update_result"
+    },
+    "update_result": {
+      "type": "question",
+      "question": "Was an approved update installed?",
+      "answers": {
+        "yes": {"label": "Yes", "next": "test_update"},
+        "no": {"label": "No update was available", "next": "escalate"},
+        "blocked": {"label": "I need administrator approval", "next": "escalate"}
+      }
+    },
+    "test_update": {
+      "type": "instruction",
+      "title": "Test after the update",
+      "instruction": "Restart the application and repeat the action that previously caused the failure using noncritical data when possible.",
+      "next": "final_result"
+    },
+    "final_result": {
+      "type": "question",
+      "question": "Is the application stable now?",
+      "answers": {
+        "yes": {"label": "Yes", "next": "resolved_update"},
+        "no": {"label": "No", "next": "escalate"}
+      }
+    },
+    "resolved_update": {
+      "type": "resolution",
+      "title": "Application stability restored",
+      "message": "The approved update corrected the problem. Continue using the supported update source and monitor for recurrence."
+    },
+    "escalate": {
+      "type": "resolution",
+      "title": "Application support is recommended",
+      "message": "Record the application version, Windows version, exact error text, affected file or action, and time of the latest failure. A technician can review logs, repair the installation, or reinstall it without risking user data."
+    }
+  }
+}

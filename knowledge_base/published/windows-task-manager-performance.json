@@ -1,0 +1,84 @@
+{
+  "id": "windows-task-manager-performance",
+  "title": "Reading Windows Performance in Task Manager",
+  "category": "Desktop Support",
+  "tags": [
+    "windows",
+    "performance",
+    "task manager",
+    "cpu",
+    "memory",
+    "startup"
+  ],
+  "related_articles": [
+    "windows-storage-performance"
+  ],
+  "related_commands": [
+    "tasklist",
+    "systeminfo"
+  ],
+  "difficulty": "Beginner",
+  "estimated_time": "3 to 5 minutes",
+  "overview": "Task Manager provides a live view of the applications and Windows processes using processor, memory, disk, and network resources. The goal is to observe sustained patterns before making a change—not to end unfamiliar processes.",
+  "checklist": [
+    "Open Task Manager with Ctrl+Shift+Esc.",
+    "Wait about 30 seconds so brief startup spikes can settle.",
+    "Select a CPU, Memory, or Disk column to identify the busiest processes.",
+    "Confirm that a process is an application you recognize before closing it.",
+    "Use Startup apps to review optional high-impact applications."
+  ],
+  "common_indicators": [
+    "CPU remains near full utilization even when the computer is idle.",
+    "Memory stays very high while applications pause or reload.",
+    "Disk remains at or near full activity for several minutes.",
+    "Performance improves when a known, unused application is closed.",
+    "The computer is slow mainly during the first few minutes after sign-in."
+  ],
+  "commands": [
+    {
+      "command": "tasklist",
+      "description": "Use tasklist to gather supporting diagnostic information."
+    },
+    {
+      "command": "systeminfo",
+      "description": "Use systeminfo to gather supporting diagnostic information."
+    }
+  ],
+  "related_topics": [
+    "Windows startup applications",
+    "Memory pressure",
+    "Storage capacity",
+    "Application performance"
+  ],
+  "quiz": [
+    {
+      "question": "What should you do before ending a process in Task Manager?",
+      "answers": [
+        "Confirm it is an application you recognize",
+        "End every process using memory",
+        "Disable Windows Security"
+      ],
+      "correct_answer": "Confirm it is an application you recognize"
+    }
+  ],
+  "sources": [
+    {
+      "title": "Task Manager overview",
+      "url": "https://support.microsoft.com/windows/how-to-use-task-manager"
+    }
+  ],
+  "schema_version": "1.0",
+  "generation": {
+    "provider": "Legacy content migration",
+    "model": null,
+    "generated_at": null
+  },
+  "review": {
+    "status": "pending_review",
+    "reviewed_by": null,
+    "reviewed_at": null,
+    "notes": [
+      "Migrated to article schema 1.0; technical review is still required."
+    ]
+  }
+}

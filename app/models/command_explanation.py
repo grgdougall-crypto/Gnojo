@@ -5,7 +5,7 @@ from typing import Any
 @dataclass
 class CommandExplanation:
     """
-    Structured SupportPilot explanation for a command.
+    Structured Gnojo explanation for a command.
     """
 
     title: str

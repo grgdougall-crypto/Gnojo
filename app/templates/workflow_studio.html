@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Workflow Studio | SupportPilot{% endblock %}
+{% block title %}Workflow Studio | Gnojo{% endblock %}
 
 {% block content %}
 
@@ -45,19 +45,17 @@
 
                     <div class="card-body">
 
-                        <span class="badge text-bg-secondary">
-                            Draft
-                        </span>
+                        <span class="badge {% if draft.is_damaged %}text-bg-danger{% else %}text-bg-secondary{% endif %}">{% if draft.is_damaged %}Needs attention{% else %}Draft{% endif %}</span>
+                        <span class="badge text-bg-primary">{{ draft.category }}</span>
+                        <span class="badge text-bg-light border">{{ draft.platform }}</span>
 
                         <h3 class="h5 mt-3">
                             {{ draft.name }}
                         </h3>
 
-                        <p class="text-muted mb-4">
-                            {{ draft.estimated_steps }} estimated steps
-                        </p>
+                        <p class="text-muted mb-4">{% if draft.is_damaged %}Gnojo could not read this file safely. Restore it from a backup or inspect the JSON before reopening it.{% else %}{{ draft.estimated_steps }} estimated steps{% endif %}</p>
 
-                        <a
+                        {% if not draft.is_damaged %}<a
     href="{{ url_for(
         'workflow_editor',
         filename=draft.filename
@@ -65,7 +63,7 @@
     class="btn btn-outline-primary btn-sm"
 >
     Open Workflow
-</a>
+</a>{% endif %}
 
                     </div>
 

@@ -1,6 +1,6 @@
 """
 Purpose:
-    Provide file-based access to SupportPilot knowledge articles.
+    Provide file-based access to Gnojo knowledge articles.
 
 Responsibilities:
     - Load draft, published, and archived articles.
@@ -43,7 +43,7 @@ class ArticleAlreadyExistsError(KnowledgeRepositoryError):
 
 class KnowledgeRepository:
     """
-    Manage SupportPilot knowledge articles stored as JSON files.
+    Manage Gnojo knowledge articles stored as JSON files.
     """
 
     def __init__(
@@ -161,7 +161,7 @@ class KnowledgeRepository:
 
         Args:
             article:
-                Complete SupportPilot article.
+                Complete Gnojo article.
 
             overwrite:
                 Whether an existing draft may be replaced.
@@ -187,7 +187,7 @@ class KnowledgeRepository:
 
         Args:
             article:
-                Complete SupportPilot article.
+                Complete Gnojo article.
 
             overwrite:
                 Whether an existing published article may be replaced.

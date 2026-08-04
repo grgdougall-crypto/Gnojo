@@ -75,6 +75,10 @@ document.addEventListener("DOMContentLoaded", () => {
             )}`;
         }
 
+        if (suggestion.content_type === "Workflow") {
+            return `/wizard?workflow=${encodeURIComponent(suggestion.id)}`;
+        }
+
         return "#";
     };
 

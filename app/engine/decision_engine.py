@@ -6,7 +6,7 @@ from app.models.node import Node
 
 class DecisionEngine:
     """
-    Loads and navigates SupportPilot decision tree workflows.
+    Loads and navigates Gnojo decision tree workflows.
     """
 
     def __init__(self):
@@ -25,6 +25,12 @@ class DecisionEngine:
 
         with open(workflow_path, "r", encoding="utf-8") as file:
             self.workflow = json.load(file)
+
+    def load_workflow_data(self, workflow):
+        """Load an already-validated workflow snapshot for navigation."""
+        if not isinstance(workflow, dict) or not isinstance(workflow.get("nodes"), dict):
+            raise ValueError("Workflow data is invalid.")
+        self.workflow = workflow
 
     def get_node(self, node_id):
         """

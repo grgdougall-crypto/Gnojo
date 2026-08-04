@@ -7,7 +7,7 @@ from app.repositories.knowledge_repository import (
 
 class RelationshipService:
     """
-    Builds relationships between SupportPilot knowledge objects.
+    Builds relationships between Gnojo knowledge objects.
     """
 
     def __init__(self):

@@ -1,6 +1,6 @@
 """
 Purpose:
-    Test the file-based SupportPilot knowledge repository.
+    Test the file-based Gnojo knowledge repository.
 
 Responsibilities:
     - Confirm draft loading.

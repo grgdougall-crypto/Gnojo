@@ -1,12 +1,19 @@
 {% extends "base.html" %}
 
 {% block title %}
-SupportPilot Search
+Gnojo Search
 {% endblock %}
 
 {% block content %}
 
 <div class="container py-5">
+
+    {% if active_device %}
+    <div class="alert alert-primary d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+        <span><i class="bi bi-pc-display me-2"></i>Results are prioritized for <strong>{{ active_device.name }}</strong> · {{ active_device.platform }} · {{ active_device.connection_type }}</span>
+        <a class="btn btn-sm btn-outline-primary" href="{{ url_for('device_profiles') }}">Change device</a>
+    </div>
+    {% endif %}
 
     <div
         class="d-flex flex-wrap justify-content-between
@@ -24,8 +31,7 @@ SupportPilot Search
             </h1>
 
             <p class="text-muted mb-0">
-                Results for
-                <strong>"{{ query }}"</strong>
+        {% if query %}Results for <strong>"{{ query }}"</strong>{% else %}Search workflows, knowledge, and commands.{% endif %}
             </p>
 
         </div>
@@ -55,7 +61,7 @@ SupportPilot Search
                    btn-outline-primary
                {% endif %}"
     >
-        All
+        All <span class="badge text-bg-light ms-1">{{ result_counts.all }}</span>
     </a>
 
     <a
@@ -71,7 +77,7 @@ SupportPilot Search
                    btn-outline-primary
                {% endif %}"
     >
-        Articles
+        Articles <span class="badge text-bg-light ms-1">{{ result_counts.article }}</span>
     </a>
 
     <a
@@ -87,7 +93,11 @@ SupportPilot Search
                    btn-outline-primary
                {% endif %}"
     >
-        Commands
+        Commands <span class="badge text-bg-light ms-1">{{ result_counts.command }}</span>
+    </a>
+
+    <a href="{{ url_for('search', q=query, type='workflow') }}" class="btn {% if selected_type == 'workflow' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+        Workflows <span class="badge text-bg-light ms-1">{{ result_counts.workflow }}</span>
     </a>
 
 </div>
@@ -100,7 +110,7 @@ SupportPilot Search
         >
 
             <h2 class="h4 mb-0">
-                All Results
+                {{ selected_type|title if selected_type != 'all' else 'All' }} Results
             </h2>
 
             <span class="badge text-bg-primary">
@@ -123,15 +133,25 @@ SupportPilot Search
 
     {% else %}
 
-        <div class="alert alert-secondary">
+        <div class="alert alert-secondary p-4">
 
             <h2 class="h5 mb-2">
                 No results found
             </h2>
 
             <p class="mb-0">
-                Try another keyword or browse the Knowledge Center.
+                {% if not query %}
+                    Enter an issue, technology, error, or command in the search bar above.
+                {% else %}
+                    Try a shorter phrase, check the spelling, or search for a technology such as VPN, DNS, printer, or PowerShell.
+                {% endif %}
             </p>
+
+            <div class="d-flex flex-wrap gap-2 mt-3">
+                <a class="btn btn-sm btn-outline-primary" href="{{ url_for('home') }}#workflows">Browse workflows</a>
+                <a class="btn btn-sm btn-outline-primary" href="{{ url_for('knowledge_center') }}">Browse knowledge</a>
+                <a class="btn btn-sm btn-outline-primary" href="{{ url_for('list_commands') }}">Browse commands</a>
+            </div>
 
         </div>
 

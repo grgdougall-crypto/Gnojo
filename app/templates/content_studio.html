@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Content Studio | SupportPilot{% endblock %}
+{% block title %}Content Studio | Gnojo{% endblock %}
 
 {% block content %}
 
@@ -24,6 +24,18 @@
     </div>
 
     <div class="row g-4">
+
+        <div class="col-12">
+            <a href="{{ url_for('content_quality') }}" class="text-decoration-none">
+                <div class="card shadow-sm border-start border-4 border-danger content-card quality-studio-card">
+                    <div class="card-body p-4 d-flex flex-wrap align-items-center gap-4">
+                        <div class="quality-studio-card__icon"><i class="bi bi-clipboard2-pulse" aria-hidden="true"></i></div>
+                        <div class="flex-grow-1"><span class="section-eyebrow">Measure and improve</span><h2 class="h4 mt-1 mb-1">Content Quality Dashboard</h2><p class="text-muted mb-0">Turn workflow usage, feedback, abandonment, and coverage gaps into an actionable improvement queue.</p></div>
+                        <span class="btn btn-outline-danger">Open dashboard <i class="bi bi-arrow-right ms-2" aria-hidden="true"></i></span>
+                    </div>
+                </div>
+            </a>
+        </div>
 
         <div class="col-md-6 col-xl-3">
 
@@ -52,6 +64,10 @@
                         <p class="text-muted mt-auto mb-0">
                             Generate and manage troubleshooting workflows.
                         </p>
+
+                        <span class="btn btn-outline-primary mt-4">
+                            Open Workflow Studio
+                        </span>
 
                     </div>
 
@@ -89,6 +105,10 @@
                             Create and review knowledge articles.
                         </p>
 
+                        <span class="btn btn-outline-success mt-4">
+                            Open Knowledge Builder
+                        </span>
+
                     </div>
 
                 </div>
@@ -125,6 +145,10 @@
                             Build command documentation and references.
                         </p>
 
+                        <span class="btn btn-outline-warning mt-4">
+                            Open Command Builder
+                        </span>
+
                     </div>
 
                 </div>
@@ -134,7 +158,7 @@
         </div>
 
         <div class="col-md-6 col-xl-3">
-
+            <a href="{{ url_for('script_builder') }}" class="text-decoration-none">
             <div
                 class="card h-100 shadow-sm
                        border-start border-4
@@ -153,16 +177,15 @@
                     </h3>
 
                     <p class="text-muted mt-auto mb-0">
-                        Create reviewed automation scripts.
+                        Use reviewed automation and diagnostic scripts.
                     </p>
 
-                    <span class="badge text-bg-secondary mt-4">
-                        Coming Soon
-                    </span>
+                    <span class="btn btn-outline-info mt-4">Open Script Builder</span>
 
                 </div>
 
             </div>
+            </a>
 
         </div>
 

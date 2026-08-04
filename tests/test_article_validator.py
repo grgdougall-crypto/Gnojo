@@ -1,6 +1,6 @@
 """
 Purpose:
-    Test the SupportPilot article validator.
+    Test the Gnojo article validator.
 
 Responsibilities:
     - Confirm that a correctly structured article passes validation.
@@ -22,7 +22,7 @@ def create_valid_article() -> dict:
     Create a complete article that should pass validation.
 
     Returns:
-        dict: A valid SupportPilot knowledge article.
+        dict: A valid Gnojo knowledge article.
     """
 
     article = create_article_template()
@@ -110,7 +110,7 @@ def create_invalid_article() -> dict:
     Create an incomplete article that should fail validation.
 
     Returns:
-        dict: An invalid SupportPilot knowledge article.
+        dict: An invalid Gnojo knowledge article.
     """
 
     article = create_article_template()

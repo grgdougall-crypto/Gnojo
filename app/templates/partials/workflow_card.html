@@ -1,0 +1,23 @@
+<div class="col-12 col-md-6 workflow-card-item" data-workflow-id="{{ workflow_id }}" data-category="{{ workflow.category }}" data-platform="{{ workflow.platform }}" data-compatibility="{{ workflow.compatibility }}" data-favorite="{{ 'true' if workflow_id in favorite_ids else 'false' }}" data-recent="{{ 'true' if workflow_id in recent_ids else 'false' }}" data-search="{{ workflow.name }} {{ workflow.description }} {{ workflow.category }} {{ workflow.platform }}">
+    <a class="service-card" href="{{ url_for('wizard', workflow=workflow_id) }}">
+        <div class="service-icon"><i class="bi {{ workflow.icon }}" aria-hidden="true"></i></div>
+        <div>
+            <h3>{{ workflow.name }}</h3>
+            {% if workflow.compatibility == 'recommended' %}
+                <span class="badge text-bg-success mb-2"><i class="bi bi-stars me-1" aria-hidden="true"></i>Recommended for {{ active_device.name }}</span>
+            {% elif workflow.compatibility == 'compatible' and active_device %}
+                <span class="badge text-bg-success mb-2">Compatible</span>
+            {% elif workflow.compatibility == 'incompatible' %}
+                <span class="badge text-bg-warning mb-2"><i class="bi bi-exclamation-triangle me-1" aria-hidden="true"></i>Different platform</span>
+            {% endif %}
+            {% if workflow.source == 'published' %}<span class="badge text-bg-primary mb-2">Published · v{{ workflow.version }}</span>{% endif %}
+            <span class="badge text-bg-secondary mb-2">{{ workflow.category }}</span>
+            <span class="badge text-bg-light border mb-2">{{ workflow.platform }}</span>
+            <p>{{ workflow.description }}</p>
+        </div>
+        <i class="bi bi-arrow-right card-arrow" aria-hidden="true"></i>
+    </a>
+    <button class="workflow-favorite-button" type="button" data-workflow-favorite data-favorite-url="{{ url_for('toggle_workflow_favorite', workflow_id=workflow_id) }}" aria-pressed="{{ 'true' if workflow_id in favorite_ids else 'false' }}" aria-label="{{ 'Remove ' if workflow_id in favorite_ids else 'Add ' }}{{ workflow.name }} {{ 'from' if workflow_id in favorite_ids else 'to' }} favorites" title="{{ 'Remove from favorites' if workflow_id in favorite_ids else 'Add to favorites' }}">
+        <i class="bi {{ 'bi-star-fill' if workflow_id in favorite_ids else 'bi-star' }}" aria-hidden="true"></i>
+    </button>
+</div>

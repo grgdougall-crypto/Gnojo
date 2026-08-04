@@ -46,7 +46,7 @@ Current Milestone
 - [x] AI Draft Preview
 - [x] Progress Tracking
 - [x] Validation Status
-- [x] SupportPilot Analysis
+- [x] Gnojo Analysis
 - [ ] Editable Sections
 - [ ] AI Section Improvements
 

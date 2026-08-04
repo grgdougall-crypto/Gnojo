@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Resume Troubleshooting | Gnojo{% endblock %}
+
+{% block content %}
+<div class="container py-5"><div class="mx-auto" style="max-width:720px;"><div class="card shadow-sm border-primary"><div class="card-body p-5">
+    <div class="service-icon mb-3"><i class="bi bi-clock-history"></i></div>
+    <p class="text-uppercase text-primary small fw-bold mb-1">Progress protected</p>
+    {% if same_workflow %}
+        <h1 class="h3">Continue where you left off?</h1>
+        <p class="text-muted">You already reached step {{ active_session.step }} in <strong>{{ active_session.workflow_name }}</strong>. Gnojo preserved that session{% if active_session.version %} on published version {{ active_session.version }}{% endif %}.</p>
+    {% else %}
+        <h1 class="h3">You have troubleshooting in progress</h1>
+        <p class="text-muted">You are on step {{ active_session.step }} of <strong>{{ active_session.workflow_name }}</strong>. Starting <strong>{{ requested_workflow.name }}</strong> will replace that progress.</p>
+    {% endif %}
+    <div class="d-flex flex-wrap gap-2 mt-4">
+        <a class="btn btn-primary" href="{{ url_for('wizard', workflow=active_session.workflow_id, resume='1') }}">Resume {{ active_session.workflow_name }}</a>
+        <a class="btn btn-outline-danger" href="{{ url_for('wizard', workflow=requested_workflow_id, restart='1') }}">{% if same_workflow %}Restart from beginning{% else %}Start new workflow{% endif %}</a>
+        <a class="btn btn-outline-secondary" href="{{ url_for('home') }}#workflows">Cancel</a>
+    </div>
+</div></div></div></div>
+{% endblock %}

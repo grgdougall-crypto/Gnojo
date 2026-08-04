@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Script Library | Gnojo{% endblock %}
+{% macro script_card(script) %}
+<div class="col-12 col-lg-6"><article class="card h-100 shadow-sm"><div class="card-body p-4 d-flex flex-column">
+  <div class="d-flex justify-content-between gap-3"><div><span class="badge text-bg-primary">{{ script.category }}</span> <span class="badge text-bg-secondary">{{ script.platform|default('Windows') }}</span> <span class="badge text-bg-secondary">{{ script.language|default('PowerShell') }}</span> <span class="badge {{ 'text-bg-warning' if script.risk.level == 'Moderate' else 'text-bg-success' }}">{{ script.risk.level }} risk</span></div><i class="bi {{ 'bi-lightning-charge' if script.kind == 'Automation' else 'bi-file-earmark-medical' }} fs-2 text-info"></i></div>
+  <h3 class="h4 mt-3">{{ script.name }}</h3><p class="text-muted">{{ script.summary }}</p>
+  <ul class="small text-muted mb-4">{% for item in script.collects[:3] %}<li>{{ item }}</li>{% endfor %}</ul>
+  {% if script.dry_run %}<p class="small text-success"><i class="bi bi-eye me-1"></i>Supports a <code>-WhatIf</code> preview</p>{% endif %}
+  <a class="btn btn-primary mt-auto align-self-start" href="{{ url_for('view_script', script_id=script.id) }}">Review script <i class="bi bi-arrow-right ms-2"></i></a>
+</div></article></div>
+{% endmacro %}
+{% block content %}
+<div class="container py-5">
+  <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4"><div><p class="section-eyebrow mb-1">Reviewed PowerShell toolkit</p><h1 class="display-5">Automation Script Library</h1><p class="text-muted fs-5 mb-0">Preview, understand, and download reviewed scripts for diagnostics and controlled IT automation.</p></div><div class="d-flex gap-2"><a class="btn btn-primary" href="{{ url_for('script_builder') }}"><i class="bi bi-plus-lg me-2"></i>Add script</a><a class="btn btn-outline-primary" href="{{ url_for('content_studio') }}"><i class="bi bi-arrow-left me-2"></i>Content Studio</a></div></div>
+  <div class="alert alert-warning d-flex gap-3 mb-5"><i class="bi bi-shield-exclamation fs-4"></i><div><strong>Review before running</strong><br>Automation scripts can change a computer. Confirm the parameters, use <code>-WhatIf</code> when available, and run them only on systems you are authorized to manage.</div></div>
+  <section class="mb-5"><p class="section-eyebrow mb-1">System-changing tools</p><h2 class="h2 mb-2">Automation</h2><p class="text-muted mb-4">Controlled maintenance and configuration tasks with confirmation, preview, and recovery guidance.</p><div class="row g-4">{% for script in automations %}{{ script_card(script) }}{% endfor %}</div></section>
+  <section><p class="section-eyebrow mb-1">Read-only tools</p><h2 class="h2 mb-2">Diagnostic Collectors</h2><p class="text-muted mb-4">Evidence collectors that create local reports without changing system configuration.</p><div class="row g-4">{% for script in collectors %}{{ script_card(script) }}{% endfor %}</div></section>
+</div>
+{% endblock %}

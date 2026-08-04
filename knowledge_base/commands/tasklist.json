@@ -1,0 +1,137 @@
+{
+  "schema_version": "1.0",
+  "id": "tasklist",
+  "name": "tasklist",
+  "title": "Understanding tasklist",
+  "shell": "Command Prompt",
+  "platforms": [
+    "Windows 10",
+    "Windows 11",
+    "Windows Server"
+  ],
+  "category": "Networking",
+  "difficulty": "Beginner",
+  "summary": "Displays running processes on local or remote Windows systems, with options to filter, format, and show modules, services, and verbose details.",
+  "syntax": "TASKLIST [/S system [/U [domain\\]user [/P [password]]]] [/M [module] | /SVC | /V] [/FI filter] [/FO format] [/NH]",
+  "examples": [
+    {
+      "command": "tasklist",
+      "description": "Lists all running processes on the local computer in a table."
+    },
+    {
+      "command": "tasklist /v /fi \"status eq not responding\"",
+      "description": "Shows verbose details for processes that are not responding."
+    },
+    {
+      "command": "tasklist /fi \"imagename eq chrome.exe\"",
+      "description": "Lists only processes whose image name matches chrome.exe."
+    },
+    {
+      "command": "tasklist /fi \"memusage gt 500000\" /fo csv /nh",
+      "description": "Outputs, in CSV without headers, processes using more than ~500,000 KB of memory."
+    },
+    {
+      "command": "tasklist /svc /fi \"imagename eq svchost.exe\"",
+      "description": "Shows which services are hosted by each svchost.exe instance."
+    },
+    {
+      "command": "tasklist /m ntdll.dll",
+      "description": "Lists processes that have loaded ntdll.dll (and shows loaded modules)."
+    },
+    {
+      "command": "tasklist /s SRV01 /u CONTOSO\\Admin /p",
+      "description": "Prompts for the password and lists processes on remote host SRV01 using the specified credentials."
+    }
+  ],
+  "permissions": {
+    "requires_elevation": false,
+    "notes": "Local use typically works as a standard user. Remote use (/S) generally requires local administrator rights on the target, proper credentials (/U, /P), network connectivity, and firewall allowance for RPC. UAC remote restrictions may block administrative local accounts unless using the built-in Administrator or appropriate policy settings."
+  },
+  "risk": {
+    "level": "Low",
+    "changes_system": false,
+    "warning": "tasklist is read-only, but frequent remote enumerations can add minor overhead and will create authentication and audit log entries."
+  },
+  "output_fields": [
+    {
+      "name": "IMAGENAME",
+      "description": "Executable name of the process; use to identify the application (e.g., chrome.exe, svchost.exe)."
+    },
+    {
+      "name": "PID",
+      "description": "Unique process identifier; essential for correlating logs and for targeted termination with taskkill."
+    },
+    {
+      "name": "MEMUSAGE",
+      "description": "Approximate working set in KB; high values can indicate memory leaks or runaway processes."
+    },
+    {
+      "name": "STATUS",
+      "description": "Indicates RUNNING, NOT RESPONDING, or UNKNOWN; helps quickly spot hung apps."
+    },
+    {
+      "name": "USERNAME",
+      "description": "Account under which the process runs; useful for security context and ownership checks."
+    },
+    {
+      "name": "CPUTIME",
+      "description": "Cumulative CPU time used; sustained high values can indicate CPU-bound processes."
+    },
+    {
+      "name": "SERVICES (with /svc)",
+      "description": "Lists Windows services hosted in the process; critical for mapping svchost.exe instances to services."
+    },
+    {
+      "name": "MODULES (with /m or /m module.dll)",
+      "description": "Shows loaded DLLs; useful for dependency and injection analysis."
+    },
+    {
+      "name": "SESSIONNAME and SESSION#",
+      "description": "Terminal Services session information; helps identify interactive vs. service sessions."
+    },
+    {
+      "name": "WINDOWTITLE (with /v)",
+      "description": "Top-level window title for GUI apps; helps match processes to visible windows."
+    }
+  ],
+  "common_errors": [
+    {
+      "message": "INFO: No tasks are running which match the specified criteria.",
+      "meaning": "Your /FI filter returned no results. The criteria may be too restrictive or misspelled."
+    },
+    {
+      "message": "ERROR: Access is denied.",
+      "meaning": "Insufficient rights to enumerate processes (common on remote systems without administrative privileges or due to UAC/remote restrictions)."
+    },
+    {
+      "message": "ERROR: The RPC server is unavailable.",
+      "meaning": "Remote enumeration failed; the target may be offline, RPC blocked by firewall, or RPC service not available."
+    },
+    {
+      "message": "ERROR: The network path was not found.",
+      "meaning": "Bad hostname/IP or name resolution/connectivity issue when using /S to query a remote system."
+    },
+    {
+      "message": "ERROR: Invalid argument/option - '/XY'.",
+      "meaning": "A parameter or switch is misspelled or unsupported. Check TASKLIST /? for valid options."
+    }
+  ],
+  "related_commands": [],
+  "related_articles": [],
+  "tags": [
+    "tasklist",
+    "networking",
+    "command prompt",
+    "troubleshooting"
+  ],
+  "sources": [
+    {
+      "title": "tasklist (Windows Commands)",
+      "organization": "Microsoft Learn",
+      "type": "Official Documentation",
+      "url": "https://learn.microsoft.com/windows-server/administration/windows-commands/tasklist"
+    }
+  ],
+  "review_status": "reviewed",
+  "version": "1.0"
+}

@@ -1,6 +1,6 @@
 """
 Purpose:
-    Build versioned prompts for SupportPilot knowledge articles.
+    Build versioned prompts for Gnojo knowledge articles.
 
 Responsibilities:
     - Define article-generation instructions.
@@ -20,7 +20,7 @@ from typing import Any
 
 class ArticlePromptBuilder:
     """
-    Build prompts for structured SupportPilot article generation.
+    Build prompts for structured Gnojo article generation.
     """
 
     PROMPT_VERSION = "article-prompt-v1"
@@ -39,7 +39,7 @@ class ArticlePromptBuilder:
                 Technical subject the article should explain.
 
             category:
-                SupportPilot knowledge category.
+                Gnojo knowledge category.
 
             difficulty:
                 Intended learner difficulty level.
@@ -56,7 +56,7 @@ class ArticlePromptBuilder:
         )
 
         prompt = f"""
-You are creating a learning article for SupportPilot, an AI-assisted
+You are creating a learning article for Gnojo, an AI-assisted
 IT troubleshooting and training platform.
 
 PROMPT VERSION:

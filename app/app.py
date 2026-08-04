@@ -1,11 +1,19 @@
+import json
+import os
 import re
+import secrets
+from datetime import datetime
+from uuid import uuid4
 
 from flask import (
     Flask,
     abort,
+    g,
+    Response,
     redirect,
     render_template,
     request,
+    send_file,
     session,
     url_for,
 )
@@ -13,15 +21,18 @@ from flask import (
 from dataclasses import asdict
 
 from markupsafe import Markup, escape
+from dotenv import load_dotenv
 
 from app.engine.decision_engine import DecisionEngine
 from app.knowledge.knowledge_base import KnowledgeBase
 from app.repositories.knowledge_repository import (
+    ArticleAlreadyExistsError,
     ArticleNotFoundError,
     KnowledgeRepository,
     KnowledgeRepositoryError,
 )
 from app.repositories.command_repository import CommandRepository
+from app.repositories.script_repository import ScriptRepository
 
 from app.services.search_service import SearchService
 
@@ -48,6 +59,7 @@ from app.services.workflow_validation_service import (
 )
 
 from app.services.workflow_draft_service import (
+    WorkflowDraftError,
     WorkflowDraftService,
 )
 
@@ -62,6 +74,34 @@ from app.services.workflow_statistics_service import (
 from app.services.workflow_node_service import (
     WorkflowNodeService,
 )
+
+from app.services.workflow_publication_service import (
+    WorkflowPublicationError,
+    WorkflowPublicationService,
+)
+
+from app.services.workflow_ai_service import (
+    WorkflowAIError,
+    WorkflowAIService,
+)
+from app.services.workflow_export_service import WorkflowExportError, WorkflowExportService
+from app.services.workflow_metadata_service import workflow_category, workflow_platform
+from app.services.device_profile_service import DeviceProfileError, DeviceProfileService
+from app.services.workflow_condition_service import WorkflowConditionError, resolve_applicable_node
+from app.services.learning_mode_service import LearningModeService
+from app.services.troubleshooting_history_service import (
+    TroubleshootingHistoryError,
+    TroubleshootingHistoryService,
+)
+from app.services.content_quality_service import ContentQualityService
+from app.services.workflow_coverage_service import (
+    WorkflowCoverageError,
+    WorkflowCoverageService,
+)
+from app.services.article_review_service import ArticleReviewError, ArticleReviewService
+from app.services.script_authoring_service import ScriptAuthoringError, ScriptAuthoringService
+
+load_dotenv()
 
 app = Flask(__name__)
 
@@ -94,8 +134,25 @@ def highlight_search_term(value, query):
 
     return Markup(highlighted_value)
 
+
+@app.template_filter("friendly_datetime")
+def friendly_datetime(value):
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        return parsed.astimezone().strftime("%b %d, %Y · %I:%M %p")
+    except (TypeError, ValueError):
+        return "Unknown time"
+
+
+@app.template_filter("friendly_node")
+def friendly_node(value):
+    label = re.sub(r"^(q|instr|res|transition)_", "", str(value or ""))
+    return label.replace("_", " ").strip().title() or "Unknown step"
+
 knowledge_repository = KnowledgeRepository()
 command_repository = CommandRepository()
+script_repository = ScriptRepository()
+script_authoring_service = ScriptAuthoringService()
 search_service = SearchService()
 relationship_service = RelationshipService()
 explanation_service = ExplanationService()
@@ -104,8 +161,64 @@ publish_validation_service = PublishValidationService()
 publication_service = PublicationService()
 
 
-# Development only
-app.secret_key = "supportpilot-development-key"
+app.secret_key = os.getenv("FLASK_SECRET_KEY") or secrets.token_hex(32)
+
+
+@app.before_request
+def assign_request_id():
+    g.request_id = request.headers.get("X-Request-ID", "").strip()[:64] or uuid4().hex[:12]
+
+
+@app.after_request
+def attach_request_id(response):
+    response.headers["X-Request-ID"] = getattr(g, "request_id", "unknown")
+    return response
+
+
+def error_response(status, title, message):
+    request_id = getattr(g, "request_id", "unknown")
+    if request.path.startswith("/api/"):
+        return {"ok": False, "error": message, "request_id": request_id}, status
+    return render_template(
+        "error.html",
+        status=status,
+        title=title,
+        message=message,
+        request_id=request_id,
+    ), status
+
+
+@app.errorhandler(404)
+def page_not_found(error):
+    return error_response(404, "We couldn't find that page", "The link may be outdated, or the workflow or resource may no longer be available.")
+
+
+@app.errorhandler(500)
+def internal_error(error):
+    app.logger.error(json.dumps({
+        "event": "unhandled_error",
+        "request_id": getattr(g, "request_id", "unknown"),
+        "method": request.method,
+        "path": request.path,
+        "error_type": type(error).__name__,
+    }), exc_info=error)
+    return error_response(500, "Gnojo hit an unexpected problem", "Your data was not intentionally changed. Return home and try again, or use the request ID below when reporting the problem.")
+
+
+@app.errorhandler(WorkflowDraftError)
+@app.errorhandler(WorkflowPublicationError)
+@app.errorhandler(DeviceProfileError)
+@app.errorhandler(TroubleshootingHistoryError)
+@app.errorhandler(WorkflowCoverageError)
+@app.errorhandler(ArticleReviewError)
+def saved_data_error(error):
+    app.logger.warning(json.dumps({
+        "event": "saved_data_error",
+        "request_id": getattr(g, "request_id", "unknown"),
+        "path": request.path,
+        "error_type": type(error).__name__,
+    }))
+    return error_response(409, "Saved data needs attention", str(error))
 
 current_draft = None
 
@@ -114,6 +227,8 @@ AVAILABLE_WORKFLOWS = {
         "name": "Internet Connection",
         "description": "Troubleshoot Wi-Fi, Ethernet, routers, and connectivity.",
         "icon": "bi-wifi",
+        "category": "Networking",
+        "platform": "Cross-platform",
     },
     "printer": {
         "name": "Printer",
@@ -121,23 +236,371 @@ AVAILABLE_WORKFLOWS = {
             "Troubleshoot power, connections, print queues, and paper issues."
         ),
         "icon": "bi-printer",
+        "category": "Desktop Support",
+        "platform": "Cross-platform",
     },
     "network_diagnostics": {
         "name": "Advanced Network Diagnostics",
         "description": "Perform advanced network diagnostics to identify and resolve connectivity issues.",
         "icon": "bi-wifi",
+        "category": "Networking",
+        "platform": "Cross-platform",
+    },
+    "windows_slow": {
+        "name": "Computer Running Slowly",
+        "description": "Diagnose Windows performance, memory, storage, startup, updates, and security issues.",
+        "icon": "bi-speedometer2",
+        "category": "Desktop Support",
+        "platform": "Windows",
+    },
+    "application_crash": {
+        "name": "Application Keeps Crashing",
+        "description": "Safely diagnose repeated application freezes, crashes, and startup failures.",
+        "icon": "bi-app-indicator",
+        "category": "Desktop Support",
+        "platform": "Windows",
+    },
+    "no_sound": {
+        "name": "No Sound",
+        "description": "Restore Windows audio by checking output, volume, connections, and built-in diagnostics.",
+        "icon": "bi-volume-mute",
+        "category": "Desktop Support",
+        "platform": "Windows",
+    },
+    "low_storage": {
+        "name": "Low Disk Space",
+        "description": "Find and safely reclaim storage without deleting Windows system files.",
+        "icon": "bi-device-hdd",
+        "category": "Desktop Support",
+        "platform": "Windows",
     }
 }
 
 
+def available_workflows():
+    """Build the runtime catalog from built-ins and active publications."""
+    catalog = {
+        workflow_id: {**details, "source": "built_in"}
+        for workflow_id, details in AVAILABLE_WORKFLOWS.items()
+    }
+    try:
+        snapshots = WorkflowPublicationService().list_current()
+    except (OSError, WorkflowPublicationError):
+        snapshots = []
+    for snapshot in snapshots:
+        workflow = snapshot["workflow"]
+        workflow_id = workflow.get("workflow_id")
+        if not workflow_id:
+            continue
+        catalog[workflow_id] = {
+            "name": workflow.get("name") or workflow_id.replace("_", " ").title(),
+            "description": workflow.get("description") or "Follow this guided troubleshooting workflow.",
+            "icon": workflow.get("icon") or "bi-signpost-split",
+            "source": "published",
+            "version": snapshot.get("publication", {}).get("version"),
+            "category": workflow_category(workflow),
+            "platform": workflow_platform(workflow),
+        }
+    return catalog
+
+
+def load_runtime_workflow(engine, workflow_id, catalog=None, version=None):
+    catalog = catalog or available_workflows()
+    details = catalog.get(workflow_id)
+    if details is None:
+        raise FileNotFoundError(workflow_id)
+    if details.get("source") == "published":
+        snapshot = WorkflowPublicationService().load_version(workflow_id, version) if version else WorkflowPublicationService().load_current(workflow_id)
+        if not snapshot:
+            raise FileNotFoundError(workflow_id)
+        engine.load_workflow_data(snapshot["workflow"])
+    else:
+        engine.load_workflow(workflow_id)
+
+
+def active_device_profile():
+    profile_id = session.get("active_device_profile_id")
+    if not profile_id:
+        return None
+    try:
+        profile = DeviceProfileService().get(profile_id)
+    except DeviceProfileError:
+        profile = None
+    if profile is None:
+        session.pop("active_device_profile_id", None)
+    return profile
+
+
+def workflow_device_compatibility(workflow_info, device):
+    if not device:
+        return "neutral"
+    workflow_os = str(workflow_info.get("platform") or "Cross-platform").lower()
+    device_os = str(device.get("platform") or "Other").lower()
+    if workflow_os == "cross-platform" or device_os == "other":
+        return "compatible"
+    return "recommended" if workflow_os == device_os else "incompatible"
+
+
+def favorite_workflow_ids(catalog=None):
+    catalog = catalog or available_workflows()
+    saved = session.get("favorite_workflow_ids", [])
+    if not isinstance(saved, list):
+        saved = []
+    valid = []
+    for workflow_id in saved:
+        if isinstance(workflow_id, str) and workflow_id in catalog and workflow_id not in valid:
+            valid.append(workflow_id)
+    if valid != saved:
+        session["favorite_workflow_ids"] = valid
+    return valid
+
+
+def recent_workflow_ids(catalog, limit=10):
+    recent = []
+    try:
+        for record in TroubleshootingHistoryService().list(50):
+            workflow_id = record.get("workflow_id")
+            if workflow_id in catalog and workflow_id not in recent:
+                recent.append(workflow_id)
+            if len(recent) >= limit:
+                break
+    except (OSError, TroubleshootingHistoryError):
+        pass
+    return recent
+
+
+def active_troubleshooting_session(catalog=None):
+    workflow_id = session.get("workflow")
+    node_id = session.get("current_node")
+    if not workflow_id or not node_id or session.get("workflow_complete"):
+        return None
+    catalog = catalog or available_workflows()
+    workflow = catalog.get(workflow_id)
+    if not workflow:
+        clear_troubleshooting_session()
+        return None
+    return {
+        "workflow_id": workflow_id,
+        "workflow_name": workflow["name"],
+        "node_id": node_id,
+        "step": session.get("step", 1),
+        "version": session.get("workflow_version"),
+        "learning_mode": session.get("learning_mode", False),
+    }
+
+
+def clear_troubleshooting_session():
+    abandon_active_history()
+    for key in ("workflow", "workflow_version", "workflow_complete", "current_node", "node_history", "step", "skipped_nodes", "learning_concepts"):
+        session.pop(key, None)
+    session.pop("troubleshooting_history_id", None)
+
+
+def abandon_active_history():
+    history_id = session.get("troubleshooting_history_id")
+    if history_id:
+        try:
+            TroubleshootingHistoryService().abandon(history_id)
+        except (OSError, TroubleshootingHistoryError):
+            app.logger.warning("Unable to mark troubleshooting history as abandoned.")
+
+
+def track_history_progress(node_id, action="advance", workflow_id=None,
+                           workflow_name=None, version=None):
+    history_id = session.get("troubleshooting_history_id")
+    if not history_id:
+        return
+    try:
+        TroubleshootingHistoryService().progress(
+            history_id,
+            node_id,
+            action=action,
+            workflow_id=workflow_id,
+            workflow_name=workflow_name,
+            version=version,
+        )
+    except (OSError, TroubleshootingHistoryError):
+        app.logger.warning("Unable to update troubleshooting history.")
+
+
 @app.route("/")
 def home():
-    session.clear()
+    if request.args.get("learning") in {"0", "1"}:
+        session["learning_mode"] = request.args.get("learning") == "1"
+        if not session["learning_mode"]:
+            session.pop("learning_concepts", None)
+    active_device = active_device_profile()
+    workflows = available_workflows()
+    for details in workflows.values():
+        details["compatibility"] = workflow_device_compatibility(details, active_device)
+    priority = {"recommended": 0, "compatible": 1, "neutral": 2, "incompatible": 3}
+    workflows = dict(sorted(workflows.items(), key=lambda item: (priority[item[1]["compatibility"]], item[1]["name"].lower())))
+
+    favorite_ids = favorite_workflow_ids(workflows)
+    recent_ids = recent_workflow_ids(workflows)
+    featured_ids = []
+    for workflow_id in favorite_ids + recent_ids:
+        if workflow_id not in featured_ids:
+            featured_ids.append(workflow_id)
+    for workflow_id, details in workflows.items():
+        if details["compatibility"] == "recommended" and workflow_id not in featured_ids:
+            featured_ids.append(workflow_id)
+    for workflow_id in workflows:
+        if workflow_id not in featured_ids:
+            featured_ids.append(workflow_id)
+    featured_workflows = {
+        workflow_id: workflows[workflow_id]
+        for workflow_id in featured_ids[:4]
+    }
 
     return render_template(
         "index.html",
-        workflows=AVAILABLE_WORKFLOWS,
+        workflows=workflows,
+        featured_workflows=featured_workflows,
+        workflow_count=len(workflows),
+        favorite_ids=favorite_ids,
+        active_device=active_device,
+        learning_mode=session.get("learning_mode", False),
+        active_session=active_troubleshooting_session(workflows),
     )
+
+
+@app.route("/workflows")
+def workflow_catalog():
+    device = active_device_profile()
+    workflows = available_workflows()
+    for details in workflows.values():
+        details["compatibility"] = workflow_device_compatibility(details, device)
+    workflows = dict(sorted(workflows.items(), key=lambda item: (
+        item[1]["category"].lower(), item[1]["name"].lower()
+    )))
+    return render_template(
+        "workflow_catalog.html",
+        workflows=workflows,
+        active_device=device,
+        favorite_ids=favorite_workflow_ids(workflows),
+        recent_ids=recent_workflow_ids(workflows),
+    )
+
+
+@app.route("/api/workflow-favorites/<workflow_id>", methods=["POST"])
+def toggle_workflow_favorite(workflow_id):
+    catalog = available_workflows()
+    if workflow_id not in catalog:
+        return {"ok": False, "error": "Workflow not found."}, 404
+    favorites = favorite_workflow_ids(catalog)
+    favorite = workflow_id not in favorites
+    if favorite:
+        favorites.append(workflow_id)
+    else:
+        favorites.remove(workflow_id)
+    session["favorite_workflow_ids"] = favorites
+    return {"ok": True, "workflow_id": workflow_id, "favorite": favorite}
+
+
+@app.route("/troubleshooting-session/end", methods=["POST"])
+def end_troubleshooting_session():
+    clear_troubleshooting_session()
+    return redirect(url_for("home", session_ended="1", _anchor="workflows"))
+
+
+@app.route("/device-profiles")
+def device_profiles():
+    return render_template(
+        "device_profiles.html",
+        profiles=DeviceProfileService().list(),
+        active_device=active_device_profile(),
+    )
+
+
+@app.route("/troubleshooting-history")
+def troubleshooting_history():
+    service = TroubleshootingHistoryService()
+    records = service.list(200)
+    return render_template(
+        "troubleshooting_history.html",
+        records=records,
+        analytics=service.analytics(records),
+    )
+
+
+@app.route("/troubleshooting-history/<history_id>")
+def troubleshooting_history_detail(history_id):
+    record = TroubleshootingHistoryService().get(history_id)
+    if record is None:
+        abort(404)
+    return render_template("troubleshooting_history_detail.html", record=record)
+
+
+@app.route("/troubleshooting-history/<history_id>/delete", methods=["POST"])
+def delete_troubleshooting_history(history_id):
+    try:
+        TroubleshootingHistoryService().delete(history_id)
+    except FileNotFoundError:
+        abort(404)
+    if session.get("troubleshooting_history_id") == history_id:
+        clear_troubleshooting_session()
+    return redirect(url_for("troubleshooting_history"))
+
+
+@app.route("/api/troubleshooting-history/<history_id>/feedback", methods=["POST"])
+def submit_troubleshooting_feedback(history_id):
+    try:
+        feedback = TroubleshootingHistoryService().add_feedback(
+            history_id, request.get_json(silent=True)
+        )
+    except FileNotFoundError:
+        return {"ok": False, "error": "Troubleshooting session not found."}, 404
+    except TroubleshootingHistoryError as error:
+        return {"ok": False, "error": str(error)}, 400
+    return {"ok": True, "feedback": feedback}
+
+
+@app.route("/troubleshooting-history/clear", methods=["POST"])
+def clear_troubleshooting_history():
+    TroubleshootingHistoryService().clear()
+    clear_troubleshooting_session()
+    return redirect(url_for("troubleshooting_history"))
+
+
+@app.route("/api/device-profiles", methods=["POST"])
+def create_device_profile():
+    try:
+        profile = DeviceProfileService().create(request.get_json(silent=True))
+    except DeviceProfileError as error:
+        return {"ok": False, "error": str(error)}, 400
+    if request.get_json(silent=True).get("activate", True):
+        session["active_device_profile_id"] = profile["id"]
+    return {"ok": True, "profile": profile}, 201
+
+
+@app.route("/api/device-profiles/<profile_id>", methods=["PATCH", "DELETE"])
+def update_or_delete_device_profile(profile_id):
+    service = DeviceProfileService()
+    try:
+        if request.method == "DELETE":
+            service.delete(profile_id)
+            if session.get("active_device_profile_id") == profile_id:
+                session.pop("active_device_profile_id", None)
+            return {"ok": True}
+        profile = service.update(profile_id, request.get_json(silent=True))
+        return {"ok": True, "profile": profile}
+    except FileNotFoundError:
+        return {"ok": False, "error": "Device profile not found."}, 404
+    except DeviceProfileError as error:
+        return {"ok": False, "error": str(error)}, 400
+
+
+@app.route("/api/device-profiles/<profile_id>/activate", methods=["POST"])
+def activate_device_profile(profile_id):
+    try:
+        profile = DeviceProfileService().get(profile_id)
+    except DeviceProfileError as error:
+        return {"ok": False, "error": str(error)}, 400
+    if profile is None:
+        return {"ok": False, "error": "Device profile not found."}, 404
+    session["active_device_profile_id"] = profile_id
+    return {"ok": True, "profile": profile}
 
 @app.route("/content-studio")
 def content_studio():
@@ -145,6 +608,27 @@ def content_studio():
     return render_template(
         "content_studio.html",
     )
+
+
+@app.route("/content-quality")
+def content_quality():
+    catalog = available_workflows()
+    workflow_data = {}
+    for workflow_id in catalog:
+        engine = DecisionEngine()
+        try:
+            load_runtime_workflow(engine, workflow_id, catalog, catalog[workflow_id].get("version"))
+        except (FileNotFoundError, WorkflowPublicationError, ValueError):
+            continue
+        workflow_data[workflow_id] = engine.workflow
+    drafts = {
+        item["workflow_id"]: item["filename"]
+        for item in WorkflowDraftService().list_drafts()
+        if item.get("workflow_id") and not item.get("is_damaged")
+    }
+    records = TroubleshootingHistoryService().list(500)
+    report = ContentQualityService().build(workflow_data, records, drafts)
+    return render_template("content_quality.html", report=report)
 
 @app.route("/workflow-studio")
 def workflow_studio():
@@ -183,12 +667,279 @@ def workflow_editor(filename):
         workflow=workflow,
         statistics=statistics,
         nodes=nodes,
+        filename=filename,
+        workflow_category=workflow_category(workflow),
+        workflow_platform=workflow_platform(workflow),
     )
+
+
+@app.route(
+    "/api/workflow-drafts/<filename>/nodes/<node_id>",
+    methods=["PATCH"],
+)
+def update_workflow_node(filename, node_id):
+    payload = request.get_json(silent=True)
+
+    if not isinstance(payload, dict):
+        return {"ok": False, "error": "A JSON object is required."}, 400
+
+    try:
+        workflow = WorkflowDraftService().update_node(
+            filename,
+            node_id,
+            payload,
+        )
+    except FileNotFoundError:
+        return {"ok": False, "error": "Workflow draft not found."}, 404
+    except KeyError:
+        return {"ok": False, "error": "Workflow node not found."}, 404
+    except (WorkflowDraftError, ValueError) as error:
+        return {"ok": False, "error": str(error)}, 400
+
+    node = next(
+        (
+            item
+            for item in WorkflowNodeService().build(workflow)
+            if item["id"] == node_id
+        ),
+        None,
+    )
+
+    return {"ok": True, "node": node}
+
+
+@app.route(
+    "/api/workflow-drafts/<filename>/settings",
+    methods=["PATCH"],
+)
+def update_workflow_settings(filename):
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return {"ok": False, "error": "A JSON object is required."}, 400
+
+    try:
+        workflow = WorkflowDraftService().update_settings(filename, payload)
+    except FileNotFoundError:
+        return {"ok": False, "error": "Workflow draft not found."}, 404
+    except (WorkflowDraftError, ValueError) as error:
+        return {"ok": False, "error": str(error)}, 400
+
+    statistics = WorkflowStatisticsService().build(workflow)
+    return {
+        "ok": True,
+        "settings": {
+            "workflow_id": workflow.get("workflow_id"),
+            "name": workflow.get("name"),
+            "description": workflow.get("description", ""),
+            "category": workflow.get("category", "Uncategorized"),
+            "platform": workflow.get("platform", "Cross-platform"),
+            "estimated_steps": workflow.get("estimated_steps"),
+            "start_node": workflow.get("start_node"),
+            "start_node_title": statistics.get("start_node_title"),
+        },
+    }
+
+
+@app.route(
+    "/api/workflow-drafts/<filename>/nodes/<node_id>/improve",
+    methods=["POST"],
+)
+def improve_workflow_node(filename, node_id):
+    workflow = WorkflowDraftService().get_draft(filename)
+    if workflow is None:
+        return {"ok": False, "error": "Workflow draft not found."}, 404
+
+    nodes = workflow.get("nodes")
+    if not isinstance(nodes, dict) or node_id not in nodes:
+        return {"ok": False, "error": "Workflow node not found."}, 404
+
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return {"ok": False, "error": "A JSON object is required."}, 400
+
+    try:
+        suggestion = WorkflowAIService().improve_node(
+            node_id,
+            nodes[node_id],
+            payload.get("style"),
+        )
+    except WorkflowAIError as error:
+        return {"ok": False, "error": str(error)}, 400
+
+    return {"ok": True, **suggestion}
+
+
+@app.route(
+    "/api/workflow-drafts/<filename>/nodes/<node_id>/coverage/help-text",
+    methods=["POST"],
+)
+def generate_workflow_help_text(filename, node_id):
+    workflow = WorkflowDraftService().get_draft(filename)
+    if workflow is None:
+        return {"ok": False, "error": "Workflow draft not found."}, 404
+    node = workflow.get("nodes", {}).get(node_id)
+    if not isinstance(node, dict):
+        return {"ok": False, "error": "Workflow node not found."}, 404
+    try:
+        help_text = WorkflowCoverageService().generate_help_text(node)
+        workflow = WorkflowDraftService().update_node(
+            filename, node_id, {"help_text": help_text}
+        )
+    except (WorkflowCoverageError, WorkflowDraftError, ValueError) as error:
+        return {"ok": False, "error": str(error)}, 400
+    normalized = next(
+        item for item in WorkflowNodeService().build(workflow) if item["id"] == node_id
+    )
+    return {"ok": True, "help_text": help_text, "node": normalized}
+
+
+@app.route(
+    "/api/workflow-drafts/<filename>/nodes/<node_id>/coverage/article",
+    methods=["POST"],
+)
+def create_workflow_article_draft(filename, node_id):
+    draft_service = WorkflowDraftService()
+    workflow = draft_service.get_draft(filename)
+    if workflow is None:
+        return {"ok": False, "error": "Workflow draft not found."}, 404
+    node = workflow.get("nodes", {}).get(node_id)
+    if not isinstance(node, dict):
+        return {"ok": False, "error": "Workflow node not found."}, 404
+    try:
+        article = WorkflowCoverageService().create_article_draft(workflow, node_id, node)
+        created = True
+        try:
+            knowledge_repository.save_draft(article)
+        except ArticleAlreadyExistsError:
+            knowledge_repository.get_draft(article["id"])
+            created = False
+        workflow = draft_service.update_node(
+            filename, node_id, {"knowledge_article": article["id"]}
+        )
+    except (WorkflowCoverageError, WorkflowDraftError, KnowledgeRepositoryError, ValueError) as error:
+        return {"ok": False, "error": str(error)}, 400
+    normalized = next(
+        item for item in WorkflowNodeService().build(workflow) if item["id"] == node_id
+    )
+    return {
+        "ok": True,
+        "created": created,
+        "article_id": article["id"],
+        "review_url": url_for("review_draft", article_id=article["id"]),
+        "node": normalized,
+    }, 201 if created else 200
+
+
+@app.route("/api/workflow-drafts/<filename>/validation")
+def validate_workflow_draft(filename):
+    workflow = WorkflowDraftService().get_draft(filename)
+
+    if workflow is None:
+        return {"ok": False, "error": "Workflow draft not found."}, 404
+
+    validation = WorkflowValidationService().validate(workflow)
+    issues = []
+
+    for level, messages in (
+        ("error", validation["errors"]),
+        ("warning", validation["warnings"]),
+    ):
+        for message in messages:
+            match = re.search(r"node '([^']+)'", message, re.IGNORECASE)
+            issues.append(
+                {
+                    "level": level,
+                    "message": message,
+                    "node_id": match.group(1) if match else None,
+                }
+            )
+
+    return {
+        "ok": True,
+        "is_valid": validation["is_valid"],
+        "error_count": len(validation["errors"]),
+        "warning_count": len(validation["warnings"]),
+        "issues": issues,
+        "reachable_count": len(validation["reachable_nodes"]),
+        "unreachable_count": len(validation["unreachable_nodes"]),
+    }
+
+
+@app.route("/api/workflow-drafts/<filename>/export/<export_format>")
+def export_workflow_draft(filename, export_format):
+    workflow = WorkflowDraftService().get_draft(filename)
+    if workflow is None:
+        return {"ok": False, "error": "Workflow draft not found."}, 404
+
+    try:
+        content, download_name, mimetype = WorkflowExportService().export(workflow, export_format)
+    except WorkflowExportError as error:
+        return {"ok": False, "error": str(error)}, 400
+
+    return Response(
+        content,
+        mimetype=mimetype,
+        headers={"Content-Disposition": f'attachment; filename="{download_name}"'},
+    )
+
+
+@app.route("/api/workflow-drafts/<filename>/publication")
+def workflow_publication_status(filename):
+    workflow = WorkflowDraftService().get_draft(filename)
+    if workflow is None:
+        return {"ok": False, "error": "Workflow draft not found."}, 404
+
+    try:
+        publication_service = WorkflowPublicationService()
+        status = publication_service.status(workflow.get("workflow_id"))
+    except WorkflowPublicationError as error:
+        return {"ok": False, "error": str(error)}, 400
+
+    latest_hash = status["versions"][0]["content_hash"] if status["versions"] else None
+    return {
+        "ok": True,
+        **status,
+        "has_unpublished_changes": latest_hash != publication_service.content_hash(workflow),
+    }
+
+
+@app.route(
+    "/api/workflow-drafts/<filename>/publication",
+    methods=["POST"],
+)
+def publish_workflow_draft(filename):
+    workflow = WorkflowDraftService().get_draft(filename)
+    if workflow is None:
+        return {"ok": False, "error": "Workflow draft not found."}, 404
+
+    payload = request.get_json(silent=True) or {}
+    if not isinstance(payload, dict):
+        return {"ok": False, "error": "A JSON object is required."}, 400
+
+    label = payload.get("label")
+    if label is not None and not isinstance(label, str):
+        return {"ok": False, "error": "Version label must be text."}, 400
+
+    try:
+        publication_service = WorkflowPublicationService()
+        status = publication_service.publish(
+            workflow,
+            source_filename=filename,
+            label=label,
+        )
+    except WorkflowPublicationError as error:
+        return {"ok": False, "error": str(error)}, 400
+
+    return {
+        "ok": True,
+        **status,
+        "has_unpublished_changes": False,
+    }, 201
 
 @app.route("/knowledge")
 def knowledge_center():
     """
-    Display the SupportPilot Knowledge Center.
+    Display the Gnojo Knowledge Center.
     """
 
     return render_template(
@@ -217,7 +968,7 @@ def article_builder():
 )
 def command_builder():
     """
-    Create a new SupportPilot command draft.
+    Create a new Gnojo command draft.
     """
 
     global current_draft
@@ -603,6 +1354,84 @@ def view_command(command_id):
         explanation=explanation,
     )
 
+
+@app.route("/scripts")
+def list_scripts():
+    scripts = script_repository.get_all()
+    return render_template(
+        "scripts.html",
+        automations=[item for item in scripts if item.get("kind") == "Automation"],
+        collectors=[item for item in scripts if item.get("kind") != "Automation"],
+    )
+
+
+@app.route("/scripts/builder", methods=["GET", "POST"])
+def script_builder():
+    draft = None
+    errors = []
+    validated = False
+    if request.method == "POST":
+        def lines(name):
+            return [item.strip() for item in request.form.get(name, "").splitlines() if item.strip()]
+
+        parameters = []
+        for index, value in enumerate(lines("parameters"), start=1):
+            parts = [item.strip() for item in value.split("|", 2)]
+            if len(parts) != 3 or parts[1].lower() not in {"required", "optional"}:
+                errors.append(f"Parameter line {index} must use: name | required or optional | description")
+                continue
+            parameters.append({"name": parts[0].lstrip("-"), "required": parts[1].lower() == "required", "description": parts[2]})
+        draft = {
+            "id": request.form.get("script_id", "").strip(), "name": request.form.get("name", "").strip(),
+            "kind": request.form.get("kind", "Diagnostic Collector"), "summary": request.form.get("summary", "").strip(),
+            "platform": request.form.get("platform", "Windows"), "language": request.form.get("language", "PowerShell"),
+            "category": request.form.get("category", "").strip(), "source": request.form.get("source", ""),
+            "collects": lines("collects"), "changes": lines("changes"), "parameters": parameters,
+            "dry_run": request.form.get("dry_run", "").strip(), "rollback": request.form.get("rollback", "").strip(),
+            "requires_elevation": request.form.get("requires_elevation") == "on",
+            "permission_notes": request.form.get("permission_notes", "").strip(),
+            "privacy_note": request.form.get("privacy_note", "").strip(),
+            "related_commands": [item.strip() for item in request.form.get("related_commands", "").split(",") if item.strip()],
+            "related_workflows": [item.strip() for item in request.form.get("related_workflows", "").split(",") if item.strip()],
+        }
+        existing_ids = {item.get("id") for item in script_repository.get_all()}
+        errors.extend(script_authoring_service.validate(draft, existing_ids))
+        known_commands = {item.get("id") for item in command_repository.get_all()}
+        unknown_commands = [item for item in draft["related_commands"] if item not in known_commands]
+        if unknown_commands:
+            errors.append("Unknown related command IDs: " + ", ".join(unknown_commands))
+        known_workflows = set(available_workflows())
+        unknown_workflows = [item for item in draft["related_workflows"] if item not in known_workflows]
+        if unknown_workflows:
+            errors.append("Unknown related workflow IDs: " + ", ".join(unknown_workflows))
+        validated = not errors
+        if validated and request.form.get("action") == "publish":
+            try:
+                record = script_authoring_service.publish(draft, existing_ids)
+            except (OSError, ValueError, ScriptAuthoringError) as error:
+                errors.append(str(error))
+                validated = False
+            else:
+                return redirect(url_for("view_script", script_id=record["id"], published="1"))
+    return render_template("script_builder.html", draft=draft, errors=errors, validated=validated)
+
+
+@app.route("/scripts/<script_id>")
+def view_script(script_id):
+    script = script_repository.get(script_id)
+    if script is None:
+        abort(404)
+    related_commands = [command_repository.get(item) for item in script.get("related_commands", [])]
+    return render_template("script.html", script=script, related_commands=[item for item in related_commands if item])
+
+
+@app.route("/scripts/<script_id>/download")
+def download_script(script_id):
+    script = script_repository.get(script_id)
+    if script is None:
+        abort(404)
+    return send_file(script_repository.source_path(script), as_attachment=True, download_name=script["filename"], mimetype="text/plain")
+
 @app.route("/search/test")
 def search_test():
     """
@@ -626,13 +1455,14 @@ def search_test():
     return {
         "query": query,
         "articles": [
-            article.get("id")
+            article.id
             for article in results["articles"]
         ],
         "commands": [
-            command.get("id")
+            command.id
             for command in results["commands"]
         ],
+        "workflows": [workflow.id for workflow in results["workflows"]],
     }
 
 @app.route("/search")
@@ -651,7 +1481,14 @@ def search():
         "all",
     ).strip().lower()
 
-    results = search_service.search_all(query)
+    device_context = active_device_profile()
+    results = search_service.search_all(query, context=device_context)
+    result_counts = {
+        "all": len(results),
+        "article": sum(result.content_type == "Article" for result in results),
+        "command": sum(result.content_type == "Command" for result in results),
+        "workflow": sum(result.content_type == "Workflow" for result in results),
+    }
 
     if selected_type == "article":
         results = [
@@ -666,12 +1503,18 @@ def search():
             for result in results
             if result.content_type == "Command"
         ]
+    elif selected_type == "workflow":
+        results = [result for result in results if result.content_type == "Workflow"]
+    elif selected_type != "all":
+        selected_type = "all"
 
     return render_template(
         "search_results.html",
         query=query,
         results=results,
         selected_type=selected_type,
+        result_counts=result_counts,
+        active_device=device_context,
     )
 
 @app.route("/api/search/suggestions")
@@ -690,7 +1533,7 @@ def search_suggestions():
             "suggestions": [],
         }
 
-    results = search_service.search_all(query)
+    results = search_service.search_all(query, context=active_device_profile())
 
     suggestions = []
 
@@ -722,7 +1565,48 @@ def list_drafts():
         drafts=drafts,
     )
 
-@app.route("/knowledge/drafts/<article_id>")
+def workflow_references_for_article(article_id):
+    references = []
+    seen = set()
+    draft_map = {
+        item.get("workflow_id"): item.get("filename")
+        for item in WorkflowDraftService().list_drafts()
+        if item.get("workflow_id") and not item.get("is_damaged")
+    }
+    catalog = available_workflows()
+    for workflow_id, details in catalog.items():
+        engine = DecisionEngine()
+        try:
+            load_runtime_workflow(engine, workflow_id, catalog, details.get("version"))
+        except (FileNotFoundError, WorkflowPublicationError, ValueError):
+            continue
+        for node_id, node in engine.workflow.get("nodes", {}).items():
+            if isinstance(node, dict) and node.get("knowledge_article") == article_id:
+                key = (workflow_id, node_id)
+                if key in seen:
+                    continue
+                seen.add(key)
+                references.append({
+                    "workflow_id": workflow_id,
+                    "workflow_name": details.get("name") or workflow_id,
+                    "node_id": node_id,
+                    "node_title": node.get("title") or node.get("question") or node_id.replace("_", " ").title(),
+                    "filename": draft_map.get(workflow_id),
+                })
+    return references
+
+
+def render_article_review(article, error=None, status=200):
+    return render_template(
+        "draft_review.html",
+        article=article,
+        analysis=ArticleReviewService().analyze(article),
+        workflow_references=workflow_references_for_article(article.get("id")),
+        error=error,
+    ), status
+
+
+@app.route("/knowledge/drafts/<article_id>", methods=["GET", "POST"])
 def review_draft(article_id):
     """
     Display a draft article for review.
@@ -737,10 +1621,15 @@ def review_draft(article_id):
     except KnowledgeRepositoryError:
         abort(500)
 
-    return render_template(
-        "draft_review.html",
-        article=article,
-    )
+    if request.method == "POST":
+        try:
+            article = ArticleReviewService().update_from_form(article, request.form)
+            knowledge_repository.save_draft(article, overwrite=True)
+        except (ArticleReviewError, KnowledgeRepositoryError) as error:
+            return render_article_review(article, str(error), 400)
+        return redirect(url_for("review_draft", article_id=article_id, saved="1"))
+
+    return render_article_review(article)
 
 @app.route("/knowledge/published")
 def list_published():
@@ -869,12 +1758,13 @@ def publish_draft(article_id):
     try:
         article = knowledge_repository.get_draft(article_id)
 
-        article["review"]["status"] = "published"
-
-        knowledge_repository.save_draft(
-            article,
-            overwrite=True,
-        )
+        analysis = ArticleReviewService().analyze(article)
+        if not analysis["can_publish"]:
+            return render_article_review(
+                article,
+                "Complete validation, approve the review checklist, and resolve remaining errors before publishing.",
+                400,
+            )
 
         knowledge_repository.publish_article(
             article_id,
@@ -972,6 +1862,11 @@ def workflow_builder():
 def wizard():
     engine = DecisionEngine()
     knowledge = KnowledgeBase()
+    workflow_catalog = available_workflows()
+    if request.method == "GET" and request.args.get("learning") in {"0", "1"}:
+        session["learning_mode"] = request.args.get("learning") == "1"
+        if not session["learning_mode"]:
+            session.pop("learning_concepts", None)
 
     # --------------------------------------------------
     # Process an answer or continue an instruction
@@ -981,14 +1876,14 @@ def wizard():
         current_node_id = session.get("current_node")
 
         if (
-            workflow_name not in AVAILABLE_WORKFLOWS
+            workflow_name not in workflow_catalog
             or current_node_id is None
         ):
             return redirect(url_for("home"))
 
         try:
-            engine.load_workflow(workflow_name)
-        except FileNotFoundError:
+            load_runtime_workflow(engine, workflow_name, workflow_catalog, session.get("workflow_version"))
+        except (FileNotFoundError, WorkflowPublicationError, ValueError):
             abort(404)
 
         current_node = engine.get_node(current_node_id)
@@ -1011,13 +1906,16 @@ def wizard():
 
                 previous_workflow = previous_location["workflow"]
                 previous_node_id = previous_location["node_id"]
+                previous_version = previous_location.get("version")
+            else:
+                return redirect(url_for("wizard", workflow=workflow_name, resume="1"))
 
-            if previous_workflow not in AVAILABLE_WORKFLOWS:
+            if previous_workflow not in workflow_catalog:
                 abort(404)
 
             try:
-                engine.load_workflow(previous_workflow)
-            except FileNotFoundError:
+                load_runtime_workflow(engine, previous_workflow, workflow_catalog, previous_version)
+            except (FileNotFoundError, WorkflowPublicationError, ValueError):
                 abort(404)
 
             previous_node = engine.get_node(previous_node_id)
@@ -1028,9 +1926,17 @@ def wizard():
             session["node_history"] = node_history
             session["workflow"] = previous_workflow
             session["current_node"] = previous_node_id
+            session["workflow_version"] = previous_version
             session["step"] = max(
                 session.get("step", 1) - 1,
                 1,
+            )
+            track_history_progress(
+                previous_node_id,
+                action="back",
+                workflow_id=previous_workflow,
+                workflow_name=workflow_catalog[previous_workflow]["name"],
+                version=previous_version,
             )
 
             return redirect(
@@ -1044,15 +1950,20 @@ def wizard():
         if current_node.type == "transition":
             next_workflow = current_node.next_workflow
 
-            if next_workflow not in AVAILABLE_WORKFLOWS:
+            if next_workflow not in workflow_catalog:
                 abort(404)
 
             try:
-                engine.load_workflow(next_workflow)
-            except FileNotFoundError:
+                next_version = workflow_catalog[next_workflow].get("version") if workflow_catalog[next_workflow].get("source") == "published" else None
+                load_runtime_workflow(engine, next_workflow, workflow_catalog, next_version)
+            except (FileNotFoundError, WorkflowPublicationError, ValueError):
                 abort(404)
 
-            next_node = engine.get_start_node()
+            try:
+                next_node, skipped = resolve_applicable_node(engine, engine.workflow.get("start_node"), active_device_profile())
+            except WorkflowConditionError:
+                abort(500)
+            session["skipped_nodes"] = skipped
 
             if next_node is None:
                 abort(500)
@@ -1066,13 +1977,22 @@ def wizard():
             {
                     "workflow": workflow_name,
                     "node_id": current_node.id,
+                    "version": session.get("workflow_version"),
                 }
             )
 
             session["node_history"] = node_history
             session["workflow"] = next_workflow
             session["current_node"] = next_node.id
+            session["workflow_version"] = next_version
             session["step"] = 0
+            track_history_progress(
+                next_node.id,
+                action="transition",
+                workflow_id=next_workflow,
+                workflow_name=workflow_catalog[next_workflow]["name"],
+                version=next_version,
+            )
 
             return redirect(
                 url_for(
@@ -1089,6 +2009,13 @@ def wizard():
         )
 
         if next_node is not None:
+            try:
+                next_node, skipped = resolve_applicable_node(engine, next_node.id, active_device_profile())
+            except WorkflowConditionError:
+                abort(500)
+            session["skipped_nodes"] = skipped
+
+        if next_node is not None:
             node_history = session.get(
                 "node_history",
                 [],
@@ -1098,6 +2025,7 @@ def wizard():
                 {
                     "workflow": workflow_name,
                     "node_id": current_node.id,
+                    "version": session.get("workflow_version"),
                 }
             )
         
@@ -1115,6 +2043,7 @@ def wizard():
                 current_step + 1,
                 estimated_steps,
             )
+            track_history_progress(next_node.id)
 
         return redirect(
             url_for(
@@ -1136,17 +2065,24 @@ def wizard():
 
         if (
             workflow_name != session_workflow
-            or workflow_name not in AVAILABLE_WORKFLOWS
+            or workflow_name not in workflow_catalog
             or current_node_id is None
         ):
             return redirect(url_for("home"))
 
         try:
-            engine.load_workflow(workflow_name)
-        except FileNotFoundError:
+            load_runtime_workflow(engine, workflow_name, workflow_catalog, session.get("workflow_version"))
+        except (FileNotFoundError, WorkflowPublicationError, ValueError):
             abort(404)
 
-        node = engine.get_node(current_node_id)
+        try:
+            node, skipped = resolve_applicable_node(engine, current_node_id, active_device_profile())
+        except WorkflowConditionError:
+            abort(500)
+        if node and node.id != current_node_id:
+            session["current_node"] = node.id
+        if skipped:
+            session["skipped_nodes"] = skipped
 
         if node is None:
             return redirect(url_for("home"))
@@ -1155,52 +2091,112 @@ def wizard():
             engine,
             node,
             knowledge,
+            workflow_catalog,
         )
 
     # --------------------------------------------------
     # Start or restart a workflow
     # --------------------------------------------------
-    if workflow_name not in AVAILABLE_WORKFLOWS:
+    if workflow_name not in workflow_catalog:
         return redirect(url_for("home"))
 
+    existing_session = active_troubleshooting_session(workflow_catalog)
+    restarting = request.args.get("restart") == "1"
+    if existing_session and not restarting:
+        return render_template(
+            "workflow_recovery.html",
+            active_session=existing_session,
+            requested_workflow_id=workflow_name,
+            requested_workflow=workflow_catalog[workflow_name],
+            same_workflow=existing_session["workflow_id"] == workflow_name,
+        )
+    if existing_session and restarting:
+        abandon_active_history()
+
+    device = active_device_profile()
+    compatibility = workflow_device_compatibility(workflow_catalog[workflow_name], device)
+    if compatibility == "incompatible" and request.args.get("override") != "1":
+        return render_template(
+            "workflow_compatibility.html",
+            workflow_id=workflow_name,
+            workflow=workflow_catalog[workflow_name],
+            active_device=device,
+        )
+
     try:
-        engine.load_workflow(workflow_name)
-    except FileNotFoundError:
+        pinned_version = workflow_catalog[workflow_name].get("version") if workflow_catalog[workflow_name].get("source") == "published" else None
+        load_runtime_workflow(engine, workflow_name, workflow_catalog, pinned_version)
+    except (FileNotFoundError, WorkflowPublicationError, ValueError):
         abort(404)
 
-    node = engine.get_start_node()
+    try:
+        node, skipped = resolve_applicable_node(engine, engine.workflow.get("start_node"), active_device_profile())
+    except WorkflowConditionError:
+        abort(500)
 
     if node is None:
         abort(500)
 
     session["workflow"] = workflow_name
+    session["workflow_version"] = pinned_version
+    session["workflow_complete"] = False
     session["current_node"] = node.id
     session["step"] = 1
     session["node_history"] = []
+    session["skipped_nodes"] = skipped
+    if session.get("learning_mode"):
+        session["learning_concepts"] = []
+
+    try:
+        history_record = TroubleshootingHistoryService().start(
+            workflow_name,
+            workflow_catalog[workflow_name]["name"],
+            node.id,
+            version=pinned_version,
+            device=active_device_profile(),
+            learning_mode=session.get("learning_mode", False),
+        )
+        session["troubleshooting_history_id"] = history_record["id"]
+    except OSError:
+        app.logger.warning("Unable to create troubleshooting history.")
+        session.pop("troubleshooting_history_id", None)
 
     return render_wizard(
         engine,
         node,
         knowledge,
+        workflow_catalog,
     )
 
 
-def render_wizard(engine, node, knowledge):
+def render_wizard(engine, node, knowledge, workflow_catalog=None):
     """
     Render the shared wizard template with workflow progress
     and optional knowledge article content.
     """
 
     workflow_name = session["workflow"]
-    workflow_info = AVAILABLE_WORKFLOWS[workflow_name]
+    workflow_info = (workflow_catalog or available_workflows())[workflow_name]
 
     estimated_steps = engine.workflow.get("estimated_steps", 5)
     current_step = session.get("step", 1)
     current_step = max(current_step, 1)
 
+    history_record = None
     if node.type == "resolution":
+        session["workflow_complete"] = True
         current_step = estimated_steps
         progress_percent = 100
+        history_id = session.get("troubleshooting_history_id")
+        if history_id:
+            try:
+                history_record = TroubleshootingHistoryService().complete(
+                    history_id,
+                    node.id,
+                    getattr(node, "title", None) or getattr(node, "message", None),
+                )
+            except (OSError, TroubleshootingHistoryError):
+                app.logger.warning("Unable to complete troubleshooting history.")
     else:
         current_step = min(current_step, estimated_steps)
 
@@ -1216,20 +2212,36 @@ def render_wizard(engine, node, knowledge):
             node.knowledge_article
         )
 
+    learning_mode = session.get("learning_mode", False)
+    learning_content = None
+    concepts_covered = session.get("learning_concepts", [])
+    if learning_mode:
+        learning_content = LearningModeService().build(node, workflow_info["name"], article)
+        for concept in learning_content["concepts"]:
+            if concept["title"] not in concepts_covered:
+                concepts_covered.append(concept["title"])
+        session["learning_concepts"] = concepts_covered
+
     return render_template(
     "wizard.html",
     node=node,
     article=article,
     workflow_id=workflow_name,
     workflow_name=workflow_info["name"],
+    active_device=active_device_profile(),
+    learning_mode=learning_mode,
+    learning_content=learning_content,
+    concepts_covered=concepts_covered,
+    skipped_nodes=session.pop("skipped_nodes", []),
     current_step=current_step,
     estimated_steps=estimated_steps,
     progress_percent=progress_percent,
     can_go_back=bool(
         session.get("node_history")
     ),
+    history_record=history_record,
 )
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=os.getenv("GNOJO_DEBUG", "false").lower() in {"1", "true", "yes"})

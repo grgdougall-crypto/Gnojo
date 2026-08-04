@@ -1,6 +1,6 @@
 """
 Purpose:
-    Run the first live SupportPilot article-generation pipeline.
+    Run the first live Gnojo article-generation pipeline.
 
 Responsibilities:
     - Generate a real article through Gemini.

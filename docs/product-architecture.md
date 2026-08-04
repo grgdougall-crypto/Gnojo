@@ -1,8 +1,8 @@
-# SupportPilot Product Architecture
+# Gnojo Product Architecture
 
 ## Product Definition
 
-SupportPilot is an AI-assisted IT troubleshooting platform.
+Gnojo is an AI-assisted IT troubleshooting platform.
 
 It helps teams create, review, validate, publish, and use structured troubleshooting content.
 
@@ -10,14 +10,14 @@ AI generates drafts and suggestions. A human reviews and approves all published 
 
 ## Core Product Areas
 
-### Mission Control
+### Gnojo Home
 
 The primary user dashboard.
 
 Responsibilities:
 
 - Launch troubleshooting workflows
-- Search SupportPilot
+- Search Gnojo
 - View recent activity
 - Access device profiles
 - Resume troubleshooting sessions
@@ -178,7 +178,7 @@ Supported node types:
 
 ## AI Provider Architecture
 
-SupportPilot uses a provider abstraction layer.
+Gnojo uses a provider abstraction layer.
 
 Current provider order:
 

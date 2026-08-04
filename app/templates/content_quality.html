@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+
+{% block title %}Content Quality | Gnojo{% endblock %}
+
+{% block content %}
+<section class="container quality-page" aria-labelledby="qualityTitle">
+    <div class="quality-heading">
+        <div><span class="section-eyebrow">Content Studio</span><h1 id="qualityTitle">Content Quality Dashboard</h1><p>Use real workflow activity and content coverage to decide what Gnojo should improve next.</p></div>
+        <a class="btn btn-outline-primary" href="{{ url_for('workflow_studio') }}"><i class="bi bi-diagram-3 me-2" aria-hidden="true"></i>Workflow Studio</a>
+    </div>
+
+    <section class="analytics-grid" aria-label="Content quality summary">
+        <article><span>Runtime workflows</span><strong>{{ report.summary.workflows }}</strong></article>
+        <article><span>Improvement items</span><strong>{{ report.summary.issues }}</strong></article>
+        <article><span>High priority</span><strong>{{ report.summary.high_priority }}</strong></article>
+        <article><span>With user feedback</span><strong>{{ report.summary.with_feedback }}</strong></article>
+    </section>
+
+    <section class="quality-section" aria-labelledby="queueTitle">
+        <div class="quality-section__heading"><div><span class="section-eyebrow">Prioritized queue</span><h2 id="queueTitle">What needs attention</h2></div><span>Highest-impact items appear first</span></div>
+        {% if report.action_queue %}
+        <div class="quality-queue">
+            {% for item in report.action_queue %}
+            <article class="quality-issue quality-issue--{{ item.priority }}">
+                <span class="quality-priority">{{ item.priority|title }}</span>
+                <div class="quality-issue__body"><span>{{ item.workflow_name }}</span><h3>{{ item.title }}</h3><p>{{ item.detail }}</p>{% if item.node_id %}<small>Step: {{ item.node_id|friendly_node }}</small>{% endif %}</div>
+                <div class="quality-issue__actions">
+                    {% if item.filename %}<a class="btn btn-sm btn-primary" href="{{ url_for('workflow_editor', filename=item.filename, node=item.node_id) }}">Open{% if item.node_id %} step{% else %} workflow{% endif %}</a>{% else %}<a class="btn btn-sm btn-outline-primary" href="{{ url_for('wizard', workflow=item.workflow_id, restart='1') }}">Test workflow</a>{% endif %}
+                </div>
+            </article>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="quality-empty"><i class="bi bi-check-circle-fill" aria-hidden="true"></i><div><h3>No quality issues detected</h3><p>New signals will appear here as workflows are used and reviewed.</p></div></div>
+        {% endif %}
+    </section>
+
+    <section class="quality-section" aria-labelledby="healthTitle">
+        <div class="quality-section__heading"><div><span class="section-eyebrow">Workflow health</span><h2 id="healthTitle">Library overview</h2></div></div>
+        <div class="quality-table-wrap">
+            <table class="quality-table">
+                <thead><tr><th>Workflow</th><th>Usage</th><th>Solved</th><th>Clarity</th><th>Knowledge</th><th>Learning</th><th></th></tr></thead>
+                <tbody>{% for workflow in report.workflows %}<tr>
+                    <td><strong>{{ workflow.name }}</strong><span>{{ workflow.category }} · {{ workflow.platform }}</span></td>
+                    <td>{{ workflow.sessions }} session{% if workflow.sessions != 1 %}s{% endif %}</td>
+                    <td>{{ workflow.solved_rate ~ '%' if workflow.solved_rate is not none else '—' }}</td>
+                    <td>{{ workflow.clarity ~ '/5' if workflow.clarity is not none else '—' }}</td>
+                    <td><span class="coverage-value {% if workflow.knowledge_coverage < 25 %}coverage-value--low{% endif %}">{{ workflow.knowledge_coverage }}%</span></td>
+                    <td><span class="coverage-value {% if workflow.learning_coverage < 50 %}coverage-value--low{% endif %}">{{ workflow.learning_coverage }}%</span></td>
+                    <td>{% if workflow.filename %}<a href="{{ url_for('workflow_editor', filename=workflow.filename) }}">Edit</a>{% else %}<a href="{{ url_for('wizard', workflow=workflow.workflow_id, restart='1') }}">Test</a>{% endif %}</td>
+                </tr>{% endfor %}</tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="quality-section" aria-labelledby="coverageTitle">
+        <div class="quality-section__heading"><div><span class="section-eyebrow">Library balance</span><h2 id="coverageTitle">Coverage snapshot</h2></div></div>
+        <div class="quality-coverage-grid">
+            <article><h3>Categories</h3>{% for name, count in report.coverage.categories %}<div><span>{{ name }}</span><strong>{{ count }}</strong></div>{% endfor %}</article>
+            <article><h3>Platforms</h3>{% for name, count in report.coverage.platforms %}<div><span>{{ name }}</span><strong>{{ count }}</strong></div>{% endfor %}</article>
+        </div>
+    </section>
+</section>
+{% endblock %}

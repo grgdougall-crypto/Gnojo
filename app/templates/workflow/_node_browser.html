@@ -1,139 +1,54 @@
-<div class="col-lg-9">
-
-    <div class="card shadow-sm border-0">
-
-        <div class="card-body p-4">
-
-            <div
-                class="d-flex flex-wrap
-                       justify-content-between
-                       align-items-center
-                       gap-3
-                       mb-4"
-            >
-                <div>
-
-                    <p
-                        class="text-uppercase
-                               text-muted
-                               small
-                               mb-1"
-                    >
-                        Workflow Structure
-                    </p>
-
-                    <h2 class="h4 mb-0">
-                        Workflow Nodes
-                    </h2>
-
-                </div>
-
-                <span class="badge text-bg-primary">
-                    {{ nodes|length }} Nodes
-                </span>
-
-            </div>
-
-            <div class="mb-4">
-
-                <input
-                    class="form-control"
-                    id="nodeSearch"
-                    type="search"
-                    placeholder="Search workflow nodes..."
-                >
-
-            </div>
-
-            <div class="vstack gap-3">
-
-                {% for node in nodes %}
-
-                    <a
-                        href="#"
-                        class="text-decoration-none
-                               text-reset
-                               workflow-node-link"
-                    >
-                        <div
-                            class="border rounded
-                                   p-3
-                                   workflow-node-card"
-                        >
-                            <div
-                                class="d-flex flex-wrap
-                                       align-items-start
-                                       gap-3"
-                            >
-                                <div class="flex-grow-1">
-
-                                    <div
-                                        class="d-flex
-                                               flex-wrap
-                                               gap-2
-                                               mb-2"
-                                    >
-                                        {% if node.type == "question" %}
-
-                                            <span
-                                                class="badge
-                                                       text-bg-info"
-                                            >
-                                                Question
-                                            </span>
-
-                                        {% elif node.type == "instruction" %}
-
-                                            <span
-                                                class="badge
-                                                       text-bg-secondary"
-                                            >
-                                                Instruction
-                                            </span>
-
-                                        {% elif node.type == "resolution" %}
-
-                                            <span
-                                                class="badge
-                                                       text-bg-success"
-                                            >
-                                                Resolution
-                                            </span>
-
-                                        {% elif node.type == "transition" %}
-
-                                            <span
-                                                class="badge
-                                                       text-bg-warning"
-                                            >
-                                                Transition
-                                            </span>
-
-                                        {% endif %}
-                                    </div>
-
-                                    <h3 class="h6 mb-0">
-                                        {{ node.title }}
-                                    </h3>
-
-                                </div>
-
-                                <i
-                                    class="bi bi-chevron-right
-                                           text-muted"
-                                ></i>
-
-                            </div>
-
-                        </div>
-                    </a>
-
-                {% endfor %}
-
-            </div>
-
+<section class="workflow-panel workflow-browser is-mobile-active" data-workflow-panel-name="browser" aria-labelledby="node-browser-title">
+    <div class="workflow-panel__header">
+        <div>
+            <span class="workflow-panel__eyebrow">Workflow browser</span>
+            <h2 id="node-browser-title">Nodes</h2>
         </div>
-
+        <span class="workflow-count" aria-label="{{ nodes|length }} nodes">{{ nodes|length }}</span>
     </div>
 
-</div>
+    <div class="workflow-browser__search">
+        <i class="bi bi-search" aria-hidden="true"></i>
+        <input id="nodeSearch" type="search" placeholder="Search nodes" aria-label="Search workflow nodes" autocomplete="off">
+        <button id="nodeSearchClear" type="button" aria-label="Clear search" hidden>
+            <i class="bi bi-x-lg" aria-hidden="true"></i>
+        </button>
+    </div>
+
+    <div id="nodeList" class="workflow-node-list" role="list" aria-label="Workflow nodes">
+        {% for node in nodes %}
+        <button
+            class="workflow-node"
+            type="button"
+            role="listitem"
+            data-node='{{ node|tojson }}'
+            data-node-id="{{ node.id }}"
+            data-search="{{ node.id }} {{ node.title }} {{ node.type }}"
+            aria-pressed="false"
+            title="{{ node.type|title }} · Internal ID: {{ node.id }}"
+        >
+            <span class="workflow-node__icon workflow-node__icon--{{ node.type|lower }}" aria-hidden="true">
+                {% if node.type == 'question' %}<i class="bi bi-question-lg"></i>
+                {% elif node.type == 'instruction' %}<i class="bi bi-list-check"></i>
+                {% elif node.type == 'resolution' %}<i class="bi bi-check-lg"></i>
+                {% elif node.type == 'transition' %}<i class="bi bi-arrow-right"></i>
+                {% else %}<i class="bi bi-diagram-3"></i>{% endif %}
+            </span>
+            <span class="workflow-node__copy">
+                <span class="workflow-node__title">{{ node.title }}</span>
+                <span class="workflow-node__meta">
+                    {{ node.type|title }}
+                    {% if node.conditions %}<span class="workflow-node__conditional"><i class="bi bi-funnel" aria-hidden="true"></i> Device-aware</span>{% endif %}
+                </span>
+            </span>
+            <i class="bi bi-chevron-right workflow-node__chevron" aria-hidden="true"></i>
+        </button>
+        {% endfor %}
+    </div>
+
+    <div id="nodeSearchEmpty" class="workflow-browser__empty" role="status" data-a11y-live hidden>
+        <i class="bi bi-search" aria-hidden="true"></i>
+        <strong>No matching nodes</strong>
+        <span>Try a different title, type, or ID.</span>
+    </div>
+</section>

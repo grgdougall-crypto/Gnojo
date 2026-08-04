@@ -795,7 +795,11 @@
 
         simulatorState.current = node;
         simulatorState.path.push(node);
-        element("simulatorStep").textContent = `Step ${simulatorState.path.length}${Number(designer.dataset.estimatedSteps) ? ` of about ${designer.dataset.estimatedSteps}` : ""}`;
+        const estimatedSteps = Number(designer.dataset.estimatedSteps);
+        const displayedEstimate = estimatedSteps
+            ? Math.max(estimatedSteps, simulatorState.path.length)
+            : 0;
+        element("simulatorStep").textContent = `Step ${simulatorState.path.length}${displayedEstimate ? ` of about ${displayedEstimate}` : ""}`;
         element("simulatorNodeId").textContent = node.id;
         renderSimulatorPath();
         simulatorContent.replaceChildren();

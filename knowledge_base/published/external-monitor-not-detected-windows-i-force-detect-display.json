@@ -1,0 +1,64 @@
+{
+  "schema_version": "1.0",
+  "id": "external-monitor-not-detected-windows-i-force-detect-display",
+  "title": "How to Force Windows to Detect Display",
+  "category": "Desktop Support",
+  "difficulty": "Beginner",
+  "estimated_time": "5 to 10 minutes",
+  "overview": "Use Windows display controls to detect a connected external monitor and select the correct projection mode. These checks help distinguish a Windows display-setting problem from a cable, port, adapter, or monitor problem.",
+  "checklist": [
+    "Save open work and confirm you are working on the intended device.",
+    "On your Windows computer, press `Win + P` and try cycling through different projection modes (e.g., Duplicate, Extend, Second screen only). Then, open Display Settings (Right-click desktop > Display settings), scroll down, and click 'Detect' under the 'Multiple displays' section.",
+    "Record what changed and return to the workflow before making additional changes."
+  ],
+  "common_indicators": [
+    "The monitor has power but does not appear in Windows Display settings.",
+    "Windows shows only the built-in display.",
+    "The monitor displays no image after being connected.",
+    "The image appears only after changing the Windows projection mode."
+  ],
+  "commands": [],
+  "related_topics": [
+    "External monitors",
+    "Windows Display settings",
+    "Multiple displays",
+    "Projection modes",
+    "Video cables and adapters"
+  ],
+  "quiz": [
+    {
+      "question": "Where can you ask Windows to detect a connected monitor that does not appear automatically?",
+      "answers": [
+        "Settings > System > Display > Multiple displays > Detect",
+        "Control Panel > Programs > Uninstall a program",
+        "File Explorer > This PC"
+      ],
+      "correct_answer": "Settings > System > Display > Multiple displays > Detect"
+    }
+  ],
+  "sources": [
+    {
+      "title": "How to Use Multiple Monitors in Windows",
+      "url": "https://support.microsoft.com/en-us/windows/hardware/display-graphics/how-to-use-multiple-monitors-in-windows\\nTroubleshoot External Monitor Connections in Windows | https://support.microsoft.com/en-us/windows/hardware/display-graphics/troubleshoot-external-monitor-connections-in-windows"
+    }
+  ],
+  "generation": {
+    "provider": "Gnojo Coverage Assistant",
+    "model": "deterministic-node-draft-v1",
+    "generated_at": "2026-08-04T07:53:03.259493+00:00"
+  },
+  "review": {
+    "status": "approved",
+    "reviewed_by": null,
+    "reviewed_at": null,
+    "notes": [
+      "Reviewed against Microsoft Support guidance for projection modes, display detection, and external-monitor troubleshooting."
+    ],
+    "checks": {
+      "technical_accuracy": true,
+      "user_safety": true,
+      "sources_verified": true,
+      "commands_reviewed": true
+    }
+  }
+}

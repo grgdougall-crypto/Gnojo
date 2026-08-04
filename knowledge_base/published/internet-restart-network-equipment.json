@@ -1,0 +1,62 @@
+{
+  "schema_version": "1.0",
+  "id": "internet-restart-network-equipment",
+  "title": "How to Restart the Network Equipment",
+  "category": "Networking",
+  "difficulty": "Beginner",
+  "estimated_time": "5 to 10 minutes",
+  "overview": "This draft supports the “Restart the Network Equipment” step in the Internet Connection workflow. It explains the intended check, safe execution, and the evidence to capture before continuing.",
+  "checklist": [
+    "Save open work and confirm you are working on the intended device.",
+    "If this is equipment you own or are authorized to restart, save any active work that depends on the connection. Unplug the router and separate modem from power for at least 30 seconds. Reconnect the modem first and wait for its status lights to stabilize, then reconnect the router. Do not restart workplace, shared-building, cellular, or provider-managed equipment without approval.",
+    "Record what changed and return to the workflow before making additional changes."
+  ],
+  "common_indicators": [
+    "Multiple devices on the same network cannot reach the internet.",
+    "The computer is connected to Wi-Fi but reports no internet access.",
+    "The modem or router status lights indicate a connection problem.",
+    "Connectivity stopped after a temporary modem, router, or provider interruption."
+  ],
+  "commands": [],
+  "related_topics": [
+    "Internet Connection",
+    "Restart the Network Equipment",
+    "Diagnostic reasoning"
+  ],
+  "quiz": [
+    {
+      "question": "Which device should be reconnected to power first after waiting at least 30 seconds?",
+      "answers": [
+        "The modem",
+        "The router",
+        "Both devices at exactly the same time"
+      ],
+      "correct_answer": "The modem"
+    }
+  ],
+  "sources": [
+    {
+      "title": "Fix Wi-Fi Connection Issues in Windows",
+      "url": "https://support.microsoft.com/en-us/windows/fix-wi-fi-connection-issues-in-windows-9424a1f7-6a3b-65a6-4d78-7f07eee84d2c"
+    }
+  ],
+  "generation": {
+    "provider": "Gnojo Coverage Assistant",
+    "model": "deterministic-node-draft-v1",
+    "generated_at": "2026-08-04T06:57:04.212440+00:00"
+  },
+  "review": {
+    "status": "approved",
+    "reviewed_by": null,
+    "reviewed_at": null,
+    "notes": [
+      "Reviewed against Microsoft Support guidance. The restart sequence, waiting period, temporary service interruption, and managed-equipment cautions were verified."
+    ],
+    "checks": {
+      "technical_accuracy": true,
+      "user_safety": true,
+      "sources_verified": true,
+      "commands_reviewed": true
+    }
+  }
+}

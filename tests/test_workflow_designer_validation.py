@@ -50,6 +50,9 @@ class WorkflowDesignerValidationTests(unittest.TestCase):
         self.assertIn('id="workflowSimulatorDialog"', html)
         self.assertIn('data-start-node="start_here"', html)
         self.assertIn('data-estimated-steps="2"', html)
+        self.assertIn(
+            "Math.max(estimatedSteps, simulatorState.path.length)", html
+        )
         self.assertIn('id="workflowSettingsDialog"', html)
         self.assertIn('id="workflowSettingsButton"', html)
         self.assertIn('data-settings-url=', html)

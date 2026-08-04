@@ -1089,3 +1089,28 @@ dialog { max-height: calc(100dvh - 1rem); max-width: calc(100vw - 1rem); }
     .quality-issue__actions .btn { width: 100%; }
     .quality-coverage-grid { grid-template-columns: 1fr; }
 }
+.command-library-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) max-content;
+    align-items: start;
+    gap: 1rem;
+}
+
+.command-library-card__content {
+    min-width: 0;
+}
+
+.command-library-card__action {
+    justify-self: end;
+    white-space: nowrap;
+}
+
+@media (max-width: 767.98px) {
+    .command-library-card {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .command-library-card__action {
+        justify-self: start;
+    }
+}

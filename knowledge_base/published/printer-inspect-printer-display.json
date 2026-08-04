@@ -1,0 +1,64 @@
+{
+  "schema_version": "1.0",
+  "id": "printer-inspect-printer-display",
+  "title": "How to Inspect the Printer Status",
+  "category": "Desktop Support",
+  "difficulty": "Beginner",
+  "estimated_time": "5 to 10 minutes",
+  "overview": "Learn how to interpret common printer warnings before changing settings. Check the printer’s display and status lights for paper, ink or toner, open-cover, jam, offline, and error-code indicators.",
+  "checklist": [
+    "Save open work and confirm you are working on the intended device.",
+    "Check the printer display and status lights for a paper, ink, toner, cover, or jam warning.",
+    "Record what changed and return to the workflow before making additional changes."
+  ],
+  "common_indicators": [
+    "The printer displays a paper jam or empty-tray warning.",
+    "The printer reports low or empty ink or toner.",
+    "A cover-open, offline, or general error indicator is shown.",
+    "The printer displays an error code that requires manufacturer-specific guidance."
+  ],
+  "commands": [],
+  "related_topics": [
+    "Printer error states",
+    "Paper jams",
+    "Ink and toner warnings",
+    "Offline printers",
+    "Manufacturer error codes"
+  ],
+  "quiz": [
+    {
+      "question": "What should you do first when the printer displays an unfamiliar error code?",
+      "answers": [
+        "Record the code and consult the printer manufacturer’s guidance",
+        "Clear the warning without recording it",
+        "Change several printer settings at once"
+      ],
+      "correct_answer": "Record the code and consult the printer manufacturer’s guidance"
+    }
+  ],
+  "sources": [
+    {
+      "title": "Fix Printer Connection and Printing Problems in Windows",
+      "url": "https://support.microsoft.com/en-us/windows/hardware/printer/fix-printer-connection-and-printing-problems-in-windows"
+    }
+  ],
+  "generation": {
+    "provider": "Gnojo Coverage Assistant",
+    "model": "deterministic-node-draft-v1",
+    "generated_at": "2026-08-04T07:28:02.083356+00:00"
+  },
+  "review": {
+    "status": "approved",
+    "reviewed_by": null,
+    "reviewed_at": null,
+    "notes": [
+      "Reviewed against Microsoft Support guidance. Common printer error indicators, physical inspection steps, and manufacturer-specific error-code guidance were verified."
+    ],
+    "checks": {
+      "technical_accuracy": true,
+      "user_safety": true,
+      "sources_verified": true,
+      "commands_reviewed": true
+    }
+  }
+}

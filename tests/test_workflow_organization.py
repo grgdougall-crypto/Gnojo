@@ -59,6 +59,53 @@ class WorkflowOrganizationTests(unittest.TestCase):
         self.assertEqual(results[0].category, "Servers & Identity")
         self.assertEqual(results[0].difficulty, "Windows")
 
+    def test_builtin_workflow_can_be_copied_without_changing_original(self):
+        drafts = WorkflowDraftService(self.drafts_temp.name)
+        original_path = Path("app/decision_trees/internet.json")
+        original_content = original_path.read_text(encoding="utf-8")
+
+        with patch("app.app.WorkflowDraftService", return_value=drafts):
+            studio = app.test_client().get("/workflow-studio")
+            html = studio.get_data(as_text=True)
+            self.assertIn("Built-in Workflows", html)
+            self.assertIn("Create Editable Copy", html)
+
+            response = app.test_client().post(
+                "/workflow-studio/built-ins/internet/copy"
+            )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response.headers["Location"].endswith("/workflow-editor/internet.json"))
+        copied = drafts.get_draft("internet.json")
+        self.assertEqual(copied["workflow_id"], "internet")
+        self.assertEqual(copied["draft_origin"]["type"], "built_in")
+        self.assertEqual(copied["status"], "Editable Copy")
+        self.assertEqual(original_path.read_text(encoding="utf-8"), original_content)
+
+    def test_existing_editable_copy_is_opened_instead_of_overwritten(self):
+        drafts = WorkflowDraftService(self.drafts_temp.name)
+        workflow = {
+            "workflow_id": "internet",
+            "name": "My Reviewed Internet Copy",
+            "estimated_steps": 1,
+            "start_node": "done",
+            "nodes": {
+                "done": {"type": "resolution", "title": "Complete", "message": "Done."}
+            },
+        }
+        drafts.save_draft(workflow)
+
+        with patch("app.app.WorkflowDraftService", return_value=drafts):
+            response = app.test_client().post(
+                "/workflow-studio/built-ins/internet/copy"
+            )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(
+            drafts.get_draft("internet.json")["name"],
+            "My Reviewed Internet Copy",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

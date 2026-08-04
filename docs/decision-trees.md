@@ -1,5 +1,7 @@
 # Gnojo Decision Trees
 
+> This document records workflow-writing principles and early conceptual examples. The versioned JSON in `app/decision_trees/` and published workflow versions are authoritative for current runtime behavior.
+
 ## Purpose
 
 Gnojo uses guided decision trees to help users troubleshoot technical problems one step at a time.
@@ -47,9 +49,7 @@ Initial supported paths:
 - Windows PC
 - Mac
 
-Other options will display:
-
-> This workflow is still being developed.
+Unsupported example paths should end with a clear, safe escalation rather than implying that an unavailable workflow exists.
 
 ---
 

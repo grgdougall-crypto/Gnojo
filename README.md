@@ -13,12 +13,15 @@ Gnojo is a pre-1.0 application under active development. The current build inclu
 - Guided troubleshooting with resumable sessions, history, feedback, and device profiles
 - A searchable and filterable workflow catalog
 - Workflow authoring, editing, validation, simulation, publishing, versioning, and export
-- Knowledge article drafting and review
+- Built-in workflow foundations that can be copied into protected editable drafts
+- Knowledge article drafting, technical review, publication, and workflow linking
 - A reviewed command library
 - A Windows, Linux, and macOS script library and script builder
 - Learning mode, workflow coverage, and content-quality analytics
 - Optional Gemini and OpenAI assistance with local fallbacks
 - Responsive light and dark themes with accessibility support
+
+The repository currently represents a local development build. A hosted demonstration is planned, but no public demo URL is available yet.
 
 Content marked `pending_review` is intentionally not represented as fully reviewed. Technical content should be validated in a safe test environment before production use.
 
@@ -73,6 +76,19 @@ Run the complete automated test suite before committing:
 
 The suite covers workflows, publishing, search, device-aware routing, history, knowledge review, commands, scripts, accessibility, responsive behavior, error recovery, and content integrity.
 
+## Content lifecycle
+
+Gnojo keeps generated material separate from trusted published content:
+
+1. Generate or create a draft.
+2. Edit and validate the draft.
+3. Simulate workflow branches or preview article content.
+4. Complete a human technical review.
+5. Publish an immutable version.
+6. Use feedback and content-quality analytics to guide later improvements.
+
+Built-in workflows remain unchanged. Authors create editable copies, review them, and publish approved versions for the runtime experience.
+
 ## Project structure
 
 - `app/` – Flask application, services, templates, static assets, and built-in workflows
@@ -89,4 +105,4 @@ The suite covers workflows, publishing, search, device-aware routing, history, k
 - Keep generated content in review until a person validates it.
 - Support end users, technicians, administrators, students, and security professionals.
 
-More detail is available in [`docs/architecture.md`](docs/architecture.md), [`docs/brand.md`](docs/brand.md), and [`docs/roadmap.md`](docs/roadmap.md).
+Start with the [`docs` index](docs/README.md), then see [`docs/architecture.md`](docs/architecture.md), [`docs/brand.md`](docs/brand.md), and [`docs/roadmap.md`](docs/roadmap.md).

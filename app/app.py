@@ -2,6 +2,7 @@ import json
 import os
 import re
 import secrets
+from copy import deepcopy
 from datetime import datetime
 from uuid import uuid4
 
@@ -634,11 +635,71 @@ def content_quality():
 def workflow_studio():
 
     draft_service = WorkflowDraftService()
+    drafts = draft_service.list_drafts()
+    draft_by_workflow = {
+        item["workflow_id"]: item
+        for item in drafts
+        if item.get("workflow_id") and not item.get("is_damaged")
+    }
+    built_ins = []
+    for workflow_id, details in AVAILABLE_WORKFLOWS.items():
+        engine = DecisionEngine()
+        try:
+            engine.load_workflow(workflow_id)
+        except (OSError, ValueError):
+            continue
+        workflow = engine.workflow
+        existing = draft_by_workflow.get(workflow_id)
+        built_ins.append({
+            "workflow_id": workflow_id,
+            "name": workflow.get("name") or details["name"],
+            "description": workflow.get("description") or details["description"],
+            "category": workflow_category(workflow),
+            "platform": workflow_platform(workflow),
+            "estimated_steps": workflow.get("estimated_steps"),
+            "draft_filename": existing.get("filename") if existing else None,
+        })
 
     return render_template(
         "workflow_studio.html",
-        drafts=draft_service.list_drafts(),
+        drafts=drafts,
+        built_ins=built_ins,
     )
+
+
+@app.route("/workflow-studio/built-ins/<workflow_id>/copy", methods=["POST"])
+def copy_builtin_workflow(workflow_id):
+    if workflow_id not in AVAILABLE_WORKFLOWS:
+        abort(404)
+
+    draft_service = WorkflowDraftService()
+    existing = next(
+        (
+            item for item in draft_service.list_drafts()
+            if item.get("workflow_id") == workflow_id and not item.get("is_damaged")
+        ),
+        None,
+    )
+    if existing:
+        return redirect(url_for("workflow_editor", filename=existing["filename"]))
+
+    engine = DecisionEngine()
+    engine.load_workflow(workflow_id)
+    workflow = deepcopy(engine.workflow)
+    workflow["status"] = "Editable Copy"
+    workflow["draft_origin"] = {
+        "type": "built_in",
+        "workflow_id": workflow_id,
+    }
+    validation = WorkflowValidationService().validate(workflow)
+    if not validation["is_valid"]:
+        return error_response(
+            400,
+            "This workflow cannot be copied yet",
+            "The built-in workflow must pass validation before an editable copy can be created.",
+        )
+    filename = draft_service.save_draft(workflow)
+    return redirect(url_for("workflow_editor", filename=filename))
 
 @app.route("/workflow-editor/<filename>")
 def workflow_editor(filename):

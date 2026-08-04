@@ -35,6 +35,14 @@
 
    {% if drafts %}
 
+    <div class="d-flex justify-content-between align-items-end gap-3 mb-3">
+        <div>
+            <p class="section-eyebrow mb-1">Editable library</p>
+            <h2 class="h3 mb-0">Workflow Drafts</h2>
+        </div>
+        <span class="text-muted">{{ drafts|length }} saved</span>
+    </div>
+
     <div class="row g-4">
 
         {% for draft in drafts %}
@@ -102,6 +110,48 @@
 
     </div>
 
+{% endif %}
+
+{% if built_ins %}
+    <hr class="my-5">
+    <div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-3">
+        <div>
+            <p class="section-eyebrow mb-1">Gnojo foundations</p>
+            <h2 class="h3 mb-1">Built-in Workflows</h2>
+            <p class="text-muted mb-0">Create an editable draft while preserving the original built-in workflow.</p>
+        </div>
+        <span class="text-muted">{{ built_ins|length }} available</span>
+    </div>
+
+    <div class="row g-4">
+        {% for workflow in built_ins %}
+            <div class="col-md-6 col-xl-4">
+                <article class="card h-100 shadow-sm content-card">
+                    <div class="card-body d-flex flex-column">
+                        <div class="d-flex flex-wrap gap-2">
+                            <span class="badge text-bg-dark">Built-in</span>
+                            <span class="badge text-bg-primary">{{ workflow.category }}</span>
+                            <span class="badge text-bg-light border">{{ workflow.platform }}</span>
+                        </div>
+                        <h3 class="h5 mt-3">{{ workflow.name }}</h3>
+                        <p class="text-muted">{{ workflow.description }}</p>
+                        <p class="small text-muted mt-auto mb-3">{{ workflow.estimated_steps }} estimated steps</p>
+                        {% if workflow.draft_filename %}
+                            <a class="btn btn-outline-primary btn-sm align-self-start" href="{{ url_for('workflow_editor', filename=workflow.draft_filename) }}">
+                                <i class="bi bi-pencil-square me-2" aria-hidden="true"></i>Open Editable Copy
+                            </a>
+                        {% else %}
+                            <form method="post" action="{{ url_for('copy_builtin_workflow', workflow_id=workflow.workflow_id) }}">
+                                <button class="btn btn-outline-primary btn-sm" type="submit">
+                                    <i class="bi bi-copy me-2" aria-hidden="true"></i>Create Editable Copy
+                                </button>
+                            </form>
+                        {% endif %}
+                    </div>
+                </article>
+            </div>
+        {% endfor %}
+    </div>
 {% endif %}
 
 </div>

@@ -45,6 +45,7 @@ class WindowsCommandPackTests(unittest.TestCase):
         self.assertIn("Test a Network Host and Service Port", html)
         self.assertIn("Scan the Windows Component Store", html)
         self.assertIn("Risk:", html)
+        self.assertIn("command-library-card__action", html)
 
     def test_every_new_command_detail_page_loads(self):
         new_files = Path("knowledge_base/commands").glob("*.json")

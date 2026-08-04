@@ -1,473 +1,90 @@
-"""
-Purpose:
-    Generate structured Gnojo articles using Google Gemini.
+# Gnojo Architecture
 
-Responsibilities:
-    - Load Gemini configuration from environment variables.
-    - Request output that follows the Gnojo article schema.
-    - Parse Gemini's structured response.
-    - Return a standard ProviderResult.
-    - Translate provider failures into Gnojo exceptions.
+## Scope
 
-Does NOT:
-    - Build prompts.
-    - Validate articles.
-    - Save or publish articles.
-    - Select provider priority.
-"""
+This document describes the current local-development architecture. Future product ideas belong in the roadmap or Gnojo 2.0 blueprint.
 
-import json
-import os
-from typing import Any
+## Application shape
 
-from dotenv import load_dotenv
-from google import genai
-from google.genai import types
+Gnojo is a server-rendered Flask application with progressive JavaScript enhancements.
 
-from app.knowledge.providers.base_provider import (
-    BaseProvider,
-    ProviderAuthenticationError,
-    ProviderConfigurationError,
-    ProviderQuotaError,
-    ProviderRateLimitError,
-    ProviderResponseError,
-    ProviderResult,
-    ProviderTimeoutError,
-    ProviderUnavailableError,
-)
+- `run.py` starts the local Flask server.
+- `app/app.py` defines routes and composes application services.
+- `app/templates/` contains the page and component templates.
+- `app/static/` contains styles, browser behavior, and brand assets.
+- `app/services/` contains workflow, publication, search, quality, and content operations.
+- `app/repositories/` provides file-backed content access.
+- `app/models/` and `app/engine/` represent and run troubleshooting nodes.
 
+## Content storage
 
-ARTICLE_RESPONSE_SCHEMA: dict[str, Any] = {
-    "type": "object",
-    "properties": {
-        "schema_version": {
-            "type": "string",
-        },
-        "id": {
-            "type": "string",
-        },
-        "title": {
-            "type": "string",
-        },
-        "category": {
-            "type": "string",
-        },
-        "difficulty": {
-            "type": "string",
-            "enum": [
-                "Beginner",
-                "Intermediate",
-                "Advanced",
-            ],
-        },
-        "estimated_time": {
-            "type": "string",
-        },
-        "overview": {
-            "type": "string",
-        },
-        "checklist": {
-            "type": "array",
-            "items": {
-                "type": "string",
-            },
-        },
-        "common_indicators": {
-            "type": "array",
-            "items": {
-                "type": "string",
-            },
-        },
-        "commands": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "command": {
-                        "type": "string",
-                    },
-                    "description": {
-                        "type": "string",
-                    },
-                },
-                "required": [
-                    "command",
-                    "description",
-                ],
-            },
-        },
-        "related_topics": {
-            "type": "array",
-            "items": {
-                "type": "string",
-            },
-        },
-        "quiz": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "question": {
-                        "type": "string",
-                    },
-                    "answers": {
-                        "type": "array",
-                        "items": {
-                            "type": "string",
-                        },
-                    },
-                    "correct_answer": {
-                        "type": "string",
-                    },
-                },
-                "required": [
-                    "question",
-                    "answers",
-                    "correct_answer",
-                ],
-            },
-        },
-        "sources": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "title": {
-                        "type": "string",
-                    },
-                    "url": {
-                        "type": "string",
-                    },
-                },
-                "required": [
-                    "title",
-                    "url",
-                ],
-            },
-        },
-        "generation": {
-            "type": "object",
-            "properties": {
-                "provider": {
-                    "type": [
-                        "string",
-                        "null",
-                    ],
-                },
-                "model": {
-                    "type": [
-                        "string",
-                        "null",
-                    ],
-                },
-                "generated_at": {
-                    "type": [
-                        "string",
-                        "null",
-                    ],
-                },
-            },
-            "required": [
-                "provider",
-                "model",
-                "generated_at",
-            ],
-        },
-        "review": {
-            "type": "object",
-            "properties": {
-                "status": {
-                    "type": "string",
-                    "enum": [
-                        "draft",
-                    ],
-                },
-                "reviewed_by": {
-                    "type": [
-                        "string",
-                        "null",
-                    ],
-                },
-                "reviewed_at": {
-                    "type": [
-                        "string",
-                        "null",
-                    ],
-                },
-                "notes": {
-                    "type": "array",
-                    "items": {
-                        "type": "string",
-                    },
-                },
-            },
-            "required": [
-                "status",
-                "reviewed_by",
-                "reviewed_at",
-                "notes",
-            ],
-        },
-    },
-    "required": [
-        "schema_version",
-        "id",
-        "title",
-        "category",
-        "difficulty",
-        "estimated_time",
-        "overview",
-        "checklist",
-        "common_indicators",
-        "commands",
-        "related_topics",
-        "quiz",
-        "sources",
-        "generation",
-        "review",
-    ],
-}
+Gnojo currently uses version-controlled JSON for trusted content and ignored local folders for mutable runtime data.
 
+### Version-controlled content
 
-class GeminiProvider(BaseProvider):
-    """
-    Generate Gnojo draft articles with Google Gemini.
-    """
+- `app/decision_trees/`: built-in workflow foundations
+- `knowledge_base/published/`: reviewed knowledge articles
+- `knowledge_base/commands/`: command references
+- `knowledge_base/scripts/`: reviewed scripts and script metadata
 
-    DEFAULT_MODEL = "gemini-2.5-flash"
+### Local runtime content
 
-    def __init__(self) -> None:
-        """
-        Load local Gemini configuration.
-        """
+- `app/workflow_drafts/`: editable workflow drafts
+- `app/workflow_publications/`: locally published workflow versions
+- `knowledge_base/drafts/`: article drafts awaiting review
+- `app/device_profiles/`: optional saved device context
+- `app/troubleshooting_history/`: local session history and feedback
 
-        load_dotenv()
+Local runtime folders are ignored by Git. Reviewed articles intentionally moved into `knowledge_base/published/` are version controlled.
 
-        self._api_key = os.getenv(
-            "GEMINI_API_KEY",
-            "",
-        ).strip()
+## Workflow lifecycle
 
-        configured_model = os.getenv(
-            "GEMINI_MODEL",
-            self.DEFAULT_MODEL,
-        ).strip()
+1. An author generates a workflow or creates an editable copy of a built-in workflow.
+2. The Workflow Designer edits metadata and individual nodes.
+3. Validation checks required fields, node types, destinations, reachability, and terminal paths.
+4. The simulator exercises successful and unsuccessful branches with optional device conditions.
+5. Publication creates an immutable numbered version for the runtime catalog.
+6. Runtime sessions can be resumed, recorded in history, and summarized in quality analytics.
 
-        if configured_model:
-            self._model_name = configured_model
-        else:
-            self._model_name = self.DEFAULT_MODEL
+Built-in workflow JSON is preserved as a foundation. Editing and publication occur through separate draft and publication files.
 
-    @property
-    def provider_name(self) -> str:
-        """
-        Return the stable provider name.
-        """
+## Knowledge lifecycle
 
-        return "gemini"
+1. An article can be created directly or generated from a workflow node.
+2. Draft content is edited in the Knowledge Review Workspace.
+3. Validation checks the article schema and required fields.
+4. A human reviewer verifies technical claims, safety, sources, commands, and risks.
+5. Approved content is published to the knowledge library.
+6. Workflow nodes reference published articles by stable article ID.
 
-    @property
-    def model_name(self) -> str:
-        """
-        Return the configured Gemini model name.
-        """
+Generated content is never treated as reviewed solely because it passed structural validation.
 
-        return self._model_name
+## AI providers
 
-    def is_configured(self) -> bool:
-        """
-        Return whether the Gemini API key is available.
-        """
+AI support is optional. Gemini is the primary configured provider and OpenAI is the fallback for supported generation tasks. Provider output is normalized into Gnojo schemas and must pass validation before review.
 
-        return bool(self._api_key)
+When no provider is configured or a provider fails, supported features use local fallbacks where practical. API keys are loaded from environment variables and must never be committed.
 
-    def generate_article(
-        self,
-        prompt: str,
-    ) -> ProviderResult:
-        """
-        Generate one structured Gnojo article.
+## Safety and trust boundaries
 
-        Args:
-            prompt:
-                Instructions created by ArticlePromptBuilder.
+- AI creates drafts; people approve publication.
+- Official vendor documentation is preferred for technical claims.
+- Risk, permissions, and service impact must be explicit.
+- Device profiles and troubleshooting history remain local by default.
+- Published content is separated from editable drafts.
+- Workflow simulation is a logic test; it does not execute diagnostic commands on the host.
 
-        Returns:
-            ProviderResult:
-                Generated article and provider metadata.
-        """
+## Testing
 
-        if not self.is_configured():
-            raise ProviderConfigurationError(
-                "GEMINI_API_KEY is not configured."
-            )
+The `tests/` directory uses Python's built-in `unittest` runner. The suite covers application pages, content integrity, workflow editing and publication, article review, commands, scripts, search, accessibility, device-aware routing, recovery behavior, and quality analytics.
 
-        if not isinstance(prompt, str) or not prompt.strip():
-            raise ProviderConfigurationError(
-                "Gemini requires a non-empty prompt."
-            )
+Run the full suite with:
 
-        try:
-            with genai.Client(api_key=self._api_key) as client:
-                response = client.models.generate_content(
-                    model=self.model_name,
-                    contents=prompt,
-                    config=types.GenerateContentConfig(
-                        response_mime_type="application/json",
-                        response_json_schema=ARTICLE_RESPONSE_SCHEMA,
-                        temperature=0.2,
-                    ),
-                )
+```powershell
+.\.venv\Scripts\python.exe -m unittest discover -s tests -p 'test_*.py'
+.\.venv\Scripts\python.exe -m pip check
+```
 
-        except Exception as error:
-            self._raise_provider_error(error)
+## Deployment status
 
-        response_text = getattr(
-            response,
-            "text",
-            None,
-        )
-
-        if not isinstance(response_text, str):
-            raise ProviderResponseError(
-                "Gemini returned no text response."
-            )
-
-        if not response_text.strip():
-            raise ProviderResponseError(
-                "Gemini returned an empty response."
-            )
-
-        article = self._parse_response(response_text)
-
-        metadata: dict[str, Any] = {
-            "response_format": "application/json",
-            "structured_output": True,
-            "temperature": 0.2,
-        }
-
-        usage_metadata = getattr(
-            response,
-            "usage_metadata",
-            None,
-        )
-
-        if usage_metadata is not None:
-            metadata["usage_metadata"] = str(
-                usage_metadata
-            )
-
-        return ProviderResult(
-            provider_name=self.provider_name,
-            model_name=self.model_name,
-            content=article,
-            success=True,
-            metadata=metadata,
-        )
-
-    def _parse_response(
-        self,
-        response_text: str,
-    ) -> dict[str, Any]:
-        """
-        Convert Gemini's JSON response into a dictionary.
-        """
-
-        try:
-            parsed_content = json.loads(response_text)
-
-        except json.JSONDecodeError as error:
-            raise ProviderResponseError(
-                "Gemini returned invalid JSON."
-            ) from error
-
-        if not isinstance(parsed_content, dict):
-            raise ProviderResponseError(
-                "Gemini must return one JSON object."
-            )
-
-        return parsed_content
-
-    def _raise_provider_error(
-        self,
-        error: Exception,
-    ) -> None:
-        """
-        Translate Gemini failures into Gnojo exceptions.
-        """
-
-        error_message = str(error)
-        normalized_message = error_message.lower()
-
-        status_code = getattr(
-            error,
-            "status_code",
-            None,
-        )
-
-        if status_code in {401, 403}:
-            raise ProviderAuthenticationError(
-                "Gemini authentication failed."
-            ) from error
-
-        if status_code == 429:
-            if self._indicates_quota_failure(
-                normalized_message
-            ):
-                raise ProviderQuotaError(
-                    "Gemini quota is unavailable or exhausted."
-                ) from error
-
-            raise ProviderRateLimitError(
-                "Gemini temporarily rate-limited the request."
-            ) from error
-
-        if status_code in {500, 502, 503, 504}:
-            raise ProviderUnavailableError(
-                "Gemini is temporarily unavailable."
-            ) from error
-
-        if "timeout" in normalized_message:
-            raise ProviderTimeoutError(
-                "The Gemini request timed out."
-            ) from error
-
-        if self._indicates_quota_failure(
-            normalized_message
-        ):
-            raise ProviderQuotaError(
-                "Gemini quota is unavailable or exhausted."
-            ) from error
-
-        if (
-            "api key" in normalized_message
-            or "unauthenticated" in normalized_message
-            or "permission denied" in normalized_message
-        ):
-            raise ProviderAuthenticationError(
-                "Gemini authentication failed."
-            ) from error
-
-        raise ProviderUnavailableError(
-            f"Gemini request failed: {error_message}"
-        ) from error
-
-    def _indicates_quota_failure(
-        self,
-        error_message: str,
-    ) -> bool:
-        """
-        Return whether an error indicates exhausted quota.
-        """
-
-        quota_terms = {
-            "quota",
-            "resource exhausted",
-            "billing",
-            "credit",
-        }
-
-        return any(
-            quota_term in error_message
-            for quota_term in quota_terms
-        )
+The current entry point uses Flask's development server for local work. `gunicorn` is included for a future hosted deployment. Production hosting still requires an explicit deployment configuration, persistent-storage decision, environment-secret configuration, and security review.

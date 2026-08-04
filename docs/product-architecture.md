@@ -224,11 +224,8 @@ Workflow JSON may be written manually for testing or debugging.
 
 Normal workflow creation must use Workflow Builder and Workflow Editor.
 
-## Locked Development Order
+## Implementation status
 
-1. Complete Workflow Studio
-2. Complete Workflow Editor
-3. Add Workflow Simulator
-4. Strengthen Workflow Validation
-5. Add Workflow Publishing
-6. Apply the same lifecycle to Knowledge, Commands, and Scripts
+The Workflow Studio, generator, editor, validator, simulator, export, versioning, and publication paths are implemented for local development. Knowledge articles use a human review and publication gate. Commands and scripts have dedicated libraries and authoring experiences.
+
+Production authentication, shared organization data, durable hosted persistence, and operational deployment controls remain future work. See [Roadmap](roadmap.md) for current priorities.

@@ -109,6 +109,13 @@ class WorkflowCoverageEndpointTests(unittest.TestCase):
         self.assertIn("createArticleDraftButton", html)
         self.assertIn("data-help-text-url", html)
 
+    def test_stale_editor_node_returns_refresh_guidance(self):
+        response = self.client.post(
+            f"/api/workflow-drafts/{self.filename}/nodes/old_node_id/coverage/help-text"
+        )
+        self.assertEqual(response.status_code, 409)
+        self.assertIn("Refresh the Workflow Designer", response.get_json()["error"])
+
 
 if __name__ == "__main__":
     unittest.main()

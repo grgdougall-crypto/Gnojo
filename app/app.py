@@ -779,7 +779,7 @@ def generate_workflow_help_text(filename, node_id):
         return {"ok": False, "error": "Workflow draft not found."}, 404
     node = workflow.get("nodes", {}).get(node_id)
     if not isinstance(node, dict):
-        return {"ok": False, "error": "Workflow node not found."}, 404
+        return {"ok": False, "error": "This draft changed after the page opened. Refresh the Workflow Designer and select the node again."}, 409
     try:
         help_text = WorkflowCoverageService().generate_help_text(node)
         workflow = WorkflowDraftService().update_node(
@@ -804,7 +804,7 @@ def create_workflow_article_draft(filename, node_id):
         return {"ok": False, "error": "Workflow draft not found."}, 404
     node = workflow.get("nodes", {}).get(node_id)
     if not isinstance(node, dict):
-        return {"ok": False, "error": "Workflow node not found."}, 404
+        return {"ok": False, "error": "This draft changed after the page opened. Refresh the Workflow Designer and select the node again."}, 409
     try:
         article = WorkflowCoverageService().create_article_draft(workflow, node_id, node)
         created = True
@@ -1791,8 +1791,23 @@ def workflow_builder():
     outline = None
     error = None
     filename = None
+    form_values = {
+        "workflow_name": "",
+        "description": "",
+        "platform": "Windows",
+        "difficulty": "Intermediate",
+        "size": "Medium",
+    }
 
     if request.method == "POST":
+
+        form_values = {
+            "workflow_name": request.form.get("workflow_name", ""),
+            "description": request.form.get("description", ""),
+            "platform": request.form.get("platform", "Windows"),
+            "difficulty": request.form.get("difficulty", "Beginner"),
+            "size": request.form.get("size", "Medium"),
+        }
 
         try:
 
@@ -1844,6 +1859,9 @@ def workflow_builder():
                         generated_workflow
                     )
                 )
+                return redirect(
+                    url_for("workflow_builder_result", filename=filename)
+                )
 
         except Exception as ex:
 
@@ -1856,6 +1874,31 @@ def workflow_builder():
         outline=outline,
         filename=filename,
         error=error,
+        form_values=form_values,
+    )
+
+
+@app.route("/workflow-builder/result/<filename>")
+def workflow_builder_result(filename):
+    workflow = WorkflowDraftService().get_draft(filename)
+    if workflow is None:
+        abort(404)
+    validation = WorkflowValidationService().validate(workflow)
+    outline = WorkflowOutlineService().build_outline(workflow)
+    return render_template(
+        "workflow_builder.html",
+        generated_workflow=workflow,
+        validation=validation,
+        outline=outline,
+        filename=filename,
+        error=None,
+        form_values={
+            "workflow_name": workflow.get("name", ""),
+            "description": workflow.get("description", ""),
+            "platform": workflow.get("platform", "Windows"),
+            "difficulty": workflow.get("difficulty", "Intermediate"),
+            "size": workflow.get("size", "Medium"),
+        },
     )
 
 @app.route("/wizard", methods=["GET", "POST"])

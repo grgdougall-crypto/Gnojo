@@ -4,6 +4,8 @@
 
 {% block content %}
 
+{% set generator_form = form_values or {} %}
+
 <div class="container py-5">
 
     <div class="row g-4">
@@ -38,6 +40,7 @@
                                 class="form-control"
                                 name="workflow_name"
                                 placeholder="VPN Connectivity"
+                                value="{{ generator_form.get('workflow_name', '') }}"
                                 required
                             >
 
@@ -54,7 +57,7 @@
                                 rows="5"
                                 name="description"
                                 placeholder="Troubleshoot VPN authentication, certificates, DNS, routing and connectivity."
-                            ></textarea>
+                            >{{ generator_form.get('description', '') }}</textarea>
 
                         </div>
 
@@ -68,10 +71,11 @@
                                 class="form-select"
                                 name="platform"
                             >
-                                <option>Windows</option>
-                                <option>macOS</option>
-                                <option>Linux</option>
-                                <option>Cross Platform</option>
+                                {% set selected_platform = generator_form.get('platform', 'Windows') %}
+                                <option {{ 'selected' if selected_platform == 'Windows' }}>Windows</option>
+                                <option {{ 'selected' if selected_platform == 'macOS' }}>macOS</option>
+                                <option {{ 'selected' if selected_platform == 'Linux' }}>Linux</option>
+                                <option {{ 'selected' if selected_platform == 'Cross-platform' }}>Cross-platform</option>
                             </select>
 
                         </div>
@@ -86,9 +90,10 @@
                                 class="form-select"
                                 name="difficulty"
                             >
-                                <option>Beginner</option>
-                                <option selected>Intermediate</option>
-                                <option>Advanced</option>
+                                {% set selected_difficulty = generator_form.get('difficulty', 'Intermediate') %}
+                                <option {{ 'selected' if selected_difficulty == 'Beginner' }}>Beginner</option>
+                                <option {{ 'selected' if selected_difficulty == 'Intermediate' }}>Intermediate</option>
+                                <option {{ 'selected' if selected_difficulty == 'Advanced' }}>Advanced</option>
                             </select>
 
                         </div>
@@ -103,9 +108,10 @@
                                 class="form-select"
                                 name="size"
                             >
-                                <option>Small</option>
-                                <option selected>Medium</option>
-                                <option>Large</option>
+                                {% set selected_size = generator_form.get('size', 'Medium') %}
+                                <option {{ 'selected' if selected_size == 'Small' }}>Small</option>
+                                <option {{ 'selected' if selected_size == 'Medium' }}>Medium</option>
+                                <option {{ 'selected' if selected_size == 'Large' }}>Large</option>
                             </select>
 
                         </div>
@@ -197,6 +203,25 @@
 
                             </div>
 
+                        {% endif %}
+
+                        {% if validation.is_valid and filename %}
+                            <div class="d-flex flex-wrap gap-2 my-4">
+                                <a
+                                    class="btn btn-primary"
+                                    href="{{ url_for('workflow_editor', filename=filename) }}"
+                                >
+                                    <i class="bi bi-pencil-square me-2" aria-hidden="true"></i>
+                                    Review and Prepare to Publish
+                                    <i class="bi bi-arrow-right ms-2" aria-hidden="true"></i>
+                                </a>
+                                <a
+                                    class="btn btn-outline-secondary"
+                                    href="{{ url_for('workflow_studio') }}"
+                                >
+                                    Return to Workflow Studio
+                                </a>
+                            </div>
                         {% endif %}
 
                         <h3 class="mt-4 mb-3">

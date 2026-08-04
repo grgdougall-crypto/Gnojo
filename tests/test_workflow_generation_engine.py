@@ -1,5 +1,8 @@
 import unittest
 
+from flask import render_template
+
+from app.app import app
 from app.engine.workflow_generation_engine import WorkflowGenerationEngine
 
 
@@ -75,6 +78,34 @@ class WorkflowGenerationEngineTests(unittest.TestCase):
             WorkflowGenerationEngine._title_case("vpn and dns troubleshooting for macos"),
             "VPN and DNS Troubleshooting for macOS",
         )
+
+    def test_valid_generation_links_directly_to_human_review(self):
+        with app.test_request_context(
+            "/workflow-builder",
+            method="POST",
+            data={
+                "workflow_name": "webcam not working",
+                "description": "Troubleshoot a webcam.",
+                "platform": "Windows",
+                "difficulty": "Beginner",
+                "size": "Small",
+            },
+        ):
+            html = render_template(
+                "workflow_builder.html",
+                generated_workflow={"name": "Webcam Not Working"},
+                validation={"is_valid": True, "warnings": []},
+                outline=[],
+                filename="webcam_not_working_windows.json",
+                error=None,
+            )
+
+        self.assertIn("Review and Prepare to Publish", html)
+        self.assertIn(
+            'href="/workflow-editor/webcam_not_working_windows.json"',
+            html,
+        )
+        self.assertIn("Return to Workflow Studio", html)
 
 
 if __name__ == "__main__":

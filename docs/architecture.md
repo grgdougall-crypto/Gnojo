@@ -8,6 +8,20 @@ This document describes the current local-development architecture. Future produ
 
 Gnojo is a server-rendered Flask application with progressive JavaScript enhancements.
 
+```mermaid
+flowchart TB
+    Browser["Browser UI"] --> Flask["Flask routes"]
+    Flask --> Services["Application services"]
+    Services --> Runtime["Troubleshooting engine"]
+    Services --> Repositories["File-backed repositories"]
+    Services --> Providers["Optional AI providers"]
+    Repositories --> BuiltIns["Built-in workflows"]
+    Repositories --> Drafts["Local drafts and history"]
+    Repositories --> Published["Published articles and workflow versions"]
+    Providers --> Gemini["Gemini"]
+    Providers --> OpenAI["OpenAI fallback"]
+```
+
 - `run.py` starts the local Flask server.
 - `app/app.py` defines routes and composes application services.
 - `app/templates/` contains the page and component templates.
@@ -39,6 +53,21 @@ Local runtime folders are ignored by Git. Reviewed articles intentionally moved 
 
 ## Workflow lifecycle
 
+```mermaid
+flowchart TD
+    Foundation["Built-in workflow foundation"] --> Copy["Create editable copy"]
+    New["Generate new workflow"] --> Draft["Workflow draft"]
+    Copy --> Draft
+    Draft --> Edit["Edit metadata and nodes"]
+    Edit --> Validate{"Validation passed?"}
+    Validate -- "No" --> Edit
+    Validate -- "Yes" --> Simulate["Simulate successful and unsuccessful routes"]
+    Simulate --> Review{"Human review complete?"}
+    Review -- "No" --> Edit
+    Review -- "Yes" --> Publish["Publish immutable version"]
+    Publish --> RuntimeCatalog["Runtime workflow catalog"]
+```
+
 1. An author generates a workflow or creates an editable copy of a built-in workflow.
 2. The Workflow Designer edits metadata and individual nodes.
 3. Validation checks required fields, node types, destinations, reachability, and terminal paths.
@@ -49,6 +78,21 @@ Local runtime folders are ignored by Git. Reviewed articles intentionally moved 
 Built-in workflow JSON is preserved as a foundation. Editing and publication occur through separate draft and publication files.
 
 ## Knowledge lifecycle
+
+```mermaid
+flowchart TD
+    SourceNode["Workflow node"] --> Generate["Create linked article draft"]
+    Direct["Create article directly"] --> DraftArticle["Article draft"]
+    Generate --> DraftArticle
+    DraftArticle --> EditArticle["Edit content and add authoritative sources"]
+    EditArticle --> ArticleValidation{"Schema and completeness valid?"}
+    ArticleValidation -- "No" --> EditArticle
+    ArticleValidation -- "Yes" --> TechnicalReview["Human technical review"]
+    TechnicalReview --> Approval{"Approved?"}
+    Approval -- "No" --> EditArticle
+    Approval -- "Yes" --> PublishArticle["Publish article"]
+    PublishArticle --> KnowledgeLibrary["Knowledge library and Learn More panel"]
+```
 
 1. An article can be created directly or generated from a workflow node.
 2. Draft content is edited in the Knowledge Review Workspace.

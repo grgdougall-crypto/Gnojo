@@ -80,6 +80,16 @@ The suite covers workflows, publishing, search, device-aware routing, history, k
 
 Gnojo keeps generated material separate from trusted published content:
 
+```mermaid
+flowchart LR
+    A["Create or generate draft"] --> B["Edit and validate"]
+    B --> C["Simulate or preview"]
+    C --> D["Human technical review"]
+    D --> E["Publish approved version"]
+    E --> F["Collect outcomes and feedback"]
+    F --> B
+```
+
 1. Generate or create a draft.
 2. Edit and validate the draft.
 3. Simulate workflow branches or preview article content.

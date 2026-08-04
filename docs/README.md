@@ -26,6 +26,8 @@ This directory contains current implementation documentation, product standards,
 
 Forward-looking documents describe direction and design intent. They should not be read as proof that every capability is implemented. The README, architecture, roadmap, automated tests, and running application are the authoritative sources for current repository status.
 
+GitHub renders the Mermaid diagrams in the README, architecture, and knowledge-base documentation. Keep diagrams small, label decisions clearly, and update the surrounding prose whenever a flow changes.
+
 ## Documentation maintenance
 
 When a feature changes:

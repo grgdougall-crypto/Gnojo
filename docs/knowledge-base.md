@@ -6,6 +6,16 @@ The knowledge base turns reviewed technical guidance into reusable articles that
 
 ## Article states
 
+```mermaid
+stateDiagram-v2
+    [*] --> Draft
+    Draft --> PendingReview: Submit for review
+    PendingReview --> Draft: Revise or reject
+    PendingReview --> Approved: Complete technical review
+    Approved --> Published: Publish article
+    Published --> [*]
+```
+
 - **Draft:** editable content that has not completed review
 - **Pending Review:** structurally valid content awaiting human approval
 - **Approved:** content whose technical review checklist is complete

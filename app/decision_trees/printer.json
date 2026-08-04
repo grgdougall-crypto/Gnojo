@@ -1,6 +1,9 @@
 {
   "workflow_id": "printer",
   "name": "Printer",
+  "description": "Troubleshoot printer power, connections, device warnings, and basic printing problems.",
+  "category": "Desktop Support",
+  "platform": "Cross-platform",
   "estimated_steps": 5,
   "start_node": "check_power",
 
@@ -27,14 +30,14 @@
 
     "inspect_power": {
       "type": "instruction",
-      "title": "Check the printer power",
+      "title": "Check the Printer Power",
       "instruction": "Confirm that the power cable is securely connected and press the printer's power button.",
       "next": "check_power"
     },
 
     "turn_on_printer": {
       "type": "instruction",
-      "title": "Turn on the printer",
+      "title": "Turn On the Printer",
       "instruction": "Turn on the printer and wait until it finishes starting.",
       "next": "verify_printing"
     },
@@ -60,21 +63,21 @@
 
     "identify_connection": {
       "type": "instruction",
-      "title": "Identify the printer connection",
+      "title": "Identify the Printer Connection",
       "instruction": "Check whether a USB cable connects the printer directly to the computer. If no USB cable is present, the printer may use Wi-Fi or the local network.",
       "next": "check_connection"
     },
 
     "check_usb": {
       "type": "instruction",
-      "title": "Check the USB connection",
+      "title": "Check the USB Connection",
       "instruction": "Disconnect and reconnect the USB cable at both the printer and computer. Try another USB port if one is available.",
       "next": "verify_printing"
     },
 
     "restart_printer": {
       "type": "instruction",
-      "title": "Restart the printer",
+      "title": "Restart the Printer",
       "instruction": "Turn the printer off, wait 30 seconds, and then turn it back on. Allow it to reconnect before trying again.",
       "next": "verify_printing"
     },
@@ -115,27 +118,27 @@
 
     "inspect_printer_display": {
       "type": "instruction",
-      "title": "Inspect the printer status",
+      "title": "Inspect the Printer Status",
       "instruction": "Check the printer display and status lights for a paper, ink, toner, cover, or jam warning.",
       "next": "check_printer_status"
     },
 
     "clear_printer_warning": {
       "type": "instruction",
-      "title": "Clear the printer warning",
-      "instruction": "Follow the printer's displayed instructions to add paper, replace ink or toner, close open covers, or remove jammed paper.",
+      "title": "Clear the Printer Warning",
+      "instruction": "Follow the printer manufacturer's displayed or documented instructions. Before reaching inside to remove a jam, turn the printer off and unplug it if the manufacturer directs you to do so; internal components can be hot or moving. Do not force paper or touch unfamiliar internal parts.",
       "next": "verify_printing"
     },
 
     "resolved": {
       "type": "resolution",
-      "title": "Printer operation restored",
+      "title": "Printer Operation Restored",
       "message": "The printer appears to be working again."
     },
 
     "advanced_diagnostics": {
       "type": "resolution",
-      "title": "Additional troubleshooting is needed",
+      "title": "Additional Troubleshooting Is Needed",
       "message": "The basic checks did not restore printing. The print queue, default printer, network address, driver, or spooler service may require additional diagnostics."
     }
   }

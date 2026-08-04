@@ -20,7 +20,7 @@
 
     {% if analysis.warnings or analysis.validation_errors %}
     <section class="review-warning-panel" aria-labelledby="reviewWarningsTitle">
-        <h2 id="reviewWarningsTitle">Review warnings</h2>
+        <h2 id="reviewWarningsTitle">Review Warnings</h2>
         {% for warning in analysis.warnings %}<div class="review-warning review-warning--{{ warning.level }}"><i class="bi bi-exclamation-triangle-fill" aria-hidden="true"></i><span>{{ warning.message }}</span></div>{% endfor %}
         {% for validation_error in analysis.validation_errors %}<div class="review-warning review-warning--high"><i class="bi bi-x-circle-fill" aria-hidden="true"></i><span>{{ validation_error }}</span></div>{% endfor %}
     </section>
@@ -44,7 +44,7 @@
         </section>
 
         <section class="review-editor-section">
-            <span class="section-eyebrow">Guidance</span><h2>Troubleshooting content</h2>
+            <span class="section-eyebrow">Guidance</span><h2>Troubleshooting Content</h2>
             <div class="review-editor-grid">
                 <label><span>Checklist <small>One step per line</small></span><textarea class="form-control" name="checklist" rows="8">{{ article.checklist|join('\n') }}</textarea></label>
                 <label><span>Common indicators <small>One item per line</small></span><textarea class="form-control" name="common_indicators" rows="8">{{ article.common_indicators|join('\n') }}</textarea></label>
@@ -56,7 +56,7 @@
 
         {% set quiz_item = article.quiz[0] if article.quiz else {} %}
         <section class="review-editor-section">
-            <span class="section-eyebrow">Learning Mode</span><h2>Knowledge check</h2>
+            <span class="section-eyebrow">Learning Mode</span><h2>Knowledge Check</h2>
             <label><span>Question</span><input class="form-control" name="quiz_question" value="{{ quiz_item.question or '' }}"></label>
             <div class="review-editor-grid">
                 <label><span>Answers <small>One answer per line</small></span><textarea class="form-control" name="quiz_answers" rows="5">{{ (quiz_item.answers or [])|join('\n') }}</textarea></label>
@@ -65,7 +65,7 @@
         </section>
 
         <section class="review-editor-section technical-review" aria-labelledby="technicalReviewTitle">
-            <span class="section-eyebrow">Publication gate</span><h2 id="technicalReviewTitle">Technical review checklist</h2>
+            <span class="section-eyebrow">Publication gate</span><h2 id="technicalReviewTitle">Technical Review Checklist</h2>
             <p>Approval confirms that a human reviewed the content. All checks are required before publication.</p>
             {% for check_id, check_label in analysis.required_checks.items() %}<label class="technical-check"><input class="form-check-input" type="checkbox" name="review_{{ check_id }}" {% if article.review.checks and article.review.checks.get(check_id) %}checked{% endif %}><span>{{ check_label }}</span></label>{% endfor %}
             <label><span>Review notes <small>Required when rejecting</small></span><textarea class="form-control" name="review_notes" rows="4">{{ article.review.notes|join('\n') if article.review.notes else '' }}</textarea></label>
@@ -80,12 +80,12 @@
     <section class="article-live-preview" data-review-panel="preview" hidden aria-labelledby="articlePreviewTitle">
         <span class="section-eyebrow">User-facing article</span><h2 id="articlePreviewTitle">{{ article.title }}</h2>
         <p class="article-preview-overview">{{ article.overview }}</p>
-        <div class="article-preview-columns"><article><h3>What to do</h3><ol>{% for item in article.checklist %}<li>{{ item }}</li>{% endfor %}</ol></article><article><h3>Common indicators</h3><ul>{% for item in article.common_indicators %}<li>{{ item }}</li>{% endfor %}</ul></article></div>
+        <div class="article-preview-columns"><article><h3>What to Do</h3><ol>{% for item in article.checklist %}<li>{{ item }}</li>{% endfor %}</ol></article><article><h3>Common Indicators</h3><ul>{% for item in article.common_indicators %}<li>{{ item }}</li>{% endfor %}</ul></article></div>
         <article id="articlePreviewCommands" {% if not article.commands %}hidden{% endif %}><h3>Commands</h3><div>{% for command in article.commands %}<pre><code>{{ command.command }}</code></pre><p>{{ command.description }}</p>{% endfor %}</div></article>
         <article id="articlePreviewSources" {% if not article.sources %}hidden{% endif %}><h3>Sources</h3><ul>{% for source in article.sources %}<li><a href="{{ source.url }}" target="_blank" rel="noopener noreferrer">{{ source.title }}</a></li>{% endfor %}</ul></article>
     </section>
 
-    {% if workflow_references %}<section class="review-editor-section article-workflow-links" aria-labelledby="workflowLinksTitle"><span class="section-eyebrow">Used by workflows</span><h2 id="workflowLinksTitle">Linked workflow nodes</h2>{% for reference in workflow_references %}<article><div><strong>{{ reference.workflow_name }}</strong><span>{{ reference.node_title }}</span></div>{% if reference.filename %}<a class="btn btn-sm btn-outline-primary" href="{{ url_for('workflow_editor', filename=reference.filename, node=reference.node_id) }}">Open node</a>{% else %}<a class="btn btn-sm btn-outline-primary" href="{{ url_for('wizard', workflow=reference.workflow_id, restart='1') }}">Test workflow</a>{% endif %}</article>{% endfor %}</section>{% endif %}
+    {% if workflow_references %}<section class="review-editor-section article-workflow-links" aria-labelledby="workflowLinksTitle"><span class="section-eyebrow">Used by workflows</span><h2 id="workflowLinksTitle">Linked Workflow Nodes</h2>{% for reference in workflow_references %}<article><div><strong>{{ reference.workflow_name }}</strong><span>{{ reference.node_title }}</span></div>{% if reference.filename %}<a class="btn btn-sm btn-outline-primary" href="{{ url_for('workflow_editor', filename=reference.filename, node=reference.node_id) }}">Open node</a>{% else %}<a class="btn btn-sm btn-outline-primary" href="{{ url_for('wizard', workflow=reference.workflow_id, restart='1') }}">Test workflow</a>{% endif %}</article>{% endfor %}</section>{% endif %}
 
     <section class="publish-review-bar">
         <div><strong>Publication status</strong><span>{% if analysis.can_publish %}Review approved and validation passed.{% else %}Complete validation and approve the technical review first.{% endif %}</span></div>

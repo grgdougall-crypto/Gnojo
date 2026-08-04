@@ -58,9 +58,9 @@ class ContentQualityPageTests(unittest.TestCase):
         response = self.client.get("/content-quality")
         html = response.get_data(as_text=True)
         self.assertEqual(response.status_code, 200)
-        self.assertIn("What needs attention", html)
-        self.assertIn("Library overview", html)
-        self.assertIn("Coverage snapshot", html)
+        self.assertIn("What Needs Attention", html)
+        self.assertIn("Library Overview", html)
+        self.assertIn("Coverage Snapshot", html)
         self.assertIn("Computer Running Slowly", html)
         self.assertIn("Knowledge coverage is thin", html)
 

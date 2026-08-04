@@ -24,7 +24,7 @@ class WorkflowCatalogTests(unittest.TestCase):
 
     def test_home_is_capped_and_links_to_complete_catalog(self):
         html = self.client.get("/").get_data(as_text=True)
-        self.assertIn("Recommended workflows", html)
+        self.assertIn("Recommended Workflows", html)
         self.assertIn("Browse all workflows", html)
         self.assertIn('href="/workflows"', html)
         self.assertLessEqual(html.count("workflow-card-item"), 4)

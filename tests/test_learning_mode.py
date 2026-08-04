@@ -37,15 +37,15 @@ class LearningModeTests(unittest.TestCase):
 
     def test_learning_mode_is_optional_and_can_toggle_during_workflow(self):
         normal = self.client.get("/wizard?workflow=learning_test")
-        self.assertNotIn("Understand this step", normal.get_data(as_text=True))
+        self.assertNotIn("Understand This Step", normal.get_data(as_text=True))
         learning = self.client.get("/wizard?workflow=learning_test&resume=1&learning=1")
         html = learning.get_data(as_text=True)
-        self.assertIn("Understand this step", html)
-        self.assertIn("What this checks", html)
-        self.assertIn("Why this matters", html)
+        self.assertIn("Understand This Step", html)
+        self.assertIn("What This Checks", html)
+        self.assertIn("Why This Matters", html)
         self.assertIn("VPN fundamentals", html)
         off = self.client.get("/wizard?workflow=learning_test&resume=1&learning=0")
-        self.assertNotIn("Understand this step", off.get_data(as_text=True))
+        self.assertNotIn("Understand This Step", off.get_data(as_text=True))
 
     def test_learning_completion_lists_concepts_covered(self):
         self.client.get("/wizard?workflow=learning_test&learning=1")
@@ -53,7 +53,7 @@ class LearningModeTests(unittest.TestCase):
         html = completed.get_data(as_text=True)
         self.assertIn("Learning recap", html)
         self.assertIn("VPN fundamentals", html)
-        self.assertIn("Concepts covered in this session", html)
+        self.assertIn("Concepts Covered in This Session", html)
 
     def test_landing_learning_card_enables_mode(self):
         response = self.client.get("/?learning=1")

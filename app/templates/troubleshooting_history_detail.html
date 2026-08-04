@@ -32,7 +32,7 @@
     {% if record.feedback %}
     <section class="history-section session-feedback" aria-labelledby="sessionFeedbackTitle">
         <span class="section-eyebrow">User feedback</span>
-        <h2 id="sessionFeedbackTitle">Workflow quality</h2>
+        <h2 id="sessionFeedbackTitle">Workflow Quality</h2>
         <dl>
             <div><dt>Problem solved</dt><dd>{{ record.feedback.solved|title }}</dd></div>
             <div><dt>Guidance clarity</dt><dd>{{ record.feedback.clarity }}/5</dd></div>
@@ -44,7 +44,7 @@
 
     <section class="history-section" aria-labelledby="pathTitle">
         <span class="section-eyebrow">Diagnostic journey</span>
-        <h2 id="pathTitle">Session path</h2>
+        <h2 id="pathTitle">Session Path</h2>
         <ol class="session-path">
             {% for node_id in record.path %}
             <li><span>{{ loop.index }}</span><strong>{{ node_id|friendly_node }}</strong></li>

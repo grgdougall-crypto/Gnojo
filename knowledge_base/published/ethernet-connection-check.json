@@ -22,7 +22,7 @@
   "checklist": [
     "Confirm the Ethernet cable is firmly connected to the computer.",
     "Confirm the other end is connected to the router, switch, wall jack, or docking station.",
-    "Look for link or activity lights near the Ethernet port.",
+    "If the computer, dock, or network device provides link lights, check whether they illuminate after the cable is connected.",
     "Inspect the cable and connector for visible damage.",
     "Test with a known-good Ethernet cable when one is available."
   ],
@@ -52,7 +52,7 @@
   "sources": [
     {
       "title": "Fix Ethernet connection problems in Windows",
-      "url": "https://learn.microsoft.com/en-us/troubleshoot/windows-client/networking/networking-overview"
+      "url": "https://support.microsoft.com/en-us/windows/experience/connectivity-networking/fix-ethernet-connection-problems-in-windows"
     }
   ],
   "schema_version": "1.0",
@@ -66,7 +66,7 @@
     "reviewed_by": null,
     "reviewed_at": null,
     "notes": [
-      "Migrated to article schema 1.0; technical review is still required."
+      "Checked against current Microsoft Ethernet troubleshooting guidance on 2026-08-03; awaiting final human approval."
     ]
   }
 }

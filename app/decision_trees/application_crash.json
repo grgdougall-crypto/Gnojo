@@ -9,7 +9,7 @@
   "nodes": {
     "prepare": {
       "type": "instruction",
-      "title": "Protect your work first",
+      "title": "Protect Your Work First",
       "instruction": "Save work in other applications. Note the affected application's name and what you were doing when it failed. Do not download cleanup or repair utilities.",
       "help_text": "A repeatable description helps distinguish a damaged application from a file-specific or system-wide problem.",
       "next": "failure_type"
@@ -25,7 +25,7 @@
     },
     "test_other_file": {
       "type": "instruction",
-      "title": "Test a different file safely",
+      "title": "Test a Different File Safely",
       "instruction": "Leave the original file unchanged. Open a small, known-good file of the same type or create a blank document, then perform the same basic action.",
       "help_text": "This separates an application problem from a damaged, oversized, or unsupported file.",
       "next": "other_file_result"
@@ -40,7 +40,7 @@
     },
     "file_specific": {
       "type": "resolution",
-      "title": "The issue appears file-specific",
+      "title": "The Issue Appears File-Specific",
       "message": "The application works with other files. Restore an earlier copy, ask the file owner to recreate it, or use the application's built-in repair or recovery option. Keep the original for recovery and do not overwrite it."
     },
     "check_scope": {
@@ -54,12 +54,12 @@
     },
     "system_wide": {
       "type": "resolution",
-      "title": "Use the computer performance workflow",
+      "title": "Use the Computer Performance Workflow",
       "message": "Multiple applications are affected, which suggests a broader Windows resource or stability issue. Open Computer Running Slowly and record any sustained CPU, memory, or disk use."
     },
     "restart_application": {
       "type": "instruction",
-      "title": "Close and reopen the application",
+      "title": "Close and Reopen the Application",
       "instruction": "Close the application normally. If it remains frozen, open Task Manager with Ctrl+Shift+Esc, select only the affected application, choose End task, wait ten seconds, and reopen it.",
       "help_text": "Restarting clears the application's temporary state without changing its settings or files.",
       "knowledge_article": "windows-task-manager-performance",
@@ -75,7 +75,7 @@
     },
     "resolved_restart": {
       "type": "resolution",
-      "title": "Temporary application problem cleared",
+      "title": "Temporary Application Problem Cleared",
       "message": "The application is responding again. If the problem returns, note the exact action, file, and error message that preceded it."
     },
     "restart_computer": {
@@ -95,7 +95,7 @@
     },
     "check_update": {
       "type": "instruction",
-      "title": "Check for an approved application update",
+      "title": "Check for an Approved Application Update",
       "instruction": "Use the application's Help or About menu, Microsoft Store, or your organization's software portal to check for an update. Do not download installers from advertisements or unfamiliar sites.",
       "help_text": "A vendor update may correct a known compatibility or stability defect.",
       "next": "update_result"
@@ -111,7 +111,7 @@
     },
     "test_update": {
       "type": "instruction",
-      "title": "Test after the update",
+      "title": "Test After the Update",
       "instruction": "Restart the application and repeat the action that previously caused the failure using noncritical data when possible.",
       "next": "final_result"
     },
@@ -125,12 +125,12 @@
     },
     "resolved_update": {
       "type": "resolution",
-      "title": "Application stability restored",
+      "title": "Application Stability Restored",
       "message": "The approved update corrected the problem. Continue using the supported update source and monitor for recurrence."
     },
     "escalate": {
       "type": "resolution",
-      "title": "Application support is recommended",
+      "title": "Application Support Is Recommended",
       "message": "Record the application version, Windows version, exact error text, affected file or action, and time of the latest failure. A technician can review logs, repair the installation, or reinstall it without risking user data."
     }
   }

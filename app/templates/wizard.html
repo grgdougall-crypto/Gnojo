@@ -46,12 +46,12 @@
     {% if learning_mode and learning_content %}
     <section class="learning-step-panel mb-4" aria-labelledby="learningStepTitle">
         <div class="learning-step-panel__header">
-            <div><span class="text-uppercase small fw-bold">Learning Mode</span><h2 id="learningStepTitle" class="h5 mb-0">Understand this step</h2></div>
+            <div><span class="text-uppercase small fw-bold">Learning Mode</span><h2 id="learningStepTitle" class="h5 mb-0">Understand This Step</h2></div>
             <span class="badge text-bg-info">{{ concepts_covered|length }} concept{% if concepts_covered|length != 1 %}s{% endif %} covered</span>
         </div>
         <div class="learning-step-grid">
-            <article><i class="bi bi-search"></i><div><h3>What this checks</h3><p>{{ learning_content.what_it_checks }}</p></div></article>
-            <article><i class="bi bi-lightbulb"></i><div><h3>Why this matters</h3><p>{{ learning_content.why_it_matters }}</p></div></article>
+            <article><i class="bi bi-search"></i><div><h3>What This Checks</h3><p>{{ learning_content.what_it_checks }}</p></div></article>
+            <article><i class="bi bi-lightbulb"></i><div><h3>Why This Matters</h3><p>{{ learning_content.why_it_matters }}</p></div></article>
         </div>
         <div class="learning-concepts">
             {% for concept in learning_content.concepts %}
@@ -197,7 +197,7 @@
                 {% endif %}
 
                 {% if article.common_indicators %}
-                    <h6>Common indicators</h6>
+                    <h6>Common Indicators</h6>
 
                     <ul>
                         {% for indicator in article.common_indicators %}
@@ -209,9 +209,17 @@
                 {% if article.commands %}
                     <h6>Commands</h6>
 
+                    <div class="knowledge-command-list">
                     {% for command in article.commands %}
-                        <pre class="bg-light border rounded p-3"><code>{{ command }}</code></pre>
+                        <div class="knowledge-command">
+                            <code>{{ command.command if command is mapping else command }}</code>
+
+                            {% if command is mapping and command.description %}
+                                <p>{{ command.description }}</p>
+                            {% endif %}
+                        </div>
                     {% endfor %}
+                    </div>
                 {% endif %}
 
                 {% if article.related_topics %}
@@ -395,7 +403,7 @@
                 {% if learning_mode %}
                 <div class="learning-completion mt-4">
                     <p class="text-uppercase small fw-bold mb-2">Learning recap</p>
-                    <h3 class="h5">Concepts covered in this session</h3>
+                    <h3 class="h5">Concepts Covered in This Session</h3>
                     <div class="d-flex flex-wrap gap-2 mt-3">{% for concept in concepts_covered %}<span class="badge text-bg-info">{{ concept }}</span>{% endfor %}</div>
                     <p class="small text-muted mt-3 mb-0">Try explaining the diagnostic path in your own words: what evidence did each step provide, and why did it lead to the next action?</p>
                 </div>

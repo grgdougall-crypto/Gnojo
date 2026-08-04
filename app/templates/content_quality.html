@@ -17,7 +17,7 @@
     </section>
 
     <section class="quality-section" aria-labelledby="queueTitle">
-        <div class="quality-section__heading"><div><span class="section-eyebrow">Prioritized queue</span><h2 id="queueTitle">What needs attention</h2></div><span>Highest-impact items appear first</span></div>
+        <div class="quality-section__heading"><div><span class="section-eyebrow">Prioritized queue</span><h2 id="queueTitle">What Needs Attention</h2></div><span>Highest-impact items appear first</span></div>
         {% if report.action_queue %}
         <div class="quality-queue">
             {% for item in report.action_queue %}
@@ -31,12 +31,12 @@
             {% endfor %}
         </div>
         {% else %}
-        <div class="quality-empty"><i class="bi bi-check-circle-fill" aria-hidden="true"></i><div><h3>No quality issues detected</h3><p>New signals will appear here as workflows are used and reviewed.</p></div></div>
+        <div class="quality-empty"><i class="bi bi-check-circle-fill" aria-hidden="true"></i><div><h3>No Quality Issues Detected</h3><p>New signals will appear here as workflows are used and reviewed.</p></div></div>
         {% endif %}
     </section>
 
     <section class="quality-section" aria-labelledby="healthTitle">
-        <div class="quality-section__heading"><div><span class="section-eyebrow">Workflow health</span><h2 id="healthTitle">Library overview</h2></div></div>
+        <div class="quality-section__heading"><div><span class="section-eyebrow">Workflow health</span><h2 id="healthTitle">Library Overview</h2></div></div>
         <div class="quality-table-wrap">
             <table class="quality-table">
                 <thead><tr><th>Workflow</th><th>Usage</th><th>Solved</th><th>Clarity</th><th>Knowledge</th><th>Learning</th><th></th></tr></thead>
@@ -54,7 +54,7 @@
     </section>
 
     <section class="quality-section" aria-labelledby="coverageTitle">
-        <div class="quality-section__heading"><div><span class="section-eyebrow">Library balance</span><h2 id="coverageTitle">Coverage snapshot</h2></div></div>
+        <div class="quality-section__heading"><div><span class="section-eyebrow">Library balance</span><h2 id="coverageTitle">Coverage Snapshot</h2></div></div>
         <div class="quality-coverage-grid">
             <article><h3>Categories</h3>{% for name, count in report.coverage.categories %}<div><span>{{ name }}</span><strong>{{ count }}</strong></div>{% endfor %}</article>
             <article><h3>Platforms</h3>{% for name, count in report.coverage.platforms %}<div><span>{{ name }}</span><strong>{{ count }}</strong></div>{% endfor %}</article>

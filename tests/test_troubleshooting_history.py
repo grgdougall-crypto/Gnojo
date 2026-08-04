@@ -96,7 +96,7 @@ class TroubleshootingHistoryPageTests(unittest.TestCase):
         detail = self.client.get(
             f"/troubleshooting-history/{records[0]['id']}"
         )
-        self.assertIn("Session path", detail.get_data(as_text=True))
+        self.assertIn("Session Path", detail.get_data(as_text=True))
 
     def test_restarting_marks_previous_session_abandoned(self):
         self.client.get("/wizard?workflow=internet")
@@ -114,7 +114,7 @@ class TroubleshootingHistoryPageTests(unittest.TestCase):
         record = self.service.list()[0]
         self.assertEqual(record["status"], "completed")
         self.assertEqual(record["final_node_id"], "resolved")
-        self.assertEqual(record["outcome"], "Internet connection restored")
+        self.assertEqual(record["outcome"], "Internet Connection Restored")
         self.assertGreaterEqual(record["steps"], 6)
         self.assertIn("How did this workflow perform?", response.get_data(as_text=True))
 
@@ -133,12 +133,12 @@ class TroubleshootingHistoryPageTests(unittest.TestCase):
         self.assertEqual(saved["clarity"], 3)
 
         history_html = self.client.get("/troubleshooting-history").get_data(as_text=True)
-        self.assertIn("Workflow feedback", history_html)
+        self.assertIn("Workflow Feedback", history_html)
         self.assertIn("Average clarity", history_html)
         detail_html = self.client.get(
             f"/troubleshooting-history/{record['id']}"
         ).get_data(as_text=True)
-        self.assertIn("Workflow quality", detail_html)
+        self.assertIn("Workflow Quality", detail_html)
         self.assertIn("A little more detail would help.", detail_html)
 
 

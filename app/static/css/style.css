@@ -1054,6 +1054,33 @@ dialog { max-height: calc(100dvh - 1rem); max-width: calc(100vw - 1rem); }
 .quality-coverage-grid h3 { font-size: 1rem; }
 .quality-coverage-grid article > div { border-top: 1px solid var(--sp-border); display: flex; justify-content: space-between; padding: .65rem 0; }
 
+.knowledge-command-list {
+    display: grid;
+    gap: .75rem;
+    margin-bottom: 1rem;
+}
+
+.knowledge-command {
+    padding: .9rem 1rem;
+    overflow-wrap: anywhere;
+    background: var(--sp-background);
+    border: 1px solid var(--sp-border);
+    border-radius: .65rem;
+}
+
+.knowledge-command code {
+    color: var(--sp-blue);
+    font-size: .9rem;
+    font-weight: 700;
+    white-space: pre-wrap;
+}
+
+.knowledge-command p {
+    margin: .45rem 0 0;
+    color: var(--sp-muted);
+    font-size: .9rem;
+}
+
 @media (max-width: 767.98px) {
     .quality-page { padding-block: 2rem; }
     .quality-heading, .quality-section__heading { align-items: stretch; flex-direction: column; }

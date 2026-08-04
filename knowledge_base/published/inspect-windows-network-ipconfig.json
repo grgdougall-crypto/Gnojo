@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
   "id": "inspect-windows-network-ipconfig",
-  "title": "Use ipconfig to inspect Windows network configuration",
+  "title": "Inspect Windows Network Configuration with ipconfig",
   "category": "Networking",
   "tags": [
     "ipconfig",
@@ -19,16 +19,16 @@
     "ipconfig"
   ],
   "difficulty": "Beginner",
-  "estimated_time": "15-20 minutes",
-  "overview": "The 'ipconfig' command-line tool is essential for Windows users and IT professionals to quickly view and manage network adapter settings. This article will guide entry-level IT support technicians and learners through using 'ipconfig' to inspect IP addresses, subnet masks, default gateways, DNS servers, and other crucial network configuration details. Understanding these basics is fundamental for diagnosing common network connectivity issues.",
+  "estimated_time": "5 to 10 minutes",
+  "overview": "The ipconfig command displays Windows TCP/IP configuration. It can show addresses, subnet masks, default gateways, DNS servers, and DHCP details that help diagnose connectivity problems. Its release, renew, and flush options change network state and should be used only when the symptom justifies them.",
   "checklist": [
-    "Open Command Prompt as an administrator.",
-    "Run 'ipconfig' to get a quick overview of active network adapters.",
-    "Run 'ipconfig /all' for detailed configuration information.",
+    "Open Command Prompt. Standard access is sufficient for the read-only display commands.",
+    "Run ipconfig to get a quick overview of network adapters.",
+    "Run ipconfig /all for detailed configuration information.",
     "Identify the IP address, subnet mask, and default gateway for your active adapter.",
     "Note the DNS server addresses being used.",
-    "If experiencing connectivity issues, try 'ipconfig /release' followed by 'ipconfig /renew'.",
-    "If experiencing name resolution issues, try 'ipconfig /flushdns'."
+    "Use ipconfig /release followed by ipconfig /renew only for an adapter that receives its address through DHCP. This temporarily interrupts that adapter's connection, so do not use it during a remote support session without a recovery plan.",
+    "Use ipconfig /flushdns only when stale DNS cache information is a plausible cause of a name-resolution problem."
   ],
   "common_indicators": [
     "Cannot access websites or network resources.",
@@ -49,11 +49,11 @@
     },
     {
       "command": "ipconfig /release",
-      "description": "Releases the current IP address obtained from a DHCP server for the specified adapter(s). This effectively disconnects the adapter from the network until a new IP address is obtained."
+      "description": "Releases a DHCP-assigned IPv4 address for the specified adapter. This interrupts that adapter's connection until an address is renewed."
     },
     {
       "command": "ipconfig /renew",
-      "description": "Requests a new IP address from a DHCP server for the specified adapter(s). This command is often used after 'ipconfig /release' to troubleshoot IP address assignment issues."
+      "description": "Renews DHCP configuration for the specified adapter. It is commonly used after ipconfig /release when diagnosing DHCP address assignment."
     },
     {
       "command": "ipconfig /flushdns",
@@ -95,7 +95,7 @@
     "reviewed_by": null,
     "reviewed_at": null,
     "notes": [
-      "Migrated to article schema 1.0; technical review is still required."
+      "Checked against the Microsoft ipconfig command reference on 2026-08-03; awaiting final human approval."
     ]
   }
 }

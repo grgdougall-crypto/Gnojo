@@ -14,7 +14,7 @@
     <div class="card shadow-sm mb-4"><div class="card-body p-4"><h2 class="h5">Before using</h2><ol class="small"><li>Read the complete source.</li><li>Use only on a device you are authorized to manage.</li><li>Open PowerShell; elevation is {{ 'required' if script.permissions.requires_elevation else 'not normally required' }}.</li>{% if script.dry_run %}<li>Run with <code>-WhatIf</code> first and verify the preview.</li>{% else %}<li>Review the generated report before sharing.</li>{% endif %}</ol>{% if script.dry_run %}<p class="small text-success mb-0"><strong>Preview:</strong> {{ script.dry_run }}</p>{% endif %}</div></div>
     {% if script.rollback %}<div class="alert alert-danger"><strong>Rollback and recovery</strong><br>{{ script.rollback }}</div>{% endif %}
     <div class="alert alert-warning"><strong>Privacy note</strong><br>{{ script.privacy_note }}</div>
-    <div class="card shadow-sm"><div class="card-body p-4"><h2 class="h5">Related commands</h2><div class="d-grid gap-2">{% for command in related_commands %}<a href="{{ url_for('view_command', command_id=command.id) }}">{{ command.name }}</a>{% endfor %}</div></div></div>
+    <div class="card shadow-sm"><div class="card-body p-4"><h2 class="h5">Related Commands</h2><div class="d-grid gap-2">{% for command in related_commands %}<a href="{{ url_for('view_command', command_id=command.id) }}">{{ command.name }}</a>{% endfor %}</div></div></div>
   </aside></div>
 </div>
 {% endblock %}

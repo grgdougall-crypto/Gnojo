@@ -1,7 +1,8 @@
 {
+  "schema_version": "1.0",
   "id": "ping",
   "name": "ping",
-  "title": "Test network connectivity with ping",
+  "title": "Test Network Connectivity with ping",
   "summary": "Tests whether a remote host can be reached and measures basic response time using ICMP echo requests.",
   "category": "Networking",
   "shell": "Command Prompt",
@@ -17,24 +18,24 @@
 
   "examples": [
     {
-      "command": "ping 8.8.8.8",
-      "description": "Tests connectivity to a public IP address without relying on DNS."
+      "command": "ping <default-gateway-address>",
+      "description": "Tests whether the local router or gateway responds without relying on DNS. Replace the placeholder with the gateway shown by ipconfig."
     },
     {
-      "command": "ping google.com",
-      "description": "Tests connectivity and confirms whether the hostname can be resolved."
+      "command": "ping example.com",
+      "description": "Tests whether the hostname resolves. A lack of ICMP replies does not prove that the website is unavailable."
     },
     {
-      "command": "ping -t 8.8.8.8",
-      "description": "Sends echo requests continuously until the command is stopped with Ctrl+C."
+      "command": "ping -t <approved-host>",
+      "description": "Sends echo requests continuously to an approved host until the command is stopped with Ctrl+C."
     },
     {
-      "command": "ping -n 5 8.8.8.8",
-      "description": "Sends exactly five echo requests."
+      "command": "ping -n 5 <approved-host>",
+      "description": "Sends exactly five echo requests to an approved host."
     },
     {
-      "command": "ping -4 google.com",
-      "description": "Forces the command to use IPv4."
+      "command": "ping -4 example.com",
+      "description": "Forces the command to resolve and test using IPv4."
     }
   ],
 
@@ -120,7 +121,12 @@
       "title": "ping",
       "organization": "Microsoft Learn",
       "type": "Official Documentation",
-      "url": "https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/ping"
+      "url": "https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/ping",
+      "verified": "2026-08-03"
     }
-  ]
+  ],
+  "review_status": "pending_review",
+  "reviewed_by": null,
+  "last_reviewed": null,
+  "version": "1.0"
 }

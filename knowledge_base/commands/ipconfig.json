@@ -2,7 +2,7 @@
   "schema_version": "1.0",
   "id": "ipconfig",
   "name": "ipconfig",
-  "title": "Inspect Windows network configuration with ipconfig",
+  "title": "Inspect Windows Network Configuration with ipconfig",
   "shell": "Command Prompt",
   "platforms": [
     "Windows 10",
@@ -109,7 +109,7 @@
       "verified": "2026-08-01"
     }
   ],
-  "review_status": "draft",
+  "review_status": "pending_review",
   "reviewed_by": null,
   "last_reviewed": null,
   "version": "1.0"

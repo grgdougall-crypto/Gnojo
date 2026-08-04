@@ -9,7 +9,7 @@
   "nodes": {
     "protect_data": {
       "type": "instruction",
-      "title": "Protect important files",
+      "title": "Protect Important Files",
       "instruction": "Save open work and confirm that important files are backed up or synchronized. Do not manually delete anything from Windows, Program Files, ProgramData, or unfamiliar folders.",
       "help_text": "Storage cleanup should remove known, replaceable content—not system components or the only copy of personal data.",
       "knowledge_article": "windows-storage-performance",
@@ -17,7 +17,7 @@
     },
     "check_storage": {
       "type": "instruction",
-      "title": "Review Windows storage usage",
+      "title": "Review Windows Storage Usage",
       "instruction": "Open Settings > System > Storage. Note the free space on the Windows drive and allow the category totals to finish calculating.",
       "help_text": "Windows groups usage into categories so you can target safe cleanup instead of guessing by folder name.",
       "knowledge_article": "windows-storage-performance",
@@ -33,7 +33,7 @@
         "unsure": {"label": "I'm not sure", "next": "cleanup_recommendations"}
       }
     },
-    "not_storage": {"type": "resolution", "title": "Available storage is not critically low", "message": "The Windows drive has useful working space. If the computer is slow or an application reports insufficient space, record the exact message and check whether it refers to another drive, mailbox, cloud account, or application quota."},
+    "not_storage": {"type": "resolution", "title": "Available Storage Is Not Critically Low", "message": "The Windows drive has useful working space. If the computer is slow or an application reports insufficient space, record the exact message and check whether it refers to another drive, mailbox, cloud account, or application quota."},
     "empty_recycle_bin": {
       "type": "instruction",
       "title": "Review the Recycle Bin",
@@ -43,7 +43,7 @@
     },
     "cleanup_recommendations": {
       "type": "instruction",
-      "title": "Use Cleanup recommendations",
+      "title": "Use Cleanup Recommendations",
       "instruction": "In Settings > System > Storage, open Cleanup recommendations. Review temporary files and other suggestions individually. Select only content you recognize and no longer need, then choose Clean up.",
       "help_text": "Windows identifies safer cleanup candidates and shows their size before removal.",
       "knowledge_article": "windows-storage-performance",
@@ -60,14 +60,14 @@
     },
     "recheck_space": {
       "type": "instruction",
-      "title": "Recheck available space",
+      "title": "Recheck Available Space",
       "instruction": "Return to Settings > System > Storage and note the updated free-space amount. Windows may take a moment to recalculate.",
       "next": "cleanup_result"
     },
-    "resolved_cleanup": {"type": "resolution", "title": "Working storage restored", "message": "Windows cleanup reclaimed enough space. Keep important data backed up and review Storage periodically before the drive becomes critically full."},
+    "resolved_cleanup": {"type": "resolution", "title": "Working Storage Restored", "message": "Windows cleanup reclaimed enough space. Keep important data backed up and review Storage periodically before the drive becomes critically full."},
     "review_apps": {
       "type": "instruction",
-      "title": "Review installed applications by size",
+      "title": "Review Installed Applications by Size",
       "instruction": "Open Settings > Apps > Installed apps and sort by size. Note large applications you recognize but do not uninstall workplace software, security tools, drivers, or shared applications without approval.",
       "help_text": "Large unused applications may offer more space than deleting many small documents, but removal can require licensing or administrator approval.",
       "next": "large_app_found"
@@ -83,13 +83,13 @@
     },
     "uninstall_app": {
       "type": "instruction",
-      "title": "Uninstall the approved application",
+      "title": "Uninstall the Approved Application",
       "instruction": "Confirm any files or license details are preserved, select the application in Installed apps, and choose Uninstall. Restart if the application's uninstaller requests it.",
       "next": "final_check"
     },
     "review_personal_files": {
       "type": "instruction",
-      "title": "Review large personal files",
+      "title": "Review Large Personal Files",
       "instruction": "Review Downloads, Videos, and other personal folders by size. Move files you need to approved backed-up storage. Delete only files you recognize and can replace.",
       "help_text": "Personal videos, installers, archives, and disk images often consume substantial space without affecting Windows.",
       "next": "final_check"
@@ -102,6 +102,6 @@
         "no": {"label": "No", "next": "escalate"}
       }
     },
-    "escalate": {"type": "resolution", "title": "Storage review is recommended", "message": "Record the drive capacity, free space, largest Storage categories, and cleanup already completed. A technician can check for managed retention, duplicate data, oversized profiles, update caches, another drive, or a safe storage upgrade."}
+    "escalate": {"type": "resolution", "title": "Storage Review Is Recommended", "message": "Record the drive capacity, free space, largest Storage categories, and cleanup already completed. A technician can check for managed retention, duplicate data, oversized profiles, update caches, another drive, or a safe storage upgrade."}
   }
 }

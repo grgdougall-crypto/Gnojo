@@ -1,6 +1,9 @@
 {
   "workflow_id": "internet",
   "name": "Internet Connection",
+  "description": "Troubleshoot common Wi-Fi, Ethernet, router, and connectivity problems.",
+  "category": "Networking",
+  "platform": "Windows",
   "estimated_steps": 5,
   "start_node": "check_scope",
 
@@ -27,7 +30,7 @@
 
     "test_other_device": {
       "type": "instruction",
-      "title": "Test another device",
+      "title": "Test Another Device",
       "instruction": "Try connecting another phone, computer, or tablet to the same network.",
       "next": "check_scope"
     },
@@ -53,7 +56,7 @@
 
     "identify_connection": {
       "type": "instruction",
-      "title": "Identify the connection",
+      "title": "Identify the Connection",
       "instruction": "Look near the clock for a Wi-Fi symbol or check whether a network cable is connected to the computer.",
       "next": "check_connection"
     },
@@ -79,14 +82,14 @@
 
     "show_wifi_help": {
       "type": "instruction",
-      "title": "Check Wi-Fi status",
+      "title": "Check Wi-Fi Status",
       "instruction": "Select the network icon near the clock and confirm that Wi-Fi is turned on.",
       "next": "check_wifi_enabled"
     },
 
     "enable_wifi": {
       "type": "instruction",
-      "title": "Turn on Wi-Fi",
+      "title": "Turn On Wi-Fi",
       "instruction": "Select the network icon near the clock, turn on Wi-Fi, and try connecting again.",
       "next": "verify_resolution"
     },
@@ -100,7 +103,7 @@
 
     "check_ethernet_cable": {
       "type": "instruction",
-      "title": "Check the Ethernet cable",
+      "title": "Check the Ethernet Cable",
       "instruction": "Confirm that the network cable is firmly connected to both the computer and the router or wall connection.",
       "knowledge_article": "ethernet-connection-check",
       "next": "verify_resolution"
@@ -108,8 +111,8 @@
 
     "restart_network_equipment": {
       "type": "instruction",
-      "title": "Restart the network equipment",
-      "instruction": "Unplug the modem and router for 30 seconds. Plug the modem back in first, wait for it to reconnect, and then plug in the router.",
+      "title": "Restart the Network Equipment",
+      "instruction": "If this is equipment you own or are authorized to restart, save any active work that depends on the connection. Unplug the router and separate modem from power for at least 30 seconds. Reconnect the modem first and wait for its status lights to stabilize, then reconnect the router. Do not restart workplace, shared-building, cellular, or provider-managed equipment without approval.",
       "next": "verify_resolution"
     },
 
@@ -130,7 +133,7 @@
 
     "resolved": {
       "type": "resolution",
-      "title": "Internet connection restored",
+      "title": "Internet Connection Restored",
       "message": "The connection appears to be working again."
     },
 

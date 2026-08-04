@@ -1,15 +1,18 @@
 {
   "workflow_id": "network_diagnostics",
   "name": "Advanced Network Diagnostics",
+  "description": "Inspect IP configuration, local reachability, and DNS without changing network settings.",
+  "category": "Networking",
+  "platform": "Windows",
   "estimated_steps": 5,
   "start_node": "inspect_ip_configuration",
 
   "nodes": {
     "inspect_ip_configuration": {
       "type": "instruction",
-      "title": "Inspect the IP configuration",
+      "title": "Inspect the IP Configuration",
       "instruction": "Open Command Prompt and run ipconfig /all. Check whether the active adapter has an IPv4 address, default gateway, and DNS servers.",
-      "knowledge_article": "ipconfig",
+      "knowledge_article": "inspect-windows-network-ipconfig",
       "next": "check_ip_address"
     },
 
@@ -39,9 +42,8 @@
 
     "test_gateway": {
       "type": "instruction",
-      "title": "Test the default gateway",
+      "title": "Test the Default Gateway",
       "instruction": "Run ping followed by the default gateway address shown in ipconfig /all.",
-      "knowledge_article": "ping",
       "next": "gateway_result"
     },
 
@@ -62,9 +64,8 @@
 
     "test_dns": {
       "type": "instruction",
-      "title": "Test DNS resolution",
+      "title": "Test DNS Resolution",
       "instruction": "Run nslookup example.com and confirm that a DNS server returns an address.",
-      "knowledge_article": "nslookup",
       "next": "dns_result"
     },
 
@@ -85,31 +86,31 @@
 
     "dhcp_problem": {
       "type": "resolution",
-      "title": "Possible DHCP problem",
-      "message": "The computer has an automatic private IP address. Renew the DHCP lease, verify the network connection, and confirm that a DHCP server is available."
+      "title": "Possible DHCP Problem",
+      "message": "The computer has an automatic private IP address. First verify the physical or Wi-Fi connection and whether DHCP is available. If policy allows a lease renewal, avoid doing it over the affected remote connection because releasing the address can disconnect the support session."
     },
 
     "adapter_problem": {
       "type": "resolution",
-      "title": "Possible adapter problem",
+      "title": "Possible Adapter Problem",
       "message": "The active adapter does not have an IPv4 address. Check whether the adapter is enabled, its driver is working, and the connection is active."
     },
 
     "local_network_problem": {
       "type": "resolution",
-      "title": "Local network connectivity problem",
+      "title": "Local Network Connectivity Problem",
       "message": "The computer could not reach its default gateway. Check the adapter, cable or Wi-Fi connection, switch port, VLAN, and local network equipment."
     },
 
     "dns_problem": {
       "type": "resolution",
-      "title": "DNS resolution problem",
-      "message": "The computer can reach the local network, but DNS resolution failed. Verify the configured DNS servers and test with a known working DNS server."
+      "title": "DNS Resolution Problem",
+      "message": "The computer can reach the local network, but DNS resolution failed. Record the configured DNS servers and query an organization-approved DNS server explicitly if one is available. Do not replace DNS settings without authorization."
     },
 
     "advanced_complete": {
       "type": "resolution",
-      "title": "Core network diagnostics passed",
+      "title": "Core Network Diagnostics Passed",
       "message": "The computer has a valid IP configuration, can reach the default gateway, and can resolve DNS names. Continue with browser, proxy, VPN, firewall, or application-specific troubleshooting if the issue remains."
     }
   }

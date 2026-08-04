@@ -9,7 +9,7 @@
   "nodes": {
     "confirm_windows": {
       "type": "instruction",
-      "title": "Confirm the Windows device",
+      "title": "Confirm the Windows Device",
       "instruction": "Save open work before beginning. This workflow uses Windows tools and does not require installing additional software.",
       "help_text": "Preserving work first makes later restart and update steps safer.",
       "conditions": {"platform": "Windows"},
@@ -18,7 +18,7 @@
     },
     "unsupported_platform": {
       "type": "resolution",
-      "title": "Use a workflow for this operating system",
+      "title": "Use a Workflow for This Operating System",
       "message": "This performance workflow is designed for Windows. Choose a platform-specific workflow or update the active device profile before continuing."
     },
     "identify_scope": {
@@ -34,7 +34,7 @@
     },
     "restart_application": {
       "type": "instruction",
-      "title": "Restart the affected application",
+      "title": "Restart the Affected Application",
       "instruction": "Save work in the application, close it completely, wait ten seconds, and open it again. Do not end unfamiliar background processes.",
       "next": "application_improved"
     },
@@ -48,12 +48,12 @@
     },
     "resolved_application": {
       "type": "resolution",
-      "title": "Application performance restored",
+      "title": "Application Performance Restored",
       "message": "Restarting the application cleared its temporary state. Save work regularly and note whether the slowdown returns after a specific action."
     },
     "application_specific": {
       "type": "resolution",
-      "title": "Application-specific investigation needed",
+      "title": "Application-Specific Investigation Needed",
       "message": "The rest of Windows may be healthy. Check the application's updates, add-ons, file size, network dependency, and support documentation before changing system-wide settings."
     },
     "check_recent_restart": {
@@ -68,7 +68,7 @@
     },
     "restart_windows": {
       "type": "instruction",
-      "title": "Restart Windows safely",
+      "title": "Restart Windows Safely",
       "instruction": "Save all work, open Start, select Power, and choose Restart. Sign back in and allow two minutes for startup activity to settle.",
       "help_text": "A controlled restart reloads Windows services and clears temporary resource problems.",
       "next": "restart_improved"
@@ -83,12 +83,12 @@
     },
     "resolved_restart": {
       "type": "resolution",
-      "title": "Temporary performance issue cleared",
+      "title": "Temporary Performance Issue Cleared",
       "message": "The restart restored normal performance. If the issue returns, note which application or activity was running immediately beforehand."
     },
     "inspect_task_manager": {
       "type": "instruction",
-      "title": "Inspect resource use in Task Manager",
+      "title": "Inspect Resource Use in Task Manager",
       "instruction": "Press Ctrl+Shift+Esc. On the Processes page, wait about 30 seconds, then compare the CPU, Memory, and Disk columns. Do not end unfamiliar Windows processes.",
       "help_text": "Task Manager shows which resource is under sustained pressure and which process is using it.",
       "knowledge_article": "windows-task-manager-performance",
@@ -108,7 +108,7 @@
     },
     "reduce_active_workload": {
       "type": "instruction",
-      "title": "Reduce the active workload",
+      "title": "Reduce the Active Workload",
       "instruction": "Save your work and close applications you recognize but are not currently using. In Task Manager, leave Windows processes and unfamiliar items alone.",
       "help_text": "Closing known applications is reversible and tests whether the slowdown is caused by the current workload.",
       "next": "workload_improved"
@@ -123,12 +123,12 @@
     },
     "resolved_workload": {
       "type": "resolution",
-      "title": "Active workload identified",
+      "title": "Active Workload Identified",
       "message": "Running applications were placing the system under resource pressure. Reopen only what is needed and monitor Task Manager to identify the application that causes sustained high use."
     },
     "check_storage": {
       "type": "instruction",
-      "title": "Check available storage",
+      "title": "Check Available Storage",
       "instruction": "Open Settings, select System, then Storage. Note the free space on the Windows drive without deleting anything yet.",
       "knowledge_article": "windows-storage-performance",
       "next": "storage_result"
@@ -145,7 +145,7 @@
     },
     "safe_storage_cleanup": {
       "type": "instruction",
-      "title": "Free space with Windows recommendations",
+      "title": "Free Space with Windows Recommendations",
       "instruction": "In Settings > System > Storage, open Cleanup recommendations. Review each category and remove only files you recognize and no longer need. Do not manually delete Windows or Program Files folders.",
       "help_text": "Windows cleanup recommendations are safer than deleting system folders manually.",
       "knowledge_article": "windows-storage-performance",
@@ -161,12 +161,12 @@
     },
     "resolved_storage": {
       "type": "resolution",
-      "title": "Low storage was affecting performance",
+      "title": "Low Storage Was Affecting Performance",
       "message": "Freeing storage restored working space for Windows, updates, and temporary files. Keep important personal files backed up and review storage periodically."
     },
     "review_startup_apps": {
       "type": "instruction",
-      "title": "Review startup applications",
+      "title": "Review Startup Applications",
       "instruction": "Open Task Manager, select Startup apps, and sort by Startup impact. Disable only optional applications you recognize and do not need immediately after sign-in. Leave security, accessibility, driver, and workplace management tools enabled.",
       "help_text": "Startup apps compete for resources at the same time and can make sign-in feel slow.",
       "knowledge_article": "windows-task-manager-performance",
@@ -182,7 +182,7 @@
     },
     "restart_after_startup": {
       "type": "instruction",
-      "title": "Test the lighter startup",
+      "title": "Test the Lighter Startup",
       "instruction": "Restart Windows, sign in, and wait two minutes. Then test the tasks that previously felt slow.",
       "next": "startup_improved"
     },
@@ -196,12 +196,12 @@
     },
     "resolved_startup": {
       "type": "resolution",
-      "title": "Startup load reduced",
+      "title": "Startup Load Reduced",
       "message": "Optional startup applications were consuming resources after sign-in. They remain installed and can still be opened when needed."
     },
     "run_security_scan": {
       "type": "instruction",
-      "title": "Run a Windows Security quick scan",
+      "title": "Run a Windows Security Quick Scan",
       "instruction": "Open Windows Security, select Virus & threat protection, and run a Quick scan. Keep the device connected to power and follow only the actions recommended by Windows Security.",
       "help_text": "A built-in malware scan checks for unwanted software without requiring an unfamiliar download.",
       "next": "security_result"
@@ -217,7 +217,7 @@
     },
     "security_followup": {
       "type": "resolution",
-      "title": "Security follow-up required",
+      "title": "Security Follow-Up Required",
       "message": "Follow the remediation shown by Windows Security or contact your support team. Avoid entering sensitive information until detected threats are handled and the device is rescanned."
     },
     "check_updates": {
@@ -237,7 +237,7 @@
     },
     "install_updates": {
       "type": "instruction",
-      "title": "Install approved updates",
+      "title": "Install Approved Updates",
       "instruction": "Save work, connect the computer to power, install the available Windows updates, and restart when prompted. On a managed workplace device, follow your organization's update policy.",
       "next": "updates_improved"
     },
@@ -251,12 +251,12 @@
     },
     "resolved_updates": {
       "type": "resolution",
-      "title": "Updates restored performance",
+      "title": "Updates Restored Performance",
       "message": "A Windows or driver update corrected the performance problem. Continue normal update maintenance and monitor for recurrence."
     },
     "escalate_performance": {
       "type": "resolution",
-      "title": "Deeper performance diagnostics recommended",
+      "title": "Deeper Performance Diagnostics Recommended",
       "message": "The safe first-line checks did not isolate the cause. Record the slow task, Task Manager resource levels, available storage, scan result, and update status for a technician. Hardware health, event logs, drivers, or application profiling may require deeper review."
     }
   }

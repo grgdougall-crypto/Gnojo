@@ -46,9 +46,9 @@ class DesktopSupportContentPackTests(unittest.TestCase):
 
     def test_each_workflow_opens_at_its_expected_first_step(self):
         expected = {
-            "application_crash": "Protect your work first",
+            "application_crash": "Protect Your Work First",
             "no_sound": "Where is sound missing?",
-            "low_storage": "Protect important files",
+            "low_storage": "Protect Important Files",
         }
         for workflow_id, first_step in expected.items():
             with self.subTest(workflow_id=workflow_id):
@@ -60,9 +60,9 @@ class DesktopSupportContentPackTests(unittest.TestCase):
 
     def test_representative_paths_reach_clear_resolutions(self):
         paths = {
-            "application_crash": (["", "one_file", "", "yes"], "file-specific"),
-            "no_sound": (["one_app", "", "yes"], "Application audio restored"),
-            "low_storage": (["", "", "critical", "", "", "yes"], "Working storage restored"),
+            "application_crash": (["", "one_file", "", "yes"], "File-Specific"),
+            "no_sound": (["one_app", "", "yes"], "Application Audio Restored"),
+            "low_storage": (["", "", "critical", "", "", "yes"], "Working Storage Restored"),
         }
         for workflow_id, (answers, expected) in paths.items():
             with self.subTest(workflow_id=workflow_id):

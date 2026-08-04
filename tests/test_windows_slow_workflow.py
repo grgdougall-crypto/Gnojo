@@ -39,12 +39,12 @@ class WindowsSlowWorkflowTests(unittest.TestCase):
 
     def test_application_path_reaches_resolution_and_records_history(self):
         start = self.client.get("/wizard?workflow=windows_slow")
-        self.assertIn("Confirm the Windows device", start.get_data(as_text=True))
+        self.assertIn("Confirm the Windows Device", start.get_data(as_text=True))
         for answer in ("", "one_app", "", "yes"):
             response = self.client.post(
                 "/wizard", data={"answer": answer}, follow_redirects=True
             )
-        self.assertIn("Application performance restored", response.get_data(as_text=True))
+        self.assertIn("Application Performance Restored", response.get_data(as_text=True))
         record = self.history.list()[0]
         self.assertEqual(record["status"], "completed")
         self.assertEqual(record["final_node_id"], "resolved_application")
@@ -56,7 +56,7 @@ class WindowsSlowWorkflowTests(unittest.TestCase):
                 "/wizard", data={"answer": answer}, follow_redirects=True
             )
         html = response.get_data(as_text=True)
-        self.assertIn("Inspect resource use in Task Manager", html)
+        self.assertIn("Inspect Resource Use in Task Manager", html)
         self.assertIn("Reading Windows Performance in Task Manager", html)
         self.assertIn("Processor utilization", html)
 

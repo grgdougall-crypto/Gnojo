@@ -31,7 +31,7 @@
 
     {% if analytics.feedback_count %}
     <section class="feedback-analytics" aria-labelledby="feedbackAnalyticsTitle">
-        <div class="history-section__heading"><div><span class="section-eyebrow">Quality</span><h2 id="feedbackAnalyticsTitle">Workflow feedback</h2></div><span>{{ analytics.feedback_count }} response{% if analytics.feedback_count != 1 %}s{% endif %}</span></div>
+        <div class="history-section__heading"><div><span class="section-eyebrow">Quality</span><h2 id="feedbackAnalyticsTitle">Workflow Feedback</h2></div><span>{{ analytics.feedback_count }} response{% if analytics.feedback_count != 1 %}s{% endif %}</span></div>
         <div class="analytics-grid">
             <article><span>Problem solved</span><strong>{{ analytics.solved_rate }}%</strong></article>
             <article><span>Partially solved</span><strong>{{ analytics.partial_rate }}%</strong></article>
@@ -39,7 +39,7 @@
             <article><span>Survey responses</span><strong>{{ analytics.feedback_count }}</strong></article>
         </div>
         {% if analytics.confusing_steps %}
-        <div class="confusing-step-list"><h3>Most-reported confusing steps</h3>{% for item in analytics.confusing_steps %}<div><span>{{ item.node_id|friendly_node }}</span><strong>{{ item.count }} report{% if item.count != 1 %}s{% endif %}</strong></div>{% endfor %}</div>
+        <div class="confusing-step-list"><h3>Most-Reported Confusing Steps</h3>{% for item in analytics.confusing_steps %}<div><span>{{ item.node_id|friendly_node }}</span><strong>{{ item.count }} report{% if item.count != 1 %}s{% endif %}</strong></div>{% endfor %}</div>
         {% endif %}
     </section>
     {% endif %}
@@ -47,7 +47,7 @@
     {% if analytics.popular_workflows %}
     <section class="history-section" aria-labelledby="popularTitle">
         <div class="history-section__heading">
-            <div><span class="section-eyebrow">Usage</span><h2 id="popularTitle">Most-used workflows</h2></div>
+            <div><span class="section-eyebrow">Usage</span><h2 id="popularTitle">Most-Used Workflows</h2></div>
         </div>
         <div class="workflow-analytics-list">
             {% for item in analytics.popular_workflows %}
@@ -63,7 +63,7 @@
 
     <section class="history-section" aria-labelledby="recentTitle">
         <div class="history-section__heading">
-            <div><span class="section-eyebrow">Sessions</span><h2 id="recentTitle">Recent activity</h2></div>
+            <div><span class="section-eyebrow">Sessions</span><h2 id="recentTitle">Recent Activity</h2></div>
             {% if records %}<span>{{ records|length }} saved</span>{% endif %}
         </div>
         {% if records %}
@@ -84,7 +84,7 @@
         {% else %}
         <div class="history-empty">
             <i class="bi bi-clock-history" aria-hidden="true"></i>
-            <h3>No troubleshooting history yet</h3>
+            <h3>No Troubleshooting History Yet</h3>
             <p>Your sessions will appear here after you start a workflow.</p>
             <a class="btn btn-primary" href="{{ url_for('home') }}#workflows">Start troubleshooting</a>
         </div>

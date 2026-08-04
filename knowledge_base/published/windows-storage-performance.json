@@ -20,7 +20,7 @@
   "overview": "Windows needs free storage for updates, temporary files, application caches, and virtual memory. Cleanup recommendations help identify removable content while keeping the user in control of what is deleted.",
   "checklist": [
     "Open Settings > System > Storage and review the Windows drive.",
-    "Treat less than about 10 percent free space as a warning sign.",
+    "Note any Windows low-storage warning and whether updates or applications report that more space is required.",
     "Open Cleanup recommendations and review every category before selecting files.",
     "Move important personal files to an approved backup location before removing them.",
     "Never manually delete Windows, Program Files, or unfamiliar system folders."
@@ -54,7 +54,7 @@
   "sources": [
     {
       "title": "Free up drive space in Windows",
-      "url": "https://support.microsoft.com/windows/free-up-drive-space-in-windows"
+      "url": "https://support.microsoft.com/en-us/windows/experience/storage-filemanagement/free-up-drive-space-in-windows"
     }
   ],
   "schema_version": "1.0",
@@ -68,7 +68,7 @@
     "reviewed_by": null,
     "reviewed_at": null,
     "notes": [
-      "Migrated to article schema 1.0; technical review is still required."
+      "Checked against current Microsoft Storage and Cleanup recommendations on 2026-08-03; removed an unsupported universal free-space threshold; awaiting final human approval."
     ]
   }
 }

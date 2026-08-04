@@ -41,9 +41,9 @@ class WindowsCommandPackTests(unittest.TestCase):
         response = self.client.get("/commands")
         html = response.get_data(as_text=True)
         self.assertEqual(response.status_code, 200)
-        self.assertIn("Inspect Windows system information", html)
-        self.assertIn("Test a network host and service port", html)
-        self.assertIn("Scan the Windows component store", html)
+        self.assertIn("Inspect Windows System Information", html)
+        self.assertIn("Test a Network Host and Service Port", html)
+        self.assertIn("Scan the Windows Component Store", html)
         self.assertIn("Risk:", html)
 
     def test_every_new_command_detail_page_loads(self):
@@ -64,6 +64,16 @@ class WindowsCommandPackTests(unittest.TestCase):
         self.assertTrue(sfc["risk"]["changes_system"])
         self.assertTrue(dism["permissions"]["requires_elevation"])
         self.assertFalse(dism["risk"]["changes_system"])
+
+    def test_workflow_knowledge_panel_renders_structured_commands(self):
+        html = self.client.get(
+            "/wizard?workflow=network_diagnostics"
+        ).get_data(as_text=True)
+
+        self.assertIn("Inspect Windows Network Configuration with ipconfig", html)
+        self.assertIn('<div class="knowledge-command">', html)
+        self.assertIn("<code>ipconfig /all</code>", html)
+        self.assertNotIn("{&#39;command&#39;:", html)
 
 
 if __name__ == "__main__":

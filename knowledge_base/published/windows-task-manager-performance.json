@@ -25,7 +25,7 @@
     "Wait about 30 seconds so brief startup spikes can settle.",
     "Select a CPU, Memory, or Disk column to identify the busiest processes.",
     "Confirm that a process is an application you recognize before closing it.",
-    "Use Startup apps to review optional high-impact applications."
+    "Use Startup apps to review impact, but disable an item only after confirming that it is optional and understanding what it does."
   ],
   "common_indicators": [
     "CPU remains near full utilization even when the computer is idle.",
@@ -63,8 +63,12 @@
   ],
   "sources": [
     {
-      "title": "Task Manager overview",
-      "url": "https://support.microsoft.com/windows/how-to-use-task-manager"
+      "title": "Troubleshoot Processes by Using Task Manager",
+      "url": "https://learn.microsoft.com/en-us/troubleshoot/windows-server/support-tools/support-tools-task-manager"
+    },
+    {
+      "title": "Configure Startup applications in Windows",
+      "url": "https://support.microsoft.com/en-us/windows/experience/startup-boot/configure-startup-applications-in-windows"
     }
   ],
   "schema_version": "1.0",
@@ -78,7 +82,7 @@
     "reviewed_by": null,
     "reviewed_at": null,
     "notes": [
-      "Migrated to article schema 1.0; technical review is still required."
+      "Checked against current Microsoft Task Manager and Startup apps guidance on 2026-08-03; awaiting final human approval."
     ]
   }
 }

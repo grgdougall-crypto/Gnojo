@@ -62,11 +62,20 @@ DIFFICULTY
 Workflow Size:
 WORKFLOW_SIZE
 
+Size limits (count every question, instruction, resolution, and transition node):
+- Small: 8 to 12 total nodes.
+- Medium: 14 to 20 total nodes.
+- Large: 22 to 30 total nodes.
+- Never exceed the maximum for the requested size.
+
 Requirements
 
 Create a realistic IT troubleshooting workflow.
 
 Use professional help desk terminology.
+
+Use title case for the workflow name and for instruction, resolution, and transition titles.
+Use natural sentence capitalization for questions, answer labels, help text, instructions, and messages.
 
 Alternate between question and instruction nodes when appropriate.
 

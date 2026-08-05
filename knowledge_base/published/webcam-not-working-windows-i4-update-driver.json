@@ -2,7 +2,7 @@
   "schema_version": "1.0",
   "id": "webcam-not-working-windows-i4-update-driver",
   "title": "How to Update or Reinstall Webcam Driver",
-  "category": "Troubleshooting",
+  "category": "Desktop Support",
   "difficulty": "Beginner",
   "estimated_time": "5 to 10 minutes",
   "overview": "This article supports the Update or Reinstall Webcam Driver step in the Webcam Not Working workflow. It explains how to safely update or reinstall the approved webcam driver while avoiding unnecessary changes to other hardware or system settings.",

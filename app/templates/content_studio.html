@@ -26,6 +26,18 @@
     <div class="row g-4">
 
         <div class="col-12">
+            <a href="{{ url_for('curator_dashboard') }}" class="text-decoration-none">
+                <div class="card shadow-sm border-start border-4 border-info content-card curator-studio-card">
+                    <div class="card-body p-4 d-flex flex-wrap align-items-center gap-4">
+                        <div class="quality-studio-card__icon curator-studio-card__icon"><i class="bi bi-stars" aria-hidden="true"></i></div>
+                        <div class="flex-grow-1"><span class="section-eyebrow">Knowledge operations</span><h2 class="h4 mt-1 mb-1">Curator Dashboard</h2><p class="text-muted mb-0">Run deterministic audits and review persistent tasks, knowledge debt, health, and lessons.</p></div>
+                        <span class="btn btn-outline-info">Open Curator <i class="bi bi-arrow-right ms-2" aria-hidden="true"></i></span>
+                    </div>
+                </div>
+            </a>
+        </div>
+
+        <div class="col-12">
             <a href="{{ url_for('content_quality') }}" class="text-decoration-none">
                 <div class="card shadow-sm border-start border-4 border-danger content-card quality-studio-card">
                     <div class="card-body p-4 d-flex flex-wrap align-items-center gap-4">

@@ -40,6 +40,9 @@ app/workflow_drafts/
 app/workflow_publications/
 app/device_profiles/
 app/troubleshooting_history/
+curation_runs/
+curation_memory/
+.curator-audit.lock
 
 # OS and editor artifacts
 Thumbs.db

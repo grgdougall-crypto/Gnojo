@@ -19,6 +19,7 @@ Gnojo is a pre-1.0 application under active development. The current build inclu
 - A Windows, Linux, and macOS script library and script builder
 - Learning mode, workflow coverage, and content-quality analytics
 - Optional Gemini and OpenAI assistance with local fallbacks
+- Persistent Gnojo Curator knowledge operations with deterministic findings, durable tasks, debt and health trends, and evidence-backed lessons
 - Responsive light and dark themes with accessibility support
 
 The repository currently represents a local development build. A hosted demonstration is planned, but no public demo URL is available yet.
@@ -75,6 +76,14 @@ Run the complete automated test suite before committing:
 ```
 
 The suite covers workflows, publishing, search, device-aware routing, history, knowledge review, commands, scripts, accessibility, responsive behavior, error recovery, and content integrity.
+
+Run the Curator auditor without modifying trusted content:
+
+```powershell
+.\.venv\Scripts\python.exe -m curator audit
+```
+
+See [Gnojo Curator](docs/curator.md) for filters, outputs, exit codes, scheduling, and trust boundaries.
 
 ## Content lifecycle
 

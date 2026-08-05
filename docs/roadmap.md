@@ -18,6 +18,7 @@ This roadmap reflects the state of the repository as of August 2026. Completed i
 - [x] Learning mode and workflow-linked knowledge
 - [x] Feedback, history, coverage, and content-quality analytics
 - [x] Automated accessibility and content-integrity coverage
+- [x] Read-only Gnojo Curator audits with deterministic findings and review reports
 
 ## Current focus: trusted content library
 

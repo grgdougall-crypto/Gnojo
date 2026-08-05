@@ -2,7 +2,7 @@
   "schema_version": "1.0",
   "id": "no-sound-select-output",
   "title": "How to Select the Intended Audio Output",
-  "category": "Hardware",
+  "category": "Desktop Support",
   "difficulty": "Beginner",
   "estimated_time": "2–5 minutes",
   "overview": "This article supports the Select the Intended Audio Output step in the No Sound workflow. It explains how to identify and select the correct playback device in Windows when multiple audio devices are available.",

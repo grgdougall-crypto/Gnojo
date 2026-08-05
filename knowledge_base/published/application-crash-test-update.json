@@ -2,7 +2,7 @@
   "schema_version": "1.0",
   "id": "application-crash-test-update",
   "title": "How to Verify the Application After an Update",
-  "category": "Troubleshooting",
+  "category": "Desktop Support",
   "difficulty": "Beginner",
   "estimated_time": "2–5 minutes",
   "overview": "This article supports the Verify the Application After an Update step in the Application Keeps Crashing workflow. It explains how to confirm that the update was successful and whether it resolved the reported issue before continuing troubleshooting.",

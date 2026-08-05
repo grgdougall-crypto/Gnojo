@@ -96,6 +96,10 @@ from app.services.troubleshooting_history_service import (
     TroubleshootingHistoryService,
 )
 from app.services.content_quality_service import ContentQualityService
+from app.services.curator_dashboard_service import CuratorDashboardService
+from app.services.curator_task_service import CuratorTaskService
+from curator.locking import AuditAlreadyRunningError
+from curator.memory import CuratorMemoryError
 from app.services.workflow_coverage_service import (
     WorkflowCoverageError,
     WorkflowCoverageService,
@@ -636,6 +640,79 @@ def content_quality():
     records = TroubleshootingHistoryService().list(500)
     report = ContentQualityService().build(workflow_data, records, drafts)
     return render_template("content_quality.html", report=report)
+
+
+@app.route("/curator")
+def curator_dashboard():
+    status = request.args.get("status", "")
+    messages = {
+        "completed": ("success", "Curator audit completed. The dashboard now shows the latest operational findings."),
+        "running": ("warning", "A Curator audit is already running. Return shortly to review the completed report."),
+        "failed": ("danger", "The Curator audit could not be completed. Existing reports and trusted content were not changed."),
+    }
+    kind, message = messages.get(status, ("info", ""))
+    try:
+        dashboard = CuratorDashboardService().dashboard(sort_by=request.args.get("sort", "debt"))
+    except CuratorMemoryError:
+        dashboard = {"has_audit": False, "tasks": [], "recent_audits": []}
+        kind, message = "danger", "Curator memory could not be read. Existing trusted content was not changed."
+    return render_template("curator_dashboard.html", dashboard=dashboard, status_kind=kind, status_message=message)
+
+
+@app.route("/curator/tasks/<task_id>")
+def curator_task_detail(task_id):
+    try:
+        task = CuratorTaskService().get(task_id)
+    except CuratorMemoryError:
+        abort(404)
+    messages = {
+        "updated": ("success", "Knowledge Task updated."),
+        "invalid": ("danger", "The requested task change could not be applied."),
+    }
+    kind, message = messages.get(request.args.get("status", ""), ("info", ""))
+    return render_template(
+        "curator_task_detail.html", task=task,
+        owners=CuratorTaskService.OWNERS, priorities=CuratorTaskService.PRIORITIES,
+        status_kind=kind, status_message=message,
+    )
+
+
+@app.post("/curator/tasks/<task_id>/actions")
+def curator_task_action(task_id):
+    try:
+        CuratorTaskService().update(
+            task_id,
+            action=request.form.get("action", ""),
+            owner=request.form.get("owner", ""),
+            priority=request.form.get("priority", ""),
+            note=request.form.get("note", ""),
+        )
+        status = "updated"
+    except CuratorMemoryError:
+        status = "invalid"
+    return redirect(url_for("curator_task_detail", task_id=task_id, status=status))
+
+
+@app.route("/curator/tasks/<task_id>/repair-preview")
+def curator_task_repair_preview(task_id):
+    try:
+        task = CuratorTaskService().get(task_id)
+    except CuratorMemoryError:
+        abort(404)
+    return render_template("curator_repair_preview.html", task=task)
+
+
+@app.route("/curator/run", methods=["POST"])
+def run_curator_audit():
+    try:
+        CuratorDashboardService().run_audit()
+        status = "completed"
+    except AuditAlreadyRunningError:
+        status = "running"
+    except Exception as error:
+        app.logger.error(json.dumps({"event": "curator_audit_failed", "request_id": g.request_id, "error_type": type(error).__name__}))
+        status = "failed"
+    return redirect(url_for("curator_dashboard", status=status))
 
 @app.route("/workflow-studio")
 def workflow_studio():

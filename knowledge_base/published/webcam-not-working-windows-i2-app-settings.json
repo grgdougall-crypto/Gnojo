@@ -2,7 +2,7 @@
   "schema_version": "1.0",
   "id": "webcam-not-working-windows-i2-app-settings",
   "title": "How to Verify Application Camera Settings",
-  "category": "Troubleshooting",
+  "category": "Desktop Support",
   "difficulty": "Beginner",
   "estimated_time": "5 to 10 minutes",
   "overview": "This article supports the Verify Application Camera Settings step in the Webcam Not Working workflow. It explains how to confirm that the correct camera is selected and available within the affected application before continuing with additional troubleshooting.",

@@ -39,7 +39,11 @@
   "sources": [
     {
       "title": "How to Use Multiple Monitors in Windows",
-      "url": "https://support.microsoft.com/en-us/windows/hardware/display-graphics/how-to-use-multiple-monitors-in-windows\\nTroubleshoot External Monitor Connections in Windows | https://support.microsoft.com/en-us/windows/hardware/display-graphics/troubleshoot-external-monitor-connections-in-windows"
+      "url": "https://support.microsoft.com/en-us/windows/hardware/display-graphics/how-to-use-multiple-monitors-in-windows"
+    },
+    {
+      "title": "Troubleshoot External Monitor Connections in Windows",
+      "url": "https://support.microsoft.com/en-us/windows/hardware/display-graphics/troubleshoot-external-monitor-connections-in-windows"
     }
   ],
   "generation": {

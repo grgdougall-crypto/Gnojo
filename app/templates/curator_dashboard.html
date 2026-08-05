@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Curator Dashboard | Gnojo{% endblock %}
+{% block content %}
+<main class="container curator-page" aria-labelledby="curatorTitle">
+  <header class="curator-heading">
+    <div><span class="section-eyebrow">Knowledge operations</span><h1 id="curatorTitle">Curator Dashboard</h1><p>Turn audit evidence into prioritized, traceable knowledge work.</p></div>
+    <form id="curatorAuditForm" method="post" action="{{ url_for('run_curator_audit') }}"><button id="curatorAuditButton" class="btn btn-primary btn-lg" type="submit"><i class="bi bi-play-circle me-2" aria-hidden="true"></i><span>Run Curator Audit</span></button></form>
+  </header>
+  {% if status_message %}<div class="alert alert-{{ status_kind }}" role="status">{{ status_message }}</div>{% endif %}
+  {% if not dashboard.has_audit %}
+  <section class="quality-section curator-empty"><i class="bi bi-journal-check" aria-hidden="true"></i><div><h2>No Curator audit yet</h2><p>Run the first audit to establish Gnojo's knowledge-operations baseline.</p></div></section>
+  {% else %}
+  {% set summary = dashboard.latest.summary %}{% set task_summary = dashboard.latest.knowledge_tasks.summary %}{% set health = dashboard.latest.knowledge_health %}{% set debt = dashboard.latest.knowledge_debt %}{% set curator = dashboard.curator_status %}
+  <section class="curator-metrics" aria-label="Curator summary">
+    <article><span>Knowledge health</span><strong>{{ health.overall_score|default('—') }}</strong><small>{{ health.trend|default('baseline')|title }}</small></article>
+    <article><span>Knowledge debt</span><strong>{{ debt.total|default(0) }}</strong><small>{{ debt.trend|default('baseline')|title }}</small></article>
+    <article><span>Active tasks</span><strong>{{ curator.active_tasks|default(0) }}</strong><small>{{ curator.resolved_tasks|default(0) }} resolved</small></article>
+    <article><span>Defects</span><strong>{{ summary.findings_by_classification.defect|default(0) }}</strong><small>{{ summary.findings|default(0) }} total findings</small></article>
+  </section>
+  <section class="quality-section" aria-labelledby="curatorStatusTitle">
+    <div class="quality-section__heading"><div><span class="section-eyebrow">System state</span><h2 id="curatorStatusTitle">Curator Status</h2></div><span class="badge text-bg-success">{{ curator.current_state }}</span></div>
+    <div class="curator-status-grid">
+      <article><span>Last audit</span><strong>{{ curator.last_audit|friendly_datetime }}</strong></article><article><span>Duration</span><strong>{% if curator.audit_duration is not none %}{{ '%.2f'|format(curator.audit_duration) }} sec{% else %}Not recorded{% endif %}</strong></article><article><span>Version</span><strong>{{ curator.curator_version }}</strong></article><article><span>Memory records</span><strong>{{ curator.memory_size }}</strong></article><article><span>Debt trend</span><strong>{{ curator.debt_trend|title }}</strong></article>
+    </div>
+  </section>
+  <section class="quality-section" aria-labelledby="healthTitle"><div class="quality-section__heading"><div><span class="section-eyebrow">Knowledge health</span><h2 id="healthTitle">Operational Health</h2></div><span>Latest completed audit</span></div><div class="curator-health-grid">{% for name, score in health.dimensions.items() %}<article><div><span>{{ name|replace('_', ' ')|title }}</span><strong>{{ score }}</strong></div><div class="progress" role="progressbar" aria-label="{{ name|replace('_', ' ')|title }}" aria-valuenow="{{ score }}" aria-valuemin="0" aria-valuemax="100"><div class="progress-bar" style="width: {{ score }}%"></div></div></article>{% endfor %}</div></section>
+  <section class="quality-section" aria-labelledby="tasksTitle">
+    <div class="quality-section__heading"><div><span class="section-eyebrow">Persistent work</span><h2 id="tasksTitle">Knowledge Tasks</h2></div><span>{{ dashboard.tasks|length }} tracked</span></div>
+    <form class="curator-sort" method="get"><label for="curatorSort">Sort tasks</label><select id="curatorSort" name="sort" onchange="this.form.submit()">{% for value, label in [('debt','Knowledge debt'),('priority','Priority'),('recurrence','Recurrence'),('category','Category'),('platform','Platform'),('owner','Owner'),('status','Status'),('age','Age'),('confidence','Confidence')] %}<option value="{{ value }}"{% if dashboard.sort_by == value %} selected{% endif %}>{{ label }}</option>{% endfor %}</select><noscript><button class="btn btn-outline-primary" type="submit">Apply</button></noscript></form>
+    {% for group in dashboard.task_groups %}<section class="curator-task-group" aria-labelledby="taskGroup{{ loop.index }}"><h3 id="taskGroup{{ loop.index }}">{{ group.title }} <span>{{ group.tasks|length }}</span></h3><div class="curator-task-list">{% for task in group.tasks %}<a class="curator-task curator-task--{{ task.classification|lower }}" href="{{ url_for('curator_task_detail', task_id=task.task_id) }}"><div class="curator-task__meta"><span class="badge text-bg-secondary">{{ task.classification }}</span><span>{{ task.priority }}</span><span>{{ task.status|replace('_', ' ')|title }}</span></div><h4>{{ task.title }}</h4><p>{{ task.recommended_action }}</p><div class="curator-task__footer"><code>{{ task.task_id }}</code><span>{{ task.owner }}</span><span>Debt {{ task.knowledge_debt_score }}</span><span>Seen {{ task.times_observed }}×</span></div></a>{% endfor %}</div></section>{% else %}<p class="text-muted mb-0">No persistent tasks are currently recorded.</p>{% endfor %}
+  </section>
+  <div class="row g-4 mt-0"><div class="col-lg-6"><section class="quality-section h-100" aria-labelledby="lessonsTitle"><div class="quality-section__heading"><div><span class="section-eyebrow">Learning</span><h2 id="lessonsTitle">Lessons Learned</h2></div></div>{% for lesson in dashboard.latest.lessons_learned.lessons %}<article class="curator-lesson"><h3>{{ lesson.pattern|replace('_', ' ')|title }}</h3><p>{{ lesson.observation }}</p></article>{% else %}<p class="text-muted mb-0">Recurring patterns appear after multiple audits.</p>{% endfor %}</section></div><div class="col-lg-6"><section class="quality-section h-100" aria-labelledby="evolutionTitle"><div class="quality-section__heading"><div><span class="section-eyebrow">Operational memory</span><h2 id="evolutionTitle">Knowledge Evolution</h2></div></div><ol class="curator-timeline">{% for event in dashboard.evolution %}<li><strong>{{ event.event }}</strong><span>{{ event.at|friendly_datetime }}</span><p>{{ event.detail }}</p></li>{% else %}<li>No evolution events recorded yet.</li>{% endfor %}</ol></section></div></div>
+  {% endif %}
+</main>
+<script>(()=>{const f=document.getElementById('curatorAuditForm'),b=document.getElementById('curatorAuditButton');if(!f||!b)return;f.addEventListener('submit',()=>{b.disabled=true;b.setAttribute('aria-busy','true');const s=b.querySelector('span');if(s)s.textContent='Running Curator Audit…';});})();</script>
+{% endblock %}

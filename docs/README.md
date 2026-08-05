@@ -9,6 +9,7 @@ This directory contains current implementation documentation, product standards,
 - [Brand](brand.md): Gnojo name, positioning, voice, and visual identity
 - [Knowledge Base](knowledge-base.md): article lifecycle, sourcing, review, linking, and storage
 - [Workflow Designer Specification](workflow-designer-spec.md): authoring interface behavior and constraints
+- [Gnojo Curator](curator.md): read-only content auditing, reports, filters, and trust boundaries
 
 ## Product standards
 

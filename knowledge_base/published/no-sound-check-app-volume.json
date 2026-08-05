@@ -2,7 +2,7 @@
   "schema_version": "1.0",
   "id": "no-sound-check-app-volume",
   "title": "How to Check the Application's Audio Controls",
-  "category": "Troubleshooting",
+  "category": "Desktop Support",
   "difficulty": "Beginner",
   "estimated_time": "5 to 10 minutes",
   "overview": "This article supports the Check the Application's Audio Controls step in the No Sound workflow. It explains how to verify that the application is configured to use the correct audio output device and that its audio settings are not muted or misconfigured before continuing troubleshooting.",

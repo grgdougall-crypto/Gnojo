@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Repair Preview | {{ task.task_id }} | Gnojo{% endblock %}
+{% block content %}
+<main class="container curator-task-page" aria-labelledby="repairTitle">
+    <nav class="curator-breadcrumb"><a href="{{ url_for('curator_task_detail', task_id=task.task_id) }}"><i class="bi bi-arrow-left"></i> Return to Knowledge Task</a></nav>
+    <header class="curator-task-heading"><div><span class="section-eyebrow">Deterministic repair preview</span><h1 id="repairTitle">{{ task.title }}</h1><p>No trusted content is changed from this preview.</p></div></header>
+    <section class="quality-section">
+        {% if task.repair_preview and task.repair_preview.available %}
+        <div class="row g-4"><div class="col-md-6"><h2>Before</h2><pre>{{ task.repair_preview.before|join('\n') }}</pre></div><div class="col-md-6"><h2>After</h2><pre>{{ task.repair_preview.after|join('\n') }}</pre></div></div>
+        {% else %}
+        <div class="alert alert-info" role="status"><strong>Repair adapter not available</strong><p class="mb-0">{{ task.repair_preview.reason if task.repair_preview else 'This observation requires human judgment and cannot be repaired automatically.' }}</p></div>
+        {% endif %}
+        <h2>Why this is safe</h2><p>A repair can only become approvable after a dedicated adapter proves the before/after transformation and preserves Gnojo's review lifecycle.</p>
+        <a class="btn btn-outline-primary" href="{{ url_for('curator_task_detail', task_id=task.task_id) }}">Cancel and return</a>
+    </section>
+</main>
+{% endblock %}

@@ -6,8 +6,8 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!form || !editor || !preview || !buttons.length) return;
 
     const lines = (value) => String(value || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-    const pairs = (value) => lines(value).map((line) => {
-        const split = line.indexOf("|");
+    const pairs = (value, fromRight = false) => lines(value).map((line) => {
+        const split = fromRight ? line.lastIndexOf("|") : line.indexOf("|");
         return split < 0 ? [line, ""] : [line.slice(0, split).trim(), line.slice(split + 1).trim()];
     });
     const replaceList = (list, values) => {
@@ -94,6 +94,11 @@ document.addEventListener("DOMContentLoaded", () => {
         const values = new FormData(form);
         preview.querySelector("h2").textContent = values.get("title") || "Untitled article";
         preview.querySelector(".article-preview-overview").textContent = values.get("overview") || "No overview yet.";
+        ["category", "difficulty", "estimated_time"].forEach((name) => {
+            const item = preview.querySelector(`[data-preview-meta="${name}"]`);
+            item.textContent = values.get(name) || "";
+            item.hidden = !values.get(name);
+        });
         replaceList(preview.querySelector("ol"), lines(values.get("checklist")));
         replaceList(preview.querySelector(".article-preview-columns ul"), lines(values.get("common_indicators")));
 
@@ -112,7 +117,24 @@ document.addEventListener("DOMContentLoaded", () => {
         commandSection.hidden = commandItems.length === 0;
 
         const sourceSection = document.getElementById("articlePreviewSources");
-        const sourceItems = pairs(values.get("sources"));
+        const topicSection = document.getElementById("articlePreviewTopics");
+        const topicItems = lines(values.get("related_topics"));
+        topicSection.querySelector("div").replaceChildren(...topicItems.map((topic) => {
+            const badge = document.createElement("span");
+            badge.className = "badge text-bg-light border";
+            badge.textContent = topic;
+            return badge;
+        }));
+        topicSection.hidden = topicItems.length === 0;
+
+        const quizSection = document.getElementById("articlePreviewQuiz");
+        const quizQuestion = String(values.get("quiz_question") || "").trim();
+        const quizAnswers = lines(values.get("quiz_answers"));
+        quizSection.querySelector("p").textContent = quizQuestion;
+        replaceList(quizSection.querySelector("ul"), quizAnswers);
+        quizSection.hidden = !quizQuestion && quizAnswers.length === 0;
+
+        const sourceItems = pairs(values.get("sources"), true);
         const sourceList = sourceSection.querySelector("ul");
         sourceList.replaceChildren(...sourceItems.map(([title, url]) => {
             const item = document.createElement("li");
@@ -125,6 +147,16 @@ document.addEventListener("DOMContentLoaded", () => {
             return item;
         }));
         sourceSection.hidden = sourceItems.length === 0;
+
+        const tagSection = document.getElementById("articlePreviewTags");
+        const tagItems = String(values.get("tags") || "").split(/[\n,]+/).map((tag) => tag.trim()).filter(Boolean);
+        tagSection.querySelector("div").replaceChildren(...tagItems.map((tag) => {
+            const badge = document.createElement("span");
+            badge.className = "badge text-bg-light border";
+            badge.textContent = tag;
+            return badge;
+        }));
+        tagSection.hidden = tagItems.length === 0;
     };
 
     buttons.forEach((button) => button.addEventListener("click", () => {

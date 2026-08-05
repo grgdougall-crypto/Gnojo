@@ -1,0 +1,86 @@
+{
+  "schema_version": "1.0",
+  "id": "no-sound-check-connection",
+  "title": "How to Check Speaker or Headset Connections",
+  "category": "Hardware",
+  "difficulty": "Beginner",
+  "estimated_time": "2–5 minutes",
+  "overview": "This article supports the Check Speaker or Headset Connections step in the No Sound workflow. It explains how to verify that speakers, headsets, and other audio devices are properly connected, powered, and recognized before continuing software troubleshooting.",
+  "tags": [
+    "audio device",
+    "speakers",
+    "headset",
+    "audio connection",
+    "hardware troubleshooting"
+  ],
+  "checklist": [
+    "Save any open work before disconnecting audio devices.",
+    "Verify the speaker or headset is securely connected.",
+    "Confirm the device has power if it requires an external power source.",
+    "Inspect audio cables and connectors for damage or loose connections.",
+    "If using USB audio, disconnect and reconnect the device or try another USB port.",
+    "If using a Bluetooth headset, verify it is powered on, paired, and connected.",
+    "If using a docking station or monitor with integrated audio, verify the audio device is connected correctly.",
+    "Record any changes and return to the troubleshooting workflow."
+  ],
+  "common_indicators": [
+    "The audio device is disconnected.",
+    "The cable or connector is loose.",
+    "The headset or speakers are powered off.",
+    "Windows detects the device after reconnecting it.",
+    "The issue persists after verifying the physical connection."
+  ],
+  "commands": [],
+  "related_topics": [
+    "No Sound",
+    "Select the Intended Audio Output",
+    "Verify Bluetooth Audio Devices",
+    "Update or Reinstall an Audio Driver"
+  ],
+  "quiz": [
+    {
+      "question": "What should you verify before troubleshooting Windows audio settings?",
+      "answers": [
+        "The speaker or headset is properly connected and powered.",
+        "The desktop wallpaper is correct.",
+        "The default web browser is updated."
+      ],
+      "correct_answer": "The speaker or headset is properly connected and powered."
+    }
+  ],
+  "sources": [
+    {
+      "title": "Fix sound or audio problems in Windows",
+      "url": "https://support.microsoft.com/en-us/windows/hardware/audio/fix-sound-or-audio-problems-in-windows"
+    }
+  ],
+  "generation": {
+    "provider": "Gnojo Coverage Assistant",
+    "model": "deterministic-node-draft-v1",
+    "generated_at": "2026-08-05T04:50:31.604550+00:00"
+  },
+  "review": {
+    "status": "approved",
+    "reviewed_by": null,
+    "reviewed_at": null,
+    "notes": [
+      "Generated from workflow node.",
+      "Reviewed for hardware audio connection troubleshooting procedures.",
+      "Verified against current Microsoft documentation.",
+      "Confirm organizational hardware support procedures before publication."
+    ],
+    "checks": {
+      "technical_accuracy": true,
+      "user_safety": true,
+      "sources_verified": true,
+      "commands_reviewed": true
+    }
+  },
+  "workflow_origin": {
+    "filename": "no_sound.json",
+    "workflow_id": "no_sound",
+    "workflow_name": "No Sound",
+    "node_id": "check_connection",
+    "node_title": "Check the Speaker or Headset Connection"
+  }
+}

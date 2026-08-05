@@ -1,0 +1,76 @@
+{
+  "schema_version": "1.0",
+  "id": "application-crash-test-update",
+  "title": "How to Verify the Application After an Update",
+  "category": "Troubleshooting",
+  "difficulty": "Beginner",
+  "estimated_time": "2–5 minutes",
+  "overview": "This article supports the Verify the Application After an Update step in the Application Keeps Crashing workflow. It explains how to confirm that the update was successful and whether it resolved the reported issue before continuing troubleshooting.",
+  "tags": [
+    "application testing",
+    "application update",
+    "verification",
+    "software troubleshooting",
+    "validation"
+  ],
+  "checklist": [
+    "Confirm the application update completed successfully.",
+    "Restart the application if it is not already running.",
+    "Repeat the same action that previously caused the application to crash.",
+    "Verify the application remains stable during normal use.",
+    "Check for any new error messages or unexpected behavior.",
+    "Document whether the issue was resolved, improved, or unchanged.",
+    "Return to the troubleshooting workflow with the test results."
+  ],
+  "common_indicators": [
+    "The application no longer crashes.",
+    "The application still crashes under the same conditions.",
+    "A different error message appears.",
+    "The application launches successfully but remains unstable.",
+    "The update completed successfully."
+  ],
+  "commands": [],
+  "related_topics": [
+    "Application Keeps Crashing",
+    "Check for Approved Application Updates",
+    "Repair an Application",
+    "Reinstall an Application"
+  ],
+  "quiz": [
+    {
+      "question": "What is the primary purpose of testing the application after an update?",
+      "answers": [
+        "Confirm whether the update resolved the reported issue.",
+        "Install another update immediately.",
+        "Change unrelated application settings."
+      ],
+      "correct_answer": "Confirm whether the update resolved the reported issue."
+    }
+  ],
+  "sources": [
+    {
+      "title": "Fix Problems with Apps After an Update",
+      "url": "https://support.microsoft.com/en-us/accounts-billing/fix-problems-with-apps-from-microsoft-store"
+    }
+  ],
+  "generation": {
+    "provider": "Gnojo Coverage Assistant",
+    "model": "deterministic-node-draft-v1",
+    "generated_at": "2026-08-05T04:21:21.150825+00:00"
+  },
+  "review": {
+    "status": "approved",
+    "reviewed_by": null,
+    "reviewed_at": null,
+    "notes": [
+      "Generated from a workflow node.",
+      "Verify technical accuracy and add authoritative sources before publication."
+    ],
+    "checks": {
+      "technical_accuracy": true,
+      "user_safety": true,
+      "sources_verified": true,
+      "commands_reviewed": true
+    }
+  }
+}

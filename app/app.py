@@ -887,11 +887,27 @@ def create_workflow_article_draft(filename, node_id):
         return {"ok": False, "error": "This draft changed after the page opened. Refresh the Workflow Designer and select the node again."}, 409
     try:
         article = WorkflowCoverageService().create_article_draft(workflow, node_id, node)
+        article["workflow_origin"] = {
+            "filename": filename,
+            "workflow_id": workflow.get("workflow_id"),
+            "workflow_name": workflow.get("name"),
+            "node_id": node_id,
+            "node_title": node.get("title") or node_id.replace("_", " ").title(),
+        }
         created = True
         try:
             knowledge_repository.save_draft(article)
         except ArticleAlreadyExistsError:
-            knowledge_repository.get_draft(article["id"])
+            article = knowledge_repository.get_draft(article["id"])
+            if not isinstance(article.get("workflow_origin"), dict):
+                article["workflow_origin"] = {
+                    "filename": filename,
+                    "workflow_id": workflow.get("workflow_id"),
+                    "workflow_name": workflow.get("name"),
+                    "node_id": node_id,
+                    "node_title": node.get("title") or node_id.replace("_", " ").title(),
+                }
+                knowledge_repository.save_draft(article, overwrite=True)
             created = False
         workflow = draft_service.update_node(
             filename, node_id, {"knowledge_article": article["id"]}
@@ -1682,8 +1698,32 @@ def render_article_review(article, error=None, status=200):
         article=article,
         analysis=ArticleReviewService().analyze(article),
         workflow_references=workflow_references_for_article(article.get("id")),
+        workflow_return_url=workflow_return_location(article),
         error=error,
     ), status
+
+
+def workflow_return_location(article):
+    """Return a safe editor URL for an article created from a workflow node."""
+    origin = article.get("workflow_origin") if isinstance(article, dict) else None
+    if not isinstance(origin, dict):
+        return None
+    filename = origin.get("filename")
+    node_id = origin.get("node_id")
+    if not isinstance(filename, str) or not isinstance(node_id, str):
+        return None
+    try:
+        workflow = WorkflowDraftService().get_draft(filename)
+    except (WorkflowDraftError, ValueError):
+        return None
+    if not isinstance(workflow, dict) or node_id not in workflow.get("nodes", {}):
+        return None
+    return url_for(
+        "workflow_editor",
+        filename=filename,
+        node=node_id,
+        article_published=article.get("id"),
+    )
 
 
 @app.route("/knowledge/drafts/<article_id>", methods=["GET", "POST"])
@@ -1713,10 +1753,9 @@ def review_draft(article_id):
                         "Complete validation and every technical review check before publishing.",
                         400,
                     )
+                return_location = workflow_return_location(article)
                 knowledge_repository.publish_article(article_id, overwrite=True)
-                return redirect(
-                    url_for("view_published", article_id=article_id)
-                )
+                return redirect(return_location or url_for("view_published", article_id=article_id))
         except (ArticleReviewError, KnowledgeRepositoryError) as error:
             return render_article_review(article, str(error), 400)
         return redirect(url_for("review_draft", article_id=article_id, saved="1"))

@@ -167,6 +167,8 @@ class WorkflowCoverageEndpointTests(unittest.TestCase):
         self.assertEqual(result["review_url"], "/knowledge/drafts/coverage-test-check-step")
         article = self.repository.get_draft(result["article_id"])
         self.assertEqual(article["title"], "How to Check Startup Applications")
+        self.assertEqual(article["workflow_origin"]["filename"], self.filename)
+        self.assertEqual(article["workflow_origin"]["node_id"], "check_step")
         workflow = self.drafts.get_draft(self.filename)
         self.assertEqual(
             workflow["nodes"]["check_step"]["knowledge_article"],
@@ -177,6 +179,42 @@ class WorkflowCoverageEndpointTests(unittest.TestCase):
         )
         self.assertEqual(repeated.status_code, 200)
         self.assertFalse(repeated.get_json()["created"])
+
+    def test_published_workflow_article_returns_to_originating_node(self):
+        created = self.client.post(
+            f"/api/workflow-drafts/{self.filename}/nodes/check_step/coverage/article"
+        ).get_json()
+        article = self.repository.get_draft(created["article_id"])
+        response = self.client.post(
+            f"/knowledge/drafts/{article['id']}",
+            data={
+                "title": article["title"],
+                "category": article["category"],
+                "difficulty": article["difficulty"],
+                "estimated_time": article["estimated_time"],
+                "overview": article["overview"],
+                "tags": ", ".join(article["tags"]),
+                "checklist": "\n".join(article["checklist"]),
+                "common_indicators": "\n".join(article["common_indicators"]),
+                "related_topics": "\n".join(article["related_topics"]),
+                "commands": "",
+                "sources": "Microsoft guidance | https://support.microsoft.com/windows",
+                "quiz_question": article["quiz"][0]["question"],
+                "quiz_answers": "\n".join(article["quiz"][0]["answers"]),
+                "quiz_correct_answer": article["quiz"][0]["correct_answer"],
+                "review_technical_accuracy": "on",
+                "review_user_safety": "on",
+                "review_sources_verified": "on",
+                "review_commands_reviewed": "on",
+                "review_notes": "Verified for publication.",
+                "review_action": "approve_and_publish",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(f"/workflow-editor/{self.filename}", response.headers["Location"])
+        self.assertIn("node=check_step", response.headers["Location"])
+        self.assertIn(f"article_published={article['id']}", response.headers["Location"])
 
     def test_editor_renders_coverage_controls(self):
         html = self.client.get(f"/workflow-editor/{self.filename}").get_data(as_text=True)

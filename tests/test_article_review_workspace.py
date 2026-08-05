@@ -80,6 +80,26 @@ class ArticleReviewServiceTests(unittest.TestCase):
         self.assertEqual(article["sources"][0]["title"], "Microsoft Support")
         self.assertTrue(ArticleReviewService().analyze(article)["can_publish"])
 
+    def test_source_title_may_contain_pipe_separators(self):
+        values = review_form(
+            "save",
+            sources=(
+                "Fix audio issues in Windows | Microsoft Support | "
+                "https://support.microsoft.com/windows/audio"
+            ),
+        )
+        article = ArticleReviewService().update_from_form(
+            review_article(), values
+        )
+        self.assertEqual(
+            article["sources"][0]["title"],
+            "Fix audio issues in Windows | Microsoft Support",
+        )
+        self.assertEqual(
+            article["sources"][0]["url"],
+            "https://support.microsoft.com/windows/audio",
+        )
+
     def test_approve_and_publish_action_approves_valid_article(self):
         article = ArticleReviewService().update_from_form(
             review_article(), review_form("approve_and_publish")
@@ -110,6 +130,9 @@ class ArticleReviewWorkspacePageTests(unittest.TestCase):
         self.assertIn("Review Warnings", html)
         self.assertIn("Technical Review Checklist", html)
         self.assertIn('data-review-view="preview"', html)
+        self.assertIn('id="articlePreviewTopics"', html)
+        self.assertIn('id="articlePreviewQuiz"', html)
+        self.assertIn('id="articlePreviewTags"', html)
         self.assertIn("article_review.js", html)
         self.assertIn("Submit for review", html)
         self.assertNotIn("Publish article", html)

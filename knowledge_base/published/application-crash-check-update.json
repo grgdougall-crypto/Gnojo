@@ -1,0 +1,76 @@
+{
+  "schema_version": "1.0",
+  "id": "application-crash-check-update",
+  "title": "How to Check for an Approved Application Update",
+  "category": "Administration",
+  "difficulty": "Beginner",
+  "estimated_time": "5 to 10 minutes",
+  "overview": "This article supports the Check for an Approved Application Update step in the Application Keeps Crashing workflow. It explains how to safely determine whether an approved software update is available and how to obtain updates from trusted sources before continuing troubleshooting.",
+  "tags": [
+    "application update",
+    "software update",
+    "microsoft store",
+    "application version",
+    "software maintenance"
+  ],
+  "checklist": [
+    "Save any open work before checking for updates.",
+    "Determine how the application is normally updated, such as through the application's built-in update feature, Microsoft Store, or your organization's software management solution.",
+    "Check whether an approved update is available.",
+    "Confirm the update source is trusted before downloading or installing any software.",
+    "Install the approved update according to your organization's procedures.",
+    "Restart the application or Windows if prompted.",
+    "Verify the application version has been updated successfully.",
+    "Record the update status and return to the troubleshooting workflow."
+  ],
+  "common_indicators": [
+    "An application update is available.",
+    "The application is already running the latest approved version.",
+    "The application reports an update failed.",
+    "The application version is outdated.",
+    "The application requires a restart to complete the update."
+  ],
+  "commands": [],
+  "related_topics": [
+    "Application Keeps Crashing",
+    "Verify Application Version",
+    "Repair an Application",
+    "Reinstall an Application"
+  ],
+  "quiz": [
+    {
+      "question": "Which update source should be used when checking for an application update?",
+      "answers": [
+        "The application's approved update source or your organization's software portal.",
+        "Any website offering a newer version.",
+        "An advertisement offering a free update."
+      ],
+      "correct_answer": "The application's approved update source or your organization's software portal."
+    }
+  ],
+  "sources": [
+    {
+      "title": "Get updates for apps and games in Microsoft Store",
+      "url": "https://support.microsoft.com/en-us/accounts-billing/get-updates-for-apps-and-games-in-microsoft-store"
+    }
+  ],
+  "generation": {
+    "provider": "Gnojo Coverage Assistant",
+    "model": "deterministic-node-draft-v1",
+    "generated_at": "2026-08-05T04:09:01.787383+00:00"
+  },
+  "review": {
+    "status": "approved",
+    "reviewed_by": null,
+    "reviewed_at": null,
+    "notes": [
+      "Revision created from the published article."
+    ],
+    "checks": {
+      "technical_accuracy": true,
+      "user_safety": true,
+      "sources_verified": true,
+      "commands_reviewed": true
+    }
+  }
+}

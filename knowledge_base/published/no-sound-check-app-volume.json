@@ -1,0 +1,86 @@
+{
+  "schema_version": "1.0",
+  "id": "no-sound-check-app-volume",
+  "title": "How to Check the Application's Audio Controls",
+  "category": "Troubleshooting",
+  "difficulty": "Beginner",
+  "estimated_time": "5 to 10 minutes",
+  "overview": "This article supports the Check the Application's Audio Controls step in the No Sound workflow. It explains how to verify that the application is configured to use the correct audio output device and that its audio settings are not muted or misconfigured before continuing troubleshooting.",
+  "tags": [
+    "application audio",
+    "sound settings",
+    "volume mixer",
+    "audio output",
+    "application troubleshooting"
+  ],
+  "checklist": [
+    "Save any open work before making changes.",
+    "Open the application's audio or sound settings.",
+    "Verify the application is not muted and the volume is set to an audible level.",
+    "Confirm the correct playback device is selected if the application allows audio device selection.",
+    "Check the Windows Volume Mixer to verify the application is not muted or set to a very low volume.",
+    "Apply any changes and restart the application if necessary.",
+    "Test audio playback within the application.",
+    "Record the results and return to the troubleshooting workflow."
+  ],
+  "common_indicators": [
+    "The application is muted.",
+    "The application volume is set too low.",
+    "The incorrect playback device is selected.",
+    "Audio works in other applications but not the affected application.",
+    "Audio functions normally after correcting the application's audio settings."
+  ],
+  "commands": [],
+  "related_topics": [
+    "No Sound",
+    "Select the Intended Audio Output",
+    "Check Speaker or Headset Connections",
+    "Run the Windows Audio Troubleshooter"
+  ],
+  "quiz": [
+    {
+      "question": "What should you verify before assuming the application has an audio problem?",
+      "answers": [
+        "The application is using the correct playback device and is not muted.",
+        "The desktop wallpaper is correct.",
+        "The Windows theme is set to dark mode."
+      ],
+      "correct_answer": "The application is using the correct playback device and is not muted."
+    }
+  ],
+  "sources": [
+    {
+      "title": "Fix app audio not working while system sounds work in Windows",
+      "url": "https://support.microsoft.com/en-US/Windows/Hardware/audio/fix-app-audio-not-working-while-system-sounds-work-in-windows"
+    }
+  ],
+  "generation": {
+    "provider": "Gnojo Coverage Assistant",
+    "model": "deterministic-node-draft-v1",
+    "generated_at": "2026-08-05T04:43:56.249238+00:00"
+  },
+  "review": {
+    "status": "approved",
+    "reviewed_by": null,
+    "reviewed_at": null,
+    "notes": [
+      "Generated from workflow node.",
+      "Reviewed for application audio configuration procedures.",
+      "Verified against current Microsoft documentation.",
+      "Confirm application-specific audio settings before publication."
+    ],
+    "checks": {
+      "technical_accuracy": true,
+      "user_safety": true,
+      "sources_verified": true,
+      "commands_reviewed": true
+    }
+  },
+  "workflow_origin": {
+    "filename": "no_sound.json",
+    "workflow_id": "no_sound",
+    "workflow_name": "No Sound",
+    "node_id": "check_app_volume",
+    "node_title": "Check the Application's Audio Controls"
+  }
+}

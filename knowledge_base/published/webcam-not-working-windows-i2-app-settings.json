@@ -1,0 +1,80 @@
+{
+  "schema_version": "1.0",
+  "id": "webcam-not-working-windows-i2-app-settings",
+  "title": "How to Verify Application Camera Settings",
+  "category": "Troubleshooting",
+  "difficulty": "Beginner",
+  "estimated_time": "5 to 10 minutes",
+  "overview": "This article supports the Verify Application Camera Settings step in the Webcam Not Working workflow. It explains how to confirm that the correct camera is selected and available within the affected application before continuing with additional troubleshooting.",
+  "checklist": [
+    "Save open work and confirm you are working in the affected application.",
+    "Open the application's video or camera settings.",
+    "Verify that the correct webcam is selected as the active camera.",
+    "If multiple cameras are available, select the intended webcam and apply the change.",
+    "Confirm the application has permission to access the selected camera.",
+    "Restart the application if changes were made.",
+    "Test the camera using the application's preview or test feature.",
+    "Record the outcome and return to the troubleshooting workflow."
+  ],
+  "common_indicators": [
+    "The wrong camera is selected within the application.",
+    "No camera is selected.",
+    "The application cannot detect the webcam.",
+    "The camera preview is blank or displays an error.",
+    "The application continues using a disconnected or virtual camera."
+  ],
+  "commands": [],
+  "related_topics": [
+    "Webcam Not Working",
+    "Camera Privacy Settings",
+    "Update or Reinstall Webcam Driver",
+    "Verify Webcam Device Status",
+    "Diagnose Camera Hardware Issues"
+  ],
+  "quiz": [
+    {
+      "question": "What should you verify before continuing with additional webcam troubleshooting?",
+      "answers": [
+        "The correct webcam is selected within the application",
+        "The monitor resolution",
+        "The desktop wallpaper"
+      ],
+      "correct_answer": "The correct webcam is selected within the application"
+    }
+  ],
+  "sources": [
+    {
+      "title": "Manage app permissions for a camera in Windows",
+      "url": "https://support.microsoft.com/en-us/windows/privacy/manage-app-permissions-for-a-camera-in-windows"
+    }
+  ],
+  "generation": {
+    "provider": "Gnojo Coverage Assistant",
+    "model": "deterministic-node-draft-v1",
+    "generated_at": "2026-08-04T06:32:49.974453+00:00"
+  },
+  "review": {
+    "status": "approved",
+    "reviewed_by": null,
+    "reviewed_at": null,
+    "notes": [
+      "Generated from workflow node.",
+      "Reviewed for safe verification of Windows camera privacy permissions.",
+      "Verified against current Microsoft documentation.",
+      "Confirm organizational privacy policies before publication."
+    ],
+    "checks": {
+      "technical_accuracy": true,
+      "user_safety": true,
+      "sources_verified": true,
+      "commands_reviewed": true
+    }
+  },
+  "tags": [
+    "webcam",
+    "camera settings",
+    "application settings",
+    "video conferencing",
+    "camera"
+  ]
+}

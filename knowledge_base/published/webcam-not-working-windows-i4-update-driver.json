@@ -1,0 +1,85 @@
+{
+  "schema_version": "1.0",
+  "id": "webcam-not-working-windows-i4-update-driver",
+  "title": "How to Update or Reinstall Webcam Driver",
+  "category": "Troubleshooting",
+  "difficulty": "Beginner",
+  "estimated_time": "5 to 10 minutes",
+  "overview": "This article supports the Update or Reinstall Webcam Driver step in the Webcam Not Working workflow. It explains how to safely update or reinstall the approved webcam driver while avoiding unnecessary changes to other hardware or system settings.",
+  "checklist": [
+    "Save open work and confirm the computer model and Windows version.",
+    "Open Device Manager and expand Cameras or Imaging devices.",
+    "Locate the webcam and check for warning icons or error messages.",
+    "Right-click the webcam and select Update driver. Follow your organization's approved update process or install the approved driver from the computer manufacturer's support site.",
+    "If the issue persists, right-click the webcam, select Uninstall device, and uninstall only the webcam driver. Do not select Delete the driver software unless specifically instructed by your organization's documentation or the device manufacturer.",
+    "Restart Windows if prompted.",
+    "Verify that the webcam appears correctly in Device Manager and test the camera in an approved application.",
+    "Record the outcome and return to the troubleshooting workflow."
+  ],
+  "common_indicators": [
+    "The webcam displays a warning icon or error code in Device Manager.",
+    "The webcam is missing from Device Manager.",
+    "Applications report that no camera is available.",
+    "The webcam appears disabled or is using an outdated or corrupted driver.",
+    "The webcam is detected but fails to function correctly."
+  ],
+  "commands": [
+    {
+      "command": "devmgmt.msc",
+      "description": "Opens Device Manager"
+    }
+  ],
+  "related_topics": [
+    "Webcam Not Working",
+    "Enable or Disable a Webcam",
+    "Camera Privacy Settings",
+    "Device Manager Error Codes",
+    "Diagnose Camera Hardware Issues"
+  ],
+  "quiz": [
+    {
+      "question": "What should you do after updating or reinstalling the webcam driver?",
+      "answers": [
+        "Verify the webcam functions correctly and return to the workflow",
+        "Modify unrelated device settings",
+        "Ignore the result"
+      ],
+      "correct_answer": "Verify the webcam functions correctly and return to the workflow"
+    }
+  ],
+  "sources": [
+    {
+      "title": "Using Device Manager to Uninstall Devices and Driver Packages - Windows drivers",
+      "url": "https://learn.microsoft.com/en-us/windows-hardware/drivers/install/using-device-manager-to-uninstall-devices-and-driver-packages"
+    }
+  ],
+  "generation": {
+    "provider": "Gnojo Coverage Assistant",
+    "model": "deterministic-node-draft-v1",
+    "generated_at": "2026-08-04T06:31:53.667678+00:00"
+  },
+  "review": {
+    "status": "approved",
+    "reviewed_by": null,
+    "reviewed_at": null,
+    "notes": [
+      "Generated from workflow node.",
+      "Reviewed for safe webcam driver update and reinstallation practices.",
+      "Microsoft documentation verified on 2026-08-03.",
+      "Remain in Draft until technical review is complete."
+    ],
+    "checks": {
+      "technical_accuracy": true,
+      "user_safety": true,
+      "sources_verified": true,
+      "commands_reviewed": true
+    }
+  },
+  "tags": [
+    "webcam",
+    "camera driver",
+    "windows",
+    "device manager",
+    "driver installation"
+  ]
+}

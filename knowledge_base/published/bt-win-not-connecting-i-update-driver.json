@@ -5,36 +5,44 @@
   "category": "Desktop Support",
   "difficulty": "Beginner",
   "estimated_time": "5 to 10 minutes",
-  "overview": "This draft supports the “Install the Approved Bluetooth Driver” step in the Bluetooth Device Not Connecting workflow. It explains the intended check, safe execution, and the evidence to capture before continuing.",
+  "overview": "This article supports the Install the Approved Bluetooth Driver step in the Bluetooth Device Not Connecting workflow. It explains how to safely identify, obtain, and install the approved Bluetooth driver while avoiding unofficial or incompatible driver packages.",
   "checklist": [
     "Save open work and confirm the computer model and Windows version.",
     "Check Windows Update for available driver updates.",
-    "If necessary, open Device Manager, expand Bluetooth, right-click the Bluetooth adapter, and select Update driver.",
-    "If Windows cannot locate an appropriate driver, use the computer manufacturer’s official support site and confirm the exact model.",
-    "Install only the approved matching driver and restart Windows if requested. Return to the workflow and test the Bluetooth connection again."
+    "If the approved driver is not available through Windows Update, open Device Manager and expand Bluetooth.",
+    "Identify the correct Bluetooth adapter and confirm the computer model before downloading a driver.",
+    "Download the approved Bluetooth driver from the computer manufacturer's official support site or your organization's approved software repository.",
+    "Install the approved driver and restart Windows if prompted.",
+    "Verify that the Bluetooth adapter appears without warning icons and test Bluetooth connectivity.",
+    "Record the outcome and return to the troubleshooting workflow."
   ],
   "common_indicators": [
     "The Bluetooth adapter is missing from Device Manager.",
-    "Device Manager displays a warning symbol or error code.",
-    "Bluetooth disappeared following an update.",
-    "Pairing repeatedly fails despite the device being charged and discoverable.",
-    "The installed driver is outdated, disabled, or corrupted."
+    "The Bluetooth adapter displays a warning icon or error code.",
+    "Bluetooth pairing repeatedly fails despite the device being powered on and discoverable.",
+    "The installed Bluetooth driver is outdated, disabled, or corrupted.",
+    "Windows reports that no Bluetooth adapter is installed."
   ],
-  "commands": [],
+  "commands": [
+    {
+      "command": "devmgmt.msc",
+      "description": "Opens Device Manager"
+    }
+  ],
   "related_topics": [
     "Bluetooth Device Not Connecting",
     "Update Drivers Through Device Manager",
     "Reinstall a Bluetooth Driver",
     "Bluetooth Adapter Error Codes",
-    "Windows Update Driver Installation"
+    "Verify Bluetooth Adapter Status"
   ],
   "quiz": [
     {
-      "question": "What should you do after completing this troubleshooting step?",
+      "question": "What information should you verify before downloading an approved Bluetooth driver?",
       "answers": [
         "The exact computer model and Windows version",
-        "Only the name of the Bluetooth device",
-        "Whether the website offers the newest file"
+        "Only the Bluetooth device name",
+        "Whether the website offers the newest driver"
       ],
       "correct_answer": "The exact computer model and Windows version"
     }
@@ -55,7 +63,10 @@
     "reviewed_by": null,
     "reviewed_at": null,
     "notes": [
-      "Revision created from the published article."
+      "Generated from workflow node.",
+      "Reviewed for safe driver installation practices.",
+      "Microsoft documentation verified on 2026-08-03.",
+      "Approved drivers must originate from the device manufacturer or organization-approved repository."
     ],
     "checks": {
       "technical_accuracy": true,
@@ -63,5 +74,12 @@
       "sources_verified": true,
       "commands_reviewed": true
     }
-  }
+  },
+  "tags": [
+    "bluetooth",
+    "bluetooth driver",
+    "windows",
+    "device manager",
+    "driver installation"
+  ]
 }

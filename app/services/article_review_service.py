@@ -86,10 +86,7 @@ class ArticleReviewService:
         updated["common_indicators"] = self._lines(form.get("common_indicators", ""))
         updated["related_topics"] = self._lines(form.get("related_topics", ""))
         updated["commands"] = self._pairs(form.get("commands", ""), "Command")
-        updated["sources"] = [
-            {"title": item["command"], "url": item["description"]}
-            for item in self._pairs(form.get("sources", ""), "Source")
-        ]
+        updated["sources"] = self._sources(form.get("sources", ""))
         question = form.get("quiz_question", "").strip()
         answers = self._lines(form.get("quiz_answers", ""))
         correct = form.get("quiz_correct_answer", "").strip()
@@ -143,4 +140,19 @@ class ArticleReviewService:
             if len(parts) != 2 or not all(parts):
                 raise ArticleReviewError(f"{label} line {index} must use: name | description")
             result.append({"command": parts[0], "description": parts[1]})
+        return result
+
+    @staticmethod
+    def _sources(value):
+        """Parse `title | URL`, allowing publisher separators in the title."""
+        result = []
+        for index, line in enumerate(str(value or "").splitlines(), 1):
+            if not line.strip():
+                continue
+            parts = [part.strip() for part in line.rsplit("|", 1)]
+            if len(parts) != 2 or not all(parts):
+                raise ArticleReviewError(
+                    f"Source line {index} must use: title | URL"
+                )
+            result.append({"title": parts[0], "url": parts[1]})
         return result

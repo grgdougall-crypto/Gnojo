@@ -1,0 +1,81 @@
+{
+  "schema_version": "1.0",
+  "id": "windows-slow-check-updates",
+  "title": "How to Check Windows Update",
+  "category": "Administration",
+  "difficulty": "Beginner",
+  "estimated_time": "5 to 10 minutes",
+  "overview": "This article supports the Check Windows Update step in the Computer Running Slowly workflow. It explains how to check for available Windows updates, determine whether updates are pending, and identify whether a restart is required before continuing performance troubleshooting.",
+  "tags": [
+    "windows update",
+    "windows updates",
+    "update settings",
+    "windows maintenance",
+    "system updates"
+  ],
+  "checklist": [
+    "Save any open work before checking for updates.",
+    "Open Settings > Windows Update.",
+    "Select Check for updates.",
+    "Review whether updates are available, downloading, installing, or require a restart.",
+    "If updates are available, allow Windows to download and install them according to your organization's update policy.",
+    "Restart the computer if Windows indicates a restart is required.",
+    "Verify Windows Update reports that the device is up to date or document any pending updates.",
+    "Record the update status and return to the troubleshooting workflow."
+  ],
+  "common_indicators": [
+    "Windows reports the device is up to date.",
+    "Updates are available for download.",
+    "Updates are currently installing.",
+    "A restart is required to complete installation.",
+    "Windows Update displays an error or requires troubleshooting."
+  ],
+  "commands": [
+    {
+      "command": "start ms-settings:windowsupdate",
+      "description": "Opens the Windows Update page in Settings."
+    }
+  ],
+  "related_topics": [
+    "Computer Running Slowly",
+    "Troubleshoot Windows Update",
+    "Restart the Computer",
+    "Windows Update History"
+  ],
+  "quiz": [
+    {
+      "question": "What should you verify before continuing performance troubleshooting?",
+      "answers": [
+        "Whether Windows is up to date or requires a restart.",
+        "The desktop wallpaper.",
+        "The default web browser."
+      ],
+      "correct_answer": "Whether Windows is up to date or requires a restart."
+    }
+  ],
+  "sources": [
+    {
+      "title": "Install Windows Updates",
+      "url": "https://support.microsoft.com/en-US/Windows/Deployment/Updates-Lifecycle/install-windows-updates"
+    }
+  ],
+  "generation": {
+    "provider": "Gnojo Coverage Assistant",
+    "model": "deterministic-node-draft-v1",
+    "generated_at": "2026-08-05T03:19:19.134737+00:00"
+  },
+  "review": {
+    "status": "approved",
+    "reviewed_by": null,
+    "reviewed_at": null,
+    "notes": [
+      "Revision created from the published article."
+    ],
+    "checks": {
+      "technical_accuracy": true,
+      "user_safety": true,
+      "sources_verified": true,
+      "commands_reviewed": true
+    }
+  }
+}

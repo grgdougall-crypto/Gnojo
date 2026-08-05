@@ -26,6 +26,15 @@ def conditional_workflow():
 
 
 class ProfileAwareRoutingTests(unittest.TestCase):
+    def test_conditional_skip_destination_is_reachable(self):
+        result = WorkflowValidationService().validate(
+            conditional_workflow()
+        )
+
+        self.assertTrue(result["is_valid"])
+        self.assertEqual(result["unreachable_nodes"], [])
+        self.assertIn("windows_step", result["reachable_nodes"])
+
     def test_resolution_skips_mismatched_nodes_but_not_without_profile(self):
         workflow = conditional_workflow()
         engine = DecisionEngine(); engine.load_workflow_data(workflow)

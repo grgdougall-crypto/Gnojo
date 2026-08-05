@@ -1,0 +1,83 @@
+{
+  "schema_version": "1.0",
+  "id": "windows-slow-run-security-scan",
+  "title": "How to Run a Windows Security Quick Scan",
+  "category": "Security",
+  "difficulty": "Beginner",
+  "estimated_time": "5 to 10 minutes",
+  "overview": "This article supports the Run a Windows Security Quick Scan step in the Computer Running Slowly workflow. It explains how to perform a Microsoft Defender Quick Scan to identify common malware that may be affecting system performance before continuing with additional troubleshooting.",
+  "tags": [
+    "windows security",
+    "microsoft defender",
+    "quick scan",
+    "malware scan"
+  ],
+  "checklist": [
+    "Save any open work before beginning.",
+    "Open Windows Security.",
+    "Select Virus & threat protection.",
+    "Select Quick scan and allow the scan to complete without interruption.",
+    "Review any detected threats or recommended actions.",
+    "If threats are found, follow your organization's malware remediation procedures before continuing.",
+    "Record the scan results and return to the troubleshooting workflow."
+  ],
+  "common_indicators": [
+    "No threats were detected.",
+    "Potential threats were identified.",
+    "Microsoft Defender recommends additional actions.",
+    "The Quick Scan completed successfully.",
+    "Windows Security reports that virus definitions require updating."
+  ],
+  "commands": [
+    {
+      "command": "start windowsdefender",
+      "description": "Opens Windows Security."
+    }
+  ],
+  "related_topics": [
+    "Computer Running Slowly",
+    "Update Microsoft Defender",
+    "Run a Full Scan",
+    "Microsoft Defender Offline Scan",
+    "Malware Remediation"
+  ],
+  "quiz": [
+    {
+      "question": "What should you verify after completing a Windows Security Quick Scan?",
+      "answers": [
+        "Review the scan results and record any detected threats.",
+        "Close Windows Security without reviewing the results.",
+        "Disable Microsoft Defender."
+      ],
+      "correct_answer": "Review the scan results and record any detected threats."
+    }
+  ],
+  "sources": [
+    {
+      "title": "Stay protected with the Windows Security app",
+      "url": "https://support.microsoft.com/en-us/windows/security/windows-security/stay-protected-with-the-windows-security-app"
+    }
+  ],
+  "generation": {
+    "provider": "Gnojo Coverage Assistant",
+    "model": "deterministic-node-draft-v1",
+    "generated_at": "2026-08-05T03:08:46.461391+00:00"
+  },
+  "review": {
+    "status": "approved",
+    "reviewed_by": null,
+    "reviewed_at": null,
+    "notes": [
+      "Generated from workflow node.",
+      "Reviewed for safe Microsoft Defender Quick Scan procedures.",
+      "Verified against current Microsoft documentation.",
+      "Confirm organizational malware response procedures before publication."
+    ],
+    "checks": {
+      "technical_accuracy": true,
+      "user_safety": true,
+      "sources_verified": true,
+      "commands_reviewed": true
+    }
+  }
+}

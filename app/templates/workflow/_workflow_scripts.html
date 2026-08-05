@@ -954,9 +954,17 @@
     clearSearch?.addEventListener("click", () => { search.value = ""; filterNodes(); search.focus(); });
     nodes.forEach((node) => node.addEventListener("click", () => selectNode(node)));
     const requestedNodeId = new URLSearchParams(window.location.search).get("node");
+    const publishedArticleId = new URLSearchParams(window.location.search).get("article_published");
     if (requestedNodeId) {
         const requestedNode = nodes.find((item) => item.dataset.nodeId === requestedNodeId);
-        if (requestedNode) selectNode(requestedNode);
+        if (requestedNode) {
+            selectNode(requestedNode);
+            requestedNode.scrollIntoView({block: "center"});
+            if (publishedArticleId) {
+                element("coverageAssistantMessage").textContent = "Article approved and published. You can continue reviewing this workflow.";
+                element("coverageAssistantMessage").classList.remove("is-error");
+            }
+        }
     }
     form.addEventListener("input", updateDirtyState);
     form.addEventListener("submit", (event) => { event.preventDefault(); saveNode(); });

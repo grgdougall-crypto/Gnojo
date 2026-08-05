@@ -366,8 +366,15 @@ class WorkflowValidationService:
     def _next_node_ids(self, node):
         node_type = node.get("type")
 
+        conditional_skip = node.get("skip_to")
+        conditional_destinations = (
+            [conditional_skip]
+            if isinstance(conditional_skip, str) and conditional_skip
+            else []
+        )
+
         if node_type == "question":
-            next_node_ids = []
+            next_node_ids = list(conditional_destinations)
 
             answers = node.get("answers")
             if not isinstance(answers, dict):
@@ -384,12 +391,16 @@ class WorkflowValidationService:
                         next_node_id
                     )
 
-            return next_node_ids
+            return list(dict.fromkeys(next_node_ids))
 
         if node_type == "instruction":
             next_node_id = node.get("next")
 
             if isinstance(next_node_id, str):
-                return [next_node_id]
+                return list(dict.fromkeys(
+                    [next_node_id, *conditional_destinations]
+                ))
 
-        return []
+            return conditional_destinations
+
+        return conditional_destinations

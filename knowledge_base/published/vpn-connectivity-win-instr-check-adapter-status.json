@@ -1,0 +1,76 @@
+{
+  "schema_version": "1.0",
+  "id": "vpn-connectivity-win-instr-check-adapter-status",
+  "title": "How to Check Network Adapter Status",
+  "category": "Networking",
+  "difficulty": "Beginner",
+  "estimated_time": "5 to 10 minutes",
+  "overview": "This article supports the Check Network Adapter Status step in the VPN Connectivity Troubleshooting (Windows) workflow. It explains how to identify the status of physical and VPN network adapters without making unnecessary configuration changes.",
+  "checklist": [
+    "Save open work and confirm you are working on the intended device.",
+    "Open Network Connections by pressing Windows + R, typing ncpa.cpl, and selecting OK.",
+    "Identify the active physical network adapter and, if applicable, the VPN adapter used by your organization.",
+    "Do not change unfamiliar, virtual machine, or organization-managed adapters.",
+    "If the expected adapter is disabled, record its name and status before enabling it so the troubleshooting workflow can accurately document the change.",
+    "Be aware that enabling a disabled adapter changes the system's network state and may require reconnecting to the network or VPN."
+  ],
+  "common_indicators": [
+    "Ethernet adapter is disabled.",
+    "Wi-Fi adapter is disconnected.",
+    "Expected VPN adapter is missing.",
+    "Only virtual adapters are present.",
+    "The expected network adapter is enabled and connected."
+  ],
+  "commands": [],
+  "related_topics": [
+    "VPN Connectivity Troubleshooting (Windows)",
+    "Enable or Disable a Network Adapter",
+    "Diagnose Network Connectivity"
+  ],
+  "quiz": [
+    {
+      "question": "After verifying the network adapter status, what should you do next?",
+      "answers": [
+        "Record the result and return to the workflow",
+        "Change several unrelated settings",
+        "Ignore what you observed"
+      ],
+      "correct_answer": "Record the result and return to the workflow"
+    }
+  ],
+  "sources": [
+    {
+      "title": "Fix Ethernet connection problems in Windows",
+      "url": "https://support.microsoft.com/en-us/windows/experience/connectivity-networking/fix-ethernet-connection-problems-in-windows"
+    }
+  ],
+  "generation": {
+    "provider": "Gnojo Coverage Assistant",
+    "model": "deterministic-node-draft-v1",
+    "generated_at": "2026-08-04T03:28:43.462685+00:00"
+  },
+  "review": {
+    "status": "approved",
+    "reviewed_by": null,
+    "reviewed_at": null,
+    "notes": [
+      "Generated from a workflow node.",
+      "Reviewed for safe identification of physical and VPN network adapters.",
+      "Microsoft documentation verified on 2026-08-03.",
+      "Remain in Draft until VPN-specific guidance is approved."
+    ],
+    "checks": {
+      "technical_accuracy": true,
+      "user_safety": true,
+      "sources_verified": true,
+      "commands_reviewed": true
+    }
+  },
+  "tags": [
+    "network adapter",
+    "network connection",
+    "ethernet",
+    "wi-fi",
+    "connectivity"
+  ]
+}

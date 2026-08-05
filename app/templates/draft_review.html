@@ -6,7 +6,7 @@
 <section class="container article-review-page" aria-labelledby="articleReviewTitle">
     <div class="article-review-heading">
         <div><span class="section-eyebrow">Knowledge Review Workspace</span><h1 id="articleReviewTitle">{{ article.title }}</h1><p>Edit, validate, preview, and approve this article without touching its JSON file.</p></div>
-        <a class="btn btn-outline-primary" href="{{ url_for('list_drafts') }}"><i class="bi bi-arrow-left me-2" aria-hidden="true"></i>Back to drafts</a>
+        {% if workflow_return_url %}<a class="btn btn-outline-primary" href="{{ workflow_return_url }}"><i class="bi bi-arrow-left me-2" aria-hidden="true"></i>Back to workflow</a>{% else %}<a class="btn btn-outline-primary" href="{{ url_for('list_drafts') }}"><i class="bi bi-arrow-left me-2" aria-hidden="true"></i>Back to drafts</a>{% endif %}
     </div>
 
     {% if error %}<div class="alert alert-danger" role="alert"><strong>Review could not be saved.</strong> {{ error }}</div>{% elif request.args.get('revision') == '1' %}<div class="alert alert-info" role="status"><strong>Revision draft created.</strong> The published article remains live until this revision is reviewed and published.</div>{% elif request.args.get('saved') == '1' %}<div class="alert alert-success" role="status">Article review saved.</div>{% endif %}
@@ -94,10 +94,18 @@
 
     <section class="article-live-preview" data-review-panel="preview" hidden aria-labelledby="articlePreviewTitle">
         <span class="section-eyebrow">User-facing article</span><h2 id="articlePreviewTitle">{{ article.title }}</h2>
+        <div class="d-flex flex-wrap gap-2 mb-3" id="articlePreviewMetadata">
+            <span class="badge text-bg-primary" data-preview-meta="category">{{ article.category }}</span>
+            <span class="badge text-bg-secondary" data-preview-meta="difficulty">{{ article.difficulty }}</span>
+            <span class="badge text-bg-light border" data-preview-meta="estimated_time">{{ article.estimated_time }}</span>
+        </div>
         <p class="article-preview-overview">{{ article.overview }}</p>
         <div class="article-preview-columns"><article><h3>What to Do</h3><ol>{% for item in article.checklist %}<li>{{ item }}</li>{% endfor %}</ol></article><article><h3>Common Indicators</h3><ul>{% for item in article.common_indicators %}<li>{{ item }}</li>{% endfor %}</ul></article></div>
         <article id="articlePreviewCommands" {% if not article.commands %}hidden{% endif %}><h3>Commands</h3><div>{% for command in article.commands %}<pre><code>{{ command.command }}</code></pre><p>{{ command.description }}</p>{% endfor %}</div></article>
+        <article id="articlePreviewTopics" {% if not article.related_topics %}hidden{% endif %}><h3>Related Topics</h3><div class="d-flex flex-wrap gap-2">{% for topic in article.related_topics %}<span class="badge text-bg-light border">{{ topic }}</span>{% endfor %}</div></article>
+        <article id="articlePreviewQuiz" {% if not article.quiz %}hidden{% endif %}><h3>Knowledge Check</h3><p class="fw-semibold">{% if article.quiz %}{{ article.quiz[0].question }}{% endif %}</p><ul>{% if article.quiz %}{% for answer in article.quiz[0].answers %}<li>{{ answer }}</li>{% endfor %}{% endif %}</ul></article>
         <article id="articlePreviewSources" {% if not article.sources %}hidden{% endif %}><h3>Sources</h3><ul>{% for source in article.sources %}<li><a href="{{ source.url }}" target="_blank" rel="noopener noreferrer">{{ source.title }}</a></li>{% endfor %}</ul></article>
+        <article id="articlePreviewTags" {% if not article.tags %}hidden{% endif %}><h3>Tags</h3><div class="d-flex flex-wrap gap-2">{% for tag in article.tags %}<span class="badge text-bg-light border">{{ tag }}</span>{% endfor %}</div></article>
     </section>
 
     {% if workflow_references %}<section class="review-editor-section article-workflow-links" aria-labelledby="workflowLinksTitle"><span class="section-eyebrow">Used by workflows</span><h2 id="workflowLinksTitle">Linked Workflow Nodes</h2>{% for reference in workflow_references %}<article><div><strong>{{ reference.workflow_name }}</strong><span>{{ reference.node_title }}</span></div>{% if reference.filename %}<a class="btn btn-sm btn-outline-primary" href="{{ url_for('workflow_editor', filename=reference.filename, node=reference.node_id) }}">Open node</a>{% else %}<a class="btn btn-sm btn-outline-primary" href="{{ url_for('wizard', workflow=reference.workflow_id, restart='1') }}">Test workflow</a>{% endif %}</article>{% endfor %}</section>{% endif %}

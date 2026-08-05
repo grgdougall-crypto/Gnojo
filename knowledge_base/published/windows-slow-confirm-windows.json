@@ -1,0 +1,81 @@
+{
+  "schema_version": "1.0",
+  "id": "windows-slow-confirm-windows",
+  "title": "How to Confirm the Windows Device",
+  "category": "Desktop Support",
+  "difficulty": "Beginner",
+  "estimated_time": "5 to 10 minutes",
+  "overview": "This article supports the Confirm the Windows Device step in the Computer Running Slowly workflow. It explains how to verify that troubleshooting is being performed on the correct Windows computer, confirm the Windows version, and ensure the technician has access to the appropriate device before making changes.",
+  "tags": [
+    "windows",
+    "confirm",
+    "device",
+    "desktop support"
+  ],
+  "checklist": [
+    "Save any open work before beginning troubleshooting.",
+    "Confirm the computer name matches the affected device.",
+    "Verify the Windows edition and version by opening Settings > System > About.",
+    "Confirm you are signed into the intended Windows device and not a remote or secondary computer.",
+    "Verify you have administrative access if troubleshooting may require elevated permissions.",
+    "Record the Windows version and device name before returning to the workflow."
+  ],
+  "common_indicators": [
+    "The reported computer name matches the affected device.",
+    "The Windows version has been confirmed.",
+    "The technician is connected to the correct computer.",
+    "Administrative access is available.",
+    "The device information has been documented."
+  ],
+  "commands": [
+    {
+      "command": "hostname",
+      "description": "Displays the computer name.\\nwinver | Displays the installed Windows version.\\nmsinfo32 | Opens System Information."
+    }
+  ],
+  "related_topics": [
+    "Computer Running Slowly",
+    "Collect System Information",
+    "Verify Administrative Access",
+    "Windows System Information"
+  ],
+  "quiz": [
+    {
+      "question": "What information should be verified before continuing with Windows performance troubleshooting?",
+      "answers": [
+        "The correct computer, Windows version, and device information",
+        "Only the desktop wallpaper",
+        "The web browser homepage"
+      ],
+      "correct_answer": "The correct computer, Windows version, and device information"
+    }
+  ],
+  "sources": [
+    {
+      "title": "Find information about your Windows device",
+      "url": "Microsoft Support | https://support.microsoft.com/en-us/windows/experience/find-information-about-your-windows-device"
+    }
+  ],
+  "generation": {
+    "provider": "Gnojo Coverage Assistant",
+    "model": "deterministic-node-draft-v1",
+    "generated_at": "2026-08-05T02:56:42.721222+00:00"
+  },
+  "review": {
+    "status": "approved",
+    "reviewed_by": null,
+    "reviewed_at": null,
+    "notes": [
+      "Generated from workflow node.",
+      "Reviewed for accurate Windows device identification procedures.",
+      "Verified against current Microsoft documentation.",
+      "Confirm organizational asset identification procedures before publication."
+    ],
+    "checks": {
+      "technical_accuracy": true,
+      "user_safety": true,
+      "sources_verified": true,
+      "commands_reviewed": true
+    }
+  }
+}

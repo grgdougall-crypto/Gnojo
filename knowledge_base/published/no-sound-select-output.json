@@ -1,0 +1,90 @@
+{
+  "schema_version": "1.0",
+  "id": "no-sound-select-output",
+  "title": "How to Select the Intended Audio Output",
+  "category": "Hardware",
+  "difficulty": "Beginner",
+  "estimated_time": "2–5 minutes",
+  "overview": "This article supports the Select the Intended Audio Output step in the No Sound workflow. It explains how to identify and select the correct playback device in Windows when multiple audio devices are available.",
+  "tags": [
+    "audio output",
+    "playback device",
+    "speakers",
+    "headset",
+    "sound settings"
+  ],
+  "checklist": [
+    "Save any open work before changing audio settings.",
+    "Open the Windows sound output selector from the taskbar or open Settings > System > Sound.",
+    "Review the available playback devices.",
+    "Select the intended speakers, headset, monitor, docking station, or Bluetooth audio device.",
+    "If the expected device is not listed, verify that it is connected and powered on.",
+    "Play a test sound to verify audio is heard through the selected device.",
+    "Record the selected playback device and return to the troubleshooting workflow."
+  ],
+  "common_indicators": [
+    "Multiple playback devices are available.",
+    "The incorrect playback device is selected.",
+    "The expected audio device does not appear.",
+    "Audio works immediately after selecting the correct output device.",
+    "Windows automatically switches to another playback device."
+  ],
+  "commands": [
+    {
+      "command": "start ms-settings:sound",
+      "description": "Opens the Windows Sound settings page."
+    }
+  ],
+  "related_topics": [
+    "No Sound",
+    "Check Speaker or Headset Connections",
+    "Update or Reinstall an Audio Driver",
+    "Check the Application's Audio Controls"
+  ],
+  "quiz": [
+    {
+      "question": "What should you verify if sound is not coming from the expected speakers or headset?",
+      "answers": [
+        "The correct playback device is selected in Windows.",
+        "The desktop wallpaper is current.",
+        "The recycle bin has been emptied."
+      ],
+      "correct_answer": "The correct playback device is selected in Windows."
+    }
+  ],
+  "sources": [
+    {
+      "title": "Fix audio issues when no sound plays from speakers or headphones in Windows",
+      "url": "https://support.microsoft.com/en-us/windows/hardware/audio/fix-audio-issues-when-no-sound-plays-from-speakers-or-headphones-in-windows"
+    }
+  ],
+  "generation": {
+    "provider": "Gnojo Coverage Assistant",
+    "model": "deterministic-node-draft-v1",
+    "generated_at": "2026-08-05T04:56:27.272757+00:00"
+  },
+  "review": {
+    "status": "approved",
+    "reviewed_by": null,
+    "reviewed_at": null,
+    "notes": [
+      "Generated from workflow node.",
+      "Reviewed for Windows audio output selection procedures.",
+      "Verified against current Microsoft documentation.",
+      "Confirm organizational audio device configuration procedures before publication."
+    ],
+    "checks": {
+      "technical_accuracy": true,
+      "user_safety": true,
+      "sources_verified": true,
+      "commands_reviewed": true
+    }
+  },
+  "workflow_origin": {
+    "filename": "no_sound.json",
+    "workflow_id": "no_sound",
+    "workflow_name": "No Sound",
+    "node_id": "select_output",
+    "node_title": "Select the Intended Audio Output"
+  }
+}

@@ -37,12 +37,64 @@ class WorkflowCoverageServiceTests(unittest.TestCase):
         service = WorkflowCoverageService()
         help_text = service.generate_help_text(node)
         self.assertIn("check startup applications", help_text.lower())
-        self.assertIn("avoid changing unrelated settings", help_text)
+        self.assertIn("startup impact", help_text)
+        self.assertIn("security", help_text)
         article = service.create_article_draft(workflow, "check_step", node)
         self.assertEqual(article["id"], "coverage-test-check-step")
         self.assertEqual(ArticleValidator.validate(article), [])
         self.assertEqual(article["review"]["status"], "draft")
         self.assertEqual(article["generation"]["provider"], "Gnojo Coverage Assistant")
+        self.assertGreaterEqual(len(article["tags"]), 3)
+        self.assertIn("task manager", article["tags"])
+
+    def test_help_text_uses_diagnostic_evidence_for_ip_configuration(self):
+        help_text = WorkflowCoverageService().generate_help_text({
+            "type": "instruction",
+            "title": "Inspect the IP Configuration",
+            "instruction": "Open Command Prompt and run ipconfig /all.",
+        })
+
+        self.assertIn("IPv4 address", help_text)
+        self.assertIn("default gateway", help_text)
+        self.assertIn("DNS servers", help_text)
+        self.assertIn("without changing network settings", help_text)
+
+    def test_help_text_distinguishes_dns_and_gateway_diagnostics(self):
+        service = WorkflowCoverageService()
+        dns_help = service.generate_help_text({
+            "type": "instruction",
+            "title": "Test DNS Resolution",
+            "instruction": "Run nslookup example.com and confirm that a DNS server returns an address.",
+        })
+        gateway_help = service.generate_help_text({
+            "type": "instruction",
+            "title": "Test the Default Gateway",
+            "instruction": "Ping the default gateway and record whether it responds.",
+        })
+
+        self.assertIn("DNS server used", dns_help)
+        self.assertIn("timeout or nonexistent domain", dns_help)
+        self.assertNotIn("DHCP status", dns_help)
+        self.assertIn("packet loss", gateway_help)
+        self.assertIn("local reachability only", gateway_help)
+        self.assertIn("name resolution", gateway_help)
+        self.assertNotIn("DHCP status", gateway_help)
+
+    def test_help_text_uses_question_and_resolution_content(self):
+        service = WorkflowCoverageService()
+
+        question_help = service.generate_help_text({
+            "type": "question",
+            "question": "Did the default gateway respond?",
+        })
+        resolution_help = service.generate_help_text({
+            "type": "resolution",
+            "title": "DNS Resolution Problem",
+            "message": "The gateway responds, but name resolution failed.",
+        })
+
+        self.assertIn("Did the default gateway respond", question_help)
+        self.assertIn("name resolution failed", resolution_help)
 
     def test_article_generation_rejects_non_instruction_node(self):
         workflow = coverage_workflow()
@@ -71,15 +123,39 @@ class WorkflowCoverageEndpointTests(unittest.TestCase):
         self.draft_patch.stop()
         self.temporary.cleanup()
 
-    def test_help_text_endpoint_saves_normalized_node(self):
+    @patch("app.app.WorkflowHelpTextService.suggest")
+    def test_help_text_endpoint_previews_then_accepts(self, suggest):
+        suggested_text = (
+            "Review the Startup apps list and record each item's publisher and startup impact. "
+            "An unfamiliar or high-impact entry is evidence for follow-up, but it does not by itself prove malicious activity."
+        )
+        suggest.return_value = {
+            "help_text": suggested_text,
+            "provider": "Gemini",
+            "used_fallback": False,
+            "quality_checks": ["Uses the selected node's workflow context"],
+        }
         response = self.client.post(
-            f"/api/workflow-drafts/{self.filename}/nodes/check_step/coverage/help-text"
+            f"/api/workflow-drafts/{self.filename}/nodes/check_step/coverage/help-text",
+            json={},
         )
         self.assertEqual(response.status_code, 200)
         result = response.get_json()
         self.assertTrue(result["ok"])
+        self.assertFalse(result["accepted"])
+        self.assertEqual(result["provider"], "Gemini")
+        unchanged = self.drafts.get_draft(self.filename)
+        self.assertNotIn("help_text", unchanged["nodes"]["check_step"])
+
+        accepted = self.client.post(
+            f"/api/workflow-drafts/{self.filename}/nodes/check_step/coverage/help-text",
+            json={"action": "accept", "help_text": suggested_text},
+        )
+        self.assertEqual(accepted.status_code, 200)
+        accepted_result = accepted.get_json()
+        self.assertTrue(accepted_result["accepted"])
         saved = self.drafts.get_draft(self.filename)
-        self.assertEqual(saved["nodes"]["check_step"]["help_text"], result["help_text"])
+        self.assertEqual(saved["nodes"]["check_step"]["help_text"], suggested_text)
 
     def test_article_endpoint_creates_draft_and_links_node(self):
         response = self.client.post(
@@ -107,6 +183,8 @@ class WorkflowCoverageEndpointTests(unittest.TestCase):
         self.assertIn("Content Coverage Assistant", html)
         self.assertIn("generateHelpTextButton", html)
         self.assertIn("createArticleDraftButton", html)
+        self.assertIn("helpTextPreview", html)
+        self.assertIn("Nothing is saved until you accept it", html)
         self.assertIn("data-help-text-url", html)
 
     def test_stale_editor_node_returns_refresh_guidance(self):

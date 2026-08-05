@@ -774,6 +774,16 @@ main {
 .review-editor-section label { display: block; }
 .review-editor-section label > span { display: block; font-size: .82rem; font-weight: 700; margin-bottom: .4rem; }
 .review-editor-section label small { color: var(--sp-muted); font-weight: 400; }
+.article-source-workspace { display: grid; gap: .75rem; }
+.article-source-heading { align-items: flex-start; display: flex; gap: 1rem; justify-content: space-between; }
+.article-source-heading > div > span { display: block; font-size: .82rem; font-weight: 700; margin-bottom: .25rem; }
+.article-source-heading p, .article-source-message { color: var(--sp-muted); font-size: .8rem; margin: 0; }
+.article-source-message.is-error { color: #dc3545; }
+.article-source-suggestions { display: grid; gap: .65rem; }
+.article-source-suggestion { align-items: center; background: color-mix(in srgb, var(--sp-surface) 82%, var(--sp-background)); border: 1px solid var(--sp-border); border-radius: .7rem; display: flex; gap: 1rem; justify-content: space-between; padding: .85rem; }
+.article-source-suggestion h3 { font-size: .95rem; margin: .2rem 0; }
+.article-source-suggestion p { color: var(--sp-muted); font-size: .78rem; margin: 0; }
+.article-source-suggestion__actions { display: flex; flex: 0 0 auto; gap: .45rem; }
 .review-editor-grid { display: grid; gap: 1rem; grid-template-columns: repeat(2, 1fr); margin-bottom: 1rem; }
 .review-grid-wide { grid-column: 1 / -1; }
 .technical-review > p { color: var(--sp-muted); font-size: .85rem; }
@@ -802,6 +812,8 @@ main {
     .article-review-heading .btn, .review-action-bar button, .publish-review-bar button { width: 100%; }
     .review-summary-grid { grid-template-columns: repeat(2, 1fr); }
     .review-editor-grid, .article-preview-columns { grid-template-columns: 1fr; }
+    .article-source-heading, .article-source-suggestion { align-items: stretch; flex-direction: column; }
+    .article-source-suggestion__actions .btn { flex: 1; }
     .review-grid-wide { grid-column: auto; }
     .review-action-bar > div { display: grid; grid-template-columns: 1fr 1fr; width: 100%; }
 }

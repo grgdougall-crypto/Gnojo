@@ -127,6 +127,18 @@ class OpenAIProvider(AIProvider):
             content_type="workflow node suggestion",
         )
 
+    def find_authoritative_sources(self, prompt):
+        """Find current web sources using OpenAI web search."""
+        response = self.client.responses.create(
+            model=self.model,
+            tools=[{"type": "web_search"}],
+            input=prompt,
+        )
+        response_text = self._remove_code_fence((response.output_text or "").strip())
+        if not response_text:
+            raise RuntimeError("OpenAI returned no web source suggestions.")
+        return json.loads(response_text)
+
     def _load_prompt(
         self,
         prompt_filename,

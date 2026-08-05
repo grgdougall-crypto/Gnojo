@@ -45,13 +45,21 @@
             </div>
         </div>
 
-        <a
-            href="{{ url_for('list_published') }}"
-            class="btn btn-outline-primary"
-        >
-            <i class="bi bi-arrow-left me-2"></i>
-            Back to Articles
-        </a>
+        <div class="d-flex flex-wrap gap-2">
+            <form method="post" action="{{ url_for('revise_published_article', article_id=article.id) }}">
+                <button class="btn btn-primary" type="submit">
+                    <i class="bi bi-pencil-square me-2" aria-hidden="true"></i>
+                    Revise article
+                </button>
+            </form>
+            <a
+                href="{{ url_for('list_published') }}"
+                class="btn btn-outline-primary"
+            >
+                <i class="bi bi-arrow-left me-2"></i>
+                Back to Articles
+            </a>
+        </div>
 
     </div>
 

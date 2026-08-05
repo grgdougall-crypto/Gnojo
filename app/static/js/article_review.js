@@ -17,6 +17,79 @@ document.addEventListener("DOMContentLoaded", () => {
             return item;
         }));
     };
+
+    const sourceWorkspace = document.querySelector(".article-source-workspace");
+    const findSourcesButton = document.getElementById("findArticleSourcesButton");
+    const sourceMessage = document.getElementById("articleSourceFinderMessage");
+    const sourceSuggestions = document.getElementById("articleSourceSuggestions");
+    const sourcesValue = document.getElementById("articleSourcesValue");
+
+    const attachSource = (source, button) => {
+        const line = `${source.title} | ${source.url}`;
+        const current = lines(sourcesValue.value);
+        if (!current.includes(line)) current.push(line);
+        sourcesValue.value = current.join("\n");
+        sourcesValue.dispatchEvent(new Event("input", { bubbles: true }));
+        button.disabled = true;
+        button.textContent = "Attached";
+        sourceMessage.textContent = "Source attached to the draft. Open it for review, then save the draft.";
+    };
+
+    const renderSourceSuggestions = (result) => {
+        sourceSuggestions.replaceChildren();
+        result.suggestions.forEach((source) => {
+            const card = document.createElement("article");
+            card.className = "article-source-suggestion";
+            const content = document.createElement("div");
+            const publisher = document.createElement("span");
+            publisher.className = "section-eyebrow";
+            publisher.textContent = source.publisher;
+            const title = document.createElement("h3");
+            title.textContent = source.title;
+            const reason = document.createElement("p");
+            reason.textContent = source.reason;
+            content.append(publisher, title, reason);
+            const actions = document.createElement("div");
+            actions.className = "article-source-suggestion__actions";
+            const open = document.createElement("a");
+            open.className = "btn btn-sm btn-outline-primary";
+            open.href = source.url;
+            open.target = "_blank";
+            open.rel = "noopener noreferrer";
+            open.textContent = "Open source";
+            const attach = document.createElement("button");
+            attach.className = "btn btn-sm btn-success";
+            attach.type = "button";
+            attach.textContent = "Attach source";
+            attach.addEventListener("click", () => attachSource(source, attach));
+            actions.append(open, attach);
+            card.append(content, actions);
+            sourceSuggestions.appendChild(card);
+        });
+        sourceSuggestions.hidden = false;
+        sourceMessage.textContent = `${result.provider} found ${result.suggestions.length} candidate source${result.suggestions.length === 1 ? "" : "s"}. Verify a page before attaching it.`;
+    };
+
+    findSourcesButton?.addEventListener("click", async () => {
+        findSourcesButton.disabled = true;
+        sourceMessage.classList.remove("is-error");
+        sourceMessage.textContent = "Searching current authoritative documentation…";
+        sourceSuggestions.hidden = true;
+        try {
+            const response = await fetch(sourceWorkspace.dataset.sourceFinderUrl, {
+                method: "POST",
+                headers: { "Accept": "application/json" },
+            });
+            const result = await response.json();
+            if (!response.ok || !result.ok) throw new Error(result.error || "Sources could not be found.");
+            renderSourceSuggestions(result);
+        } catch (error) {
+            sourceMessage.textContent = error.message;
+            sourceMessage.classList.add("is-error");
+        } finally {
+            findSourcesButton.disabled = false;
+        }
+    });
     const refreshPreview = () => {
         const values = new FormData(form);
         preview.querySelector("h2").textContent = values.get("title") || "Untitled article";

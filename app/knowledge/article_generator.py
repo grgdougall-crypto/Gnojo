@@ -23,6 +23,7 @@ from app.knowledge.article_validator import (
     ArticleValidationError,
     ArticleValidator,
 )
+from app.services.article_tag_service import ArticleTagService
 from app.knowledge.providers.provider_router import ProviderRouter
 from app.prompts.article_prompt_builder import ArticlePromptBuilder
 
@@ -98,6 +99,8 @@ class ArticleGenerator:
             )
 
         article = provider_result.content
+
+        article["tags"] = ArticleTagService.generate(article)
 
         self._apply_generation_metadata(
             article=article,

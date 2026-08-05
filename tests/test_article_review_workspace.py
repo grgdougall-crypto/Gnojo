@@ -28,6 +28,7 @@ def review_form(action="save", *, sources="Microsoft Support | https://support.m
         "difficulty": "Beginner",
         "estimated_time": "5 minutes",
         "overview": "Review startup applications safely and identify optional high-impact entries.",
+        "tags": "windows, task manager, startup, performance",
         "checklist": "Save open work\nOpen Task Manager\nReview Startup apps",
         "common_indicators": "Slow sign-in\nHigh resource use after startup",
         "related_topics": "Task Manager\nWindows performance",
@@ -45,6 +46,19 @@ def review_form(action="save", *, sources="Microsoft Support | https://support.m
 
 
 class ArticleReviewServiceTests(unittest.TestCase):
+    def test_checklist_removes_number_prefixes(self):
+        values = review_form("save")
+        values["checklist"] = (
+            "1. Save open work\n2) Open Device Manager\nReview the result"
+        )
+        article = ArticleReviewService().update_from_form(
+            review_article(), values
+        )
+        self.assertEqual(
+            article["checklist"],
+            ["Save open work", "Open Device Manager", "Review the result"],
+        )
+
     def test_analysis_flags_missing_sources_and_calculates_completeness(self):
         article = review_article()
         analysis = ArticleReviewService().analyze(article)
@@ -65,6 +79,12 @@ class ArticleReviewServiceTests(unittest.TestCase):
         self.assertEqual(article["commands"][0]["command"], "tasklist")
         self.assertEqual(article["sources"][0]["title"], "Microsoft Support")
         self.assertTrue(ArticleReviewService().analyze(article)["can_publish"])
+
+    def test_approve_and_publish_action_approves_valid_article(self):
+        article = ArticleReviewService().update_from_form(
+            review_article(), review_form("approve_and_publish")
+        )
+        self.assertEqual(article["review"]["status"], "approved")
 
 
 class ArticleReviewWorkspacePageTests(unittest.TestCase):
@@ -91,8 +111,8 @@ class ArticleReviewWorkspacePageTests(unittest.TestCase):
         self.assertIn("Technical Review Checklist", html)
         self.assertIn('data-review-view="preview"', html)
         self.assertIn("article_review.js", html)
-        self.assertIn("Publish article", html)
-        self.assertIn("disabled", html)
+        self.assertIn("Submit for review", html)
+        self.assertNotIn("Publish article", html)
 
     def test_save_approve_and_publish_lifecycle(self):
         article_id = self.article["id"]
@@ -128,6 +148,53 @@ class ArticleReviewWorkspacePageTests(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("Complete validation", response.get_data(as_text=True))
 
+    def test_published_article_can_be_revised_while_remaining_live(self):
+        article_id = self.article["id"]
+        published = review_article()
+        published["checklist"] = [
+            "1. Save open work", "2. Inspect Startup apps"
+        ]
+        published["review"]["status"] = "approved"
+        self.repository.save_draft(published, overwrite=True)
+        self.repository.publish_article(article_id)
+
+        response = self.client.post(
+            f"/knowledge/published/{article_id}/revise"
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(f"/knowledge/drafts/{article_id}", response.headers["Location"])
+        self.assertEqual(
+            self.repository.get_published_article(article_id)["review"]["status"],
+            "approved",
+        )
+        revision = self.repository.get_draft(article_id)
+        self.assertEqual(revision["review"]["status"], "draft")
+        self.assertFalse(any(revision["review"]["checks"].values()))
+        self.assertEqual(
+            revision["checklist"],
+            ["Save open work", "Inspect Startup apps"],
+        )
+        page = self.client.get(
+            f"/knowledge/published/{article_id}"
+        ).get_data(as_text=True)
+        self.assertIn("Revise article", page)
+
+        approve = self.client.post(
+            f"/knowledge/drafts/{article_id}", data=review_form("approve")
+        )
+        self.assertEqual(approve.status_code, 302)
+        republish = self.client.post(
+            f"/knowledge/drafts/{article_id}/publish"
+        )
+        self.assertEqual(republish.status_code, 302)
+        self.assertEqual(
+            self.repository.get_published_article(article_id)["title"],
+            "How to Inspect Startup Apps",
+        )
+        with self.assertRaises(Exception):
+            self.repository.get_draft(article_id)
+
     def test_rejection_requires_review_notes(self):
         values = review_form("reject")
         values["review_notes"] = ""
@@ -136,6 +203,34 @@ class ArticleReviewWorkspacePageTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 400)
         self.assertIn("Add a review note", response.get_data(as_text=True))
+
+    def test_pending_review_shows_only_contextual_review_actions(self):
+        article_id = self.article["id"]
+        self.client.post(
+            f"/knowledge/drafts/{article_id}", data=review_form("submit")
+        )
+        html = self.client.get(
+            f"/knowledge/drafts/{article_id}"
+        ).get_data(as_text=True)
+        self.assertIn("Request changes", html)
+        self.assertIn("Approve &amp; publish", html)
+        self.assertNotIn(">Save draft<", html)
+        self.assertNotIn(">Submit for review<", html)
+
+    def test_approve_and_publish_combines_final_review_steps(self):
+        article_id = self.article["id"]
+        response = self.client.post(
+            f"/knowledge/drafts/{article_id}",
+            data=review_form("approve_and_publish"),
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(
+            f"/knowledge/published/{article_id}", response.headers["Location"]
+        )
+        self.assertEqual(
+            self.repository.get_published_article(article_id)["review"]["status"],
+            "approved",
+        )
 
 
 if __name__ == "__main__":

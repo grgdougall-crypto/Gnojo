@@ -1,6 +1,7 @@
 import re
 
 from app.knowledge.article_validator import ArticleValidator
+from app.services.article_tag_service import ArticleTagService
 
 
 class ArticleReviewError(ValueError):
@@ -29,6 +30,7 @@ class ArticleReviewService:
             "Common indicators": bool(article.get("common_indicators")),
             "Knowledge check": bool(article.get("quiz")),
             "Sources": bool(article.get("sources")),
+            "Tags": len(ArticleTagService.normalize(article.get("tags", []))) >= 3,
         }
         score = round((sum(fields.values()) / len(fields)) * 100)
         warnings = []
@@ -51,6 +53,8 @@ class ArticleReviewService:
         elif commands:
             warnings.append({"kind": "commands", "level": "low", "message": "Confirm every command's permissions, side effects, and expected output."})
         validation_errors = ArticleValidator.validate(article)
+        if len(ArticleTagService.normalize(article.get("tags", []))) < 3:
+            validation_errors.append("Add at least three useful search tags.")
         return {
             "score": score,
             "fields": fields,
@@ -75,7 +79,10 @@ class ArticleReviewService:
         if difficulty not in {"Beginner", "Intermediate", "Advanced"}:
             raise ArticleReviewError("Choose a valid difficulty.")
         updated["difficulty"] = difficulty
-        updated["checklist"] = self._lines(form.get("checklist", ""))
+        updated["tags"] = ArticleTagService.normalize(form.get("tags", ""))
+        updated["checklist"] = self.normalize_checklist(
+            self._lines(form.get("checklist", ""))
+        )
         updated["common_indicators"] = self._lines(form.get("common_indicators", ""))
         updated["related_topics"] = self._lines(form.get("related_topics", ""))
         updated["commands"] = self._pairs(form.get("commands", ""), "Command")
@@ -95,7 +102,7 @@ class ArticleReviewService:
         action = form.get("review_action", "save")
         if action == "submit":
             review["status"] = "pending_review"
-        elif action == "approve":
+        elif action in {"approve", "approve_and_publish"}:
             if not all(checks.values()):
                 raise ArticleReviewError("Complete every technical review check before approval.")
             review["status"] = "approved"
@@ -111,6 +118,16 @@ class ArticleReviewService:
     def checks_complete(self, article):
         checks = article.get("review", {}).get("checks", {})
         return all(checks.get(key) is True for key in self.CHECKS)
+
+    @staticmethod
+    def normalize_checklist(items):
+        """Remove numbering that the published ordered list supplies itself."""
+        normalized = []
+        for item in items or []:
+            text = re.sub(r"^\s*\d+\s*[.)]\s+", "", str(item).strip())
+            if text:
+                normalized.append(text)
+        return normalized
 
     @staticmethod
     def _lines(value):

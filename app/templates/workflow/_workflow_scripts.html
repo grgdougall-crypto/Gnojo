@@ -12,6 +12,13 @@
     const saveButton = document.getElementById("saveNodeButton");
     const generateHelpTextButton = document.getElementById("generateHelpTextButton");
     const createArticleDraftButton = document.getElementById("createArticleDraftButton");
+    const helpTextPreview = document.getElementById("helpTextPreview");
+    const helpTextProvider = document.getElementById("helpTextProvider");
+    const helpTextPreviewValue = document.getElementById("helpTextPreviewValue");
+    const helpTextQualityChecks = document.getElementById("helpTextQualityChecks");
+    const helpTextFallbackNotice = document.getElementById("helpTextFallbackNotice");
+    const cancelHelpTextButton = document.getElementById("cancelHelpTextButton");
+    const acceptHelpTextButton = document.getElementById("acceptHelpTextButton");
     const answerList = document.getElementById("nodeAnswersEditor");
     const validationDialog = document.getElementById("workflowValidationDialog");
     const validationButton = document.getElementById("validateWorkflowButton");
@@ -30,6 +37,7 @@
     let aiSuggestion = null;
     let selectedButton = null;
     let originalNode = null;
+    let helpTextSuggestion = null;
     const mobilePanelQuery = window.matchMedia("(max-width: 767.98px)");
     const mobilePanelButtons = Array.from(document.querySelectorAll("[data-workflow-panel]"));
     const mobilePanels = Array.from(document.querySelectorAll("[data-workflow-panel-name]"));
@@ -143,6 +151,32 @@
         element("nodeDetailsHint").textContent = dirty ? "Unsaved changes" : `Internal ID: ${originalNode?.id || "Not set"}`;
     };
 
+    const resetHelpTextPreview = () => {
+        helpTextSuggestion = null;
+        helpTextPreview.hidden = true;
+        helpTextProvider.textContent = "";
+        helpTextPreviewValue.value = "";
+        helpTextQualityChecks.replaceChildren();
+        helpTextFallbackNotice.hidden = true;
+        acceptHelpTextButton.disabled = false;
+        acceptHelpTextButton.textContent = "Accept and save";
+    };
+
+    const renderHelpTextPreview = (result) => {
+        helpTextSuggestion = result;
+        helpTextProvider.textContent = result.provider || "Gnojo";
+        helpTextPreviewValue.value = result.help_text || "";
+        helpTextQualityChecks.replaceChildren();
+        (result.quality_checks || []).forEach((check) => {
+            const item = document.createElement("li");
+            item.textContent = check;
+            helpTextQualityChecks.appendChild(item);
+        });
+        helpTextFallbackNotice.hidden = !result.used_fallback;
+        helpTextPreview.hidden = false;
+        helpTextPreview.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    };
+
     const populateForm = (node) => {
         const isQuestion = node.type === "question";
         element("nodePrimaryLabel").textContent = isQuestion ? "Question" : "Title";
@@ -175,6 +209,7 @@
             return;
         }
         selectedButton = button;
+        resetHelpTextPreview();
         element("improveNodeButton").disabled = false;
         generateHelpTextButton.disabled = false;
         createArticleDraftButton.disabled = originalNode.type !== "instruction";
@@ -276,16 +311,21 @@
         }
         const button = kind === "help" ? generateHelpTextButton : createArticleDraftButton;
         button.disabled = true;
-        element("coverageAssistantMessage").textContent = kind === "help" ? "Generating and saving help text…" : "Creating and linking article draft…";
+        element("coverageAssistantMessage").textContent = kind === "help" ? "Generating context-aware help text…" : "Creating and linking article draft…";
         element("coverageAssistantMessage").classList.remove("is-error");
         const template = kind === "help" ? designer.dataset.helpTextUrl : designer.dataset.articleDraftUrl;
         const url = template.replace("__NODE_ID__", encodeURIComponent(originalNode.id));
         try {
-            const response = await fetch(url, { method: "POST", headers: { "Accept": "application/json" } });
+            const response = await fetch(url, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "Accept": "application/json" },
+                body: kind === "help" ? JSON.stringify({}) : null,
+            });
             const result = await response.json();
             if (!response.ok || !result.ok) throw new Error(result.error || "Coverage content could not be created.");
             if (kind === "help") {
-                applyCoverageNode(result.node, "Help text generated and saved. Review it before publishing.");
+                renderHelpTextPreview(result);
+                element("coverageAssistantMessage").textContent = "Review the suggestion below. Nothing has been saved.";
             } else {
                 applyCoverageNode(result.node, result.created ? "Article draft created and linked." : "Existing article draft linked.");
                 const link = element("openArticleDraftLink");
@@ -298,6 +338,29 @@
         } finally {
             generateHelpTextButton.disabled = !originalNode;
             createArticleDraftButton.disabled = !originalNode || originalNode.type !== "instruction";
+        }
+    };
+
+    const acceptHelpText = async () => {
+        if (!originalNode || !helpTextSuggestion?.help_text) return;
+        acceptHelpTextButton.disabled = true;
+        acceptHelpTextButton.textContent = "Saving…";
+        const url = designer.dataset.helpTextUrl.replace("__NODE_ID__", encodeURIComponent(originalNode.id));
+        try {
+            const response = await fetch(url, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "Accept": "application/json" },
+                body: JSON.stringify({ action: "accept", help_text: helpTextSuggestion.help_text }),
+            });
+            const result = await response.json();
+            if (!response.ok || !result.ok) throw new Error(result.error || "Help text could not be saved.");
+            resetHelpTextPreview();
+            applyCoverageNode(result.node, "Help text accepted and saved.");
+        } catch (error) {
+            element("coverageAssistantMessage").textContent = error.message;
+            element("coverageAssistantMessage").classList.add("is-error");
+            acceptHelpTextButton.disabled = false;
+            acceptHelpTextButton.textContent = "Accept and save";
         }
     };
 
@@ -319,6 +382,8 @@
         const issues = element("validationIssues");
         summary.replaceChildren();
         issues.replaceChildren();
+        element("revalidateWorkflowButton").hidden = result.is_valid;
+        element("continueToPublishButton").hidden = !result.is_valid;
 
         title.textContent = result.is_valid ? "Workflow passed" : "Workflow needs attention";
         const status = document.createElement("div");
@@ -333,7 +398,7 @@
         if (!result.issues.length) {
             const empty = document.createElement("div");
             empty.className = "validation-empty";
-            empty.textContent = "No validation issues were found.";
+            empty.textContent = "No validation issues were found. It is safe to continue to publication.";
             issues.appendChild(empty);
             return;
         }
@@ -368,6 +433,8 @@
         element("validationDialogTitle").textContent = "Checking workflow…";
         element("validationSummary").replaceChildren();
         element("validationIssues").replaceChildren();
+        element("revalidateWorkflowButton").hidden = false;
+        element("continueToPublishButton").hidden = true;
         validationButton.disabled = true;
 
         try {
@@ -895,10 +962,23 @@
     form.addEventListener("submit", (event) => { event.preventDefault(); saveNode(); });
     generateHelpTextButton.addEventListener("click", () => runCoverageAction("help"));
     createArticleDraftButton.addEventListener("click", () => runCoverageAction("article"));
-    resetButton.addEventListener("click", () => populateForm(originalNode));
+    cancelHelpTextButton.addEventListener("click", () => {
+        resetHelpTextPreview();
+        element("coverageAssistantMessage").textContent = "Suggestion discarded. No changes were saved.";
+        element("coverageAssistantMessage").classList.remove("is-error");
+    });
+    acceptHelpTextButton.addEventListener("click", acceptHelpText);
+    resetButton.addEventListener("click", () => {
+        resetHelpTextPreview();
+        populateForm(originalNode);
+    });
     element("addNodeAnswer").addEventListener("click", () => { makeAnswerRow(); updateDirtyState(); });
     validationButton.addEventListener("click", runValidation);
     element("revalidateWorkflowButton").addEventListener("click", runValidation);
+    element("continueToPublishButton").addEventListener("click", () => {
+        validationDialog.close();
+        openPublicationDialog(true);
+    });
     element("closeValidationDialog").addEventListener("click", () => validationDialog.close());
     validationDialog.addEventListener("click", (event) => { if (event.target === validationDialog) validationDialog.close(); });
     element("simulateWorkflowButton").addEventListener("click", openSimulator);

@@ -35,7 +35,7 @@
         },
         "unknown": {
           "label": "I'm Not Sure",
-          "next": "inspect_ip_configuration"
+          "next": "ip_configuration_unclear"
         }
       }
     },
@@ -94,6 +94,12 @@
       "type": "resolution",
       "title": "Possible Adapter Problem",
       "message": "The active adapter does not have an IPv4 address. Check whether the adapter is enabled, its driver is working, and the connection is active."
+    },
+
+    "ip_configuration_unclear": {
+      "type": "resolution",
+      "title": "IP Configuration Could Not Be Classified",
+      "message": "The IPv4 configuration could not be classified confidently. Record the active adapter's IPv4 address, subnet mask, default gateway, and DHCP status from ipconfig /all, then have a technician or network administrator review the values before changing network settings."
     },
 
     "local_network_problem": {

@@ -36,6 +36,7 @@ from app.repositories.command_repository import CommandRepository
 from app.repositories.script_repository import ScriptRepository
 
 from app.services.search_service import SearchService
+from app.services.article_tag_service import ArticleTagService
 
 from app.services.relationship_service import RelationshipService
 
@@ -99,7 +100,12 @@ from app.services.workflow_coverage_service import (
     WorkflowCoverageError,
     WorkflowCoverageService,
 )
+from app.services.workflow_help_text_service import (
+    WorkflowHelpTextError,
+    WorkflowHelpTextService,
+)
 from app.services.article_review_service import ArticleReviewError, ArticleReviewService
+from app.services.article_source_finder_service import ArticleSourceFinderError, ArticleSourceFinderService
 from app.services.script_authoring_service import ScriptAuthoringError, ScriptAuthoringService
 
 load_dotenv()
@@ -835,23 +841,36 @@ def improve_workflow_node(filename, node_id):
     methods=["POST"],
 )
 def generate_workflow_help_text(filename, node_id):
-    workflow = WorkflowDraftService().get_draft(filename)
+    draft_service = WorkflowDraftService()
+    workflow = draft_service.get_draft(filename)
     if workflow is None:
         return {"ok": False, "error": "Workflow draft not found."}, 404
     node = workflow.get("nodes", {}).get(node_id)
     if not isinstance(node, dict):
         return {"ok": False, "error": "This draft changed after the page opened. Refresh the Workflow Designer and select the node again."}, 409
+    payload = request.get_json(silent=True) or {}
+    service = WorkflowHelpTextService()
     try:
-        help_text = WorkflowCoverageService().generate_help_text(node)
-        workflow = WorkflowDraftService().update_node(
-            filename, node_id, {"help_text": help_text}
-        )
-    except (WorkflowCoverageError, WorkflowDraftError, ValueError) as error:
+        if payload.get("action") == "accept":
+            help_text = service.validate_candidate(node, payload.get("help_text"))
+            workflow = draft_service.update_node(
+                filename, node_id, {"help_text": help_text}
+            )
+            normalized = next(
+                item for item in WorkflowNodeService().build(workflow)
+                if item["id"] == node_id
+            )
+            return {
+                "ok": True,
+                "accepted": True,
+                "help_text": help_text,
+                "node": normalized,
+            }
+
+        suggestion = service.suggest(workflow, node_id, node)
+    except (WorkflowHelpTextError, WorkflowDraftError, ValueError) as error:
         return {"ok": False, "error": str(error)}, 400
-    normalized = next(
-        item for item in WorkflowNodeService().build(workflow) if item["id"] == node_id
-    )
-    return {"ok": True, "help_text": help_text, "node": normalized}
+    return {"ok": True, "accepted": False, **suggestion}
 
 
 @app.route(
@@ -1686,11 +1705,35 @@ def review_draft(article_id):
         try:
             article = ArticleReviewService().update_from_form(article, request.form)
             knowledge_repository.save_draft(article, overwrite=True)
+            if request.form.get("review_action") == "approve_and_publish":
+                analysis = ArticleReviewService().analyze(article)
+                if not analysis["can_publish"]:
+                    return render_article_review(
+                        article,
+                        "Complete validation and every technical review check before publishing.",
+                        400,
+                    )
+                knowledge_repository.publish_article(article_id, overwrite=True)
+                return redirect(
+                    url_for("view_published", article_id=article_id)
+                )
         except (ArticleReviewError, KnowledgeRepositoryError) as error:
             return render_article_review(article, str(error), 400)
         return redirect(url_for("review_draft", article_id=article_id, saved="1"))
 
     return render_article_review(article)
+
+
+@app.post("/api/knowledge/drafts/<article_id>/source-suggestions")
+def find_article_source_suggestions(article_id):
+    try:
+        article = knowledge_repository.get_draft(article_id)
+        result = ArticleSourceFinderService().find(article)
+    except ArticleNotFoundError:
+        return {"ok": False, "error": "Article draft not found."}, 404
+    except (ArticleSourceFinderError, KnowledgeRepositoryError) as error:
+        return {"ok": False, "error": str(error)}, 400
+    return {"ok": True, **result}
 
 @app.route("/knowledge/published")
 def list_published():
@@ -1704,6 +1747,9 @@ def list_published():
     ).strip().lower()
 
     articles = knowledge_repository.get_published()
+    for article in articles:
+        if not article.get("tags"):
+            article["tags"] = ArticleTagService.generate(article)
 
     if query:
 
@@ -1807,6 +1853,38 @@ def view_published(article_id):
         related_commands=related_commands,
     )
 
+
+@app.post("/knowledge/published/<article_id>/revise")
+def revise_published_article(article_id):
+    """Create a reviewable draft without taking the published article offline."""
+    try:
+        try:
+            knowledge_repository.get_draft(article_id)
+        except ArticleNotFoundError:
+            article = deepcopy(
+                knowledge_repository.get_published_article(article_id)
+            )
+            article["tags"] = ArticleTagService.generate(article)
+            article["checklist"] = ArticleReviewService.normalize_checklist(
+                article.get("checklist", [])
+            )
+            review = dict(article.get("review") or {})
+            review["status"] = "draft"
+            review["checks"] = {
+                key: False for key in ArticleReviewService.CHECKS
+            }
+            review["notes"] = ["Revision created from the published article."]
+            article["review"] = review
+            knowledge_repository.save_draft(article)
+    except ArticleNotFoundError:
+        abort(404)
+    except KnowledgeRepositoryError:
+        abort(500)
+
+    return redirect(
+        url_for("review_draft", article_id=article_id, revision="1")
+    )
+
 @app.route(
     "/knowledge/drafts/<article_id>/publish",
     methods=["POST"],
@@ -1827,9 +1905,7 @@ def publish_draft(article_id):
                 400,
             )
 
-        knowledge_repository.publish_article(
-            article_id,
-        )
+        knowledge_repository.publish_article(article_id, overwrite=True)
 
     except ArticleNotFoundError:
         abort(404)

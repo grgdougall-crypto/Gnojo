@@ -19,6 +19,7 @@ ARTICLE_TEMPLATE = {
     "difficulty": "Beginner",
     "estimated_time": "",
     "overview": "",
+    "tags": [],
     "checklist": [],
     "common_indicators": [],
     "commands": [],

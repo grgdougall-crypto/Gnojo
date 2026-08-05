@@ -48,6 +48,8 @@ class WorkflowDesignerValidationTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn('id="simulateWorkflowButton"', html)
         self.assertIn('id="workflowSimulatorDialog"', html)
+        self.assertIn('id="continueToPublishButton"', html)
+        self.assertIn("Continue to publish", html)
         self.assertIn('data-start-node="start_here"', html)
         self.assertIn('data-estimated-steps="2"', html)
         self.assertIn(

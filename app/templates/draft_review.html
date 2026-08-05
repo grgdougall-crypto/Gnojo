@@ -9,7 +9,7 @@
         <a class="btn btn-outline-primary" href="{{ url_for('list_drafts') }}"><i class="bi bi-arrow-left me-2" aria-hidden="true"></i>Back to drafts</a>
     </div>
 
-    {% if error %}<div class="alert alert-danger" role="alert"><strong>Review could not be saved.</strong> {{ error }}</div>{% elif request.args.get('saved') == '1' %}<div class="alert alert-success" role="status">Article review saved.</div>{% endif %}
+    {% if error %}<div class="alert alert-danger" role="alert"><strong>Review could not be saved.</strong> {{ error }}</div>{% elif request.args.get('revision') == '1' %}<div class="alert alert-info" role="status"><strong>Revision draft created.</strong> The published article remains live until this revision is reviewed and published.</div>{% elif request.args.get('saved') == '1' %}<div class="alert alert-success" role="status">Article review saved.</div>{% endif %}
 
     <div class="review-summary-grid">
         <article><span>Completeness</span><strong>{{ analysis.score }}%</strong><div class="analytics-meter"><span style="width: {{ analysis.score }}%"></span></div></article>
@@ -39,6 +39,7 @@
                 <label><span>Category</span><input class="form-control" name="category" value="{{ article.category }}" required></label>
                 <label><span>Difficulty</span><select class="form-select" name="difficulty">{% for level in ['Beginner','Intermediate','Advanced'] %}<option {% if article.difficulty == level %}selected{% endif %}>{{ level }}</option>{% endfor %}</select></label>
                 <label><span>Estimated time</span><input class="form-control" name="estimated_time" value="{{ article.estimated_time }}" required></label>
+                <label class="review-grid-wide"><span>Tags <small>Comma-separated; 3–8 recommended</small></span><input class="form-control" name="tags" value="{{ (article.tags or [])|join(', ') }}" placeholder="bluetooth, windows, drivers"></label>
             </div>
             <label><span>Overview</span><textarea class="form-control" name="overview" rows="5" required>{{ article.overview }}</textarea></label>
         </section>
@@ -50,7 +51,15 @@
                 <label><span>Common indicators <small>One item per line</small></span><textarea class="form-control" name="common_indicators" rows="8">{{ article.common_indicators|join('\n') }}</textarea></label>
                 <label><span>Related topics <small>One topic per line</small></span><textarea class="form-control" name="related_topics" rows="6">{{ article.related_topics|join('\n') }}</textarea></label>
                 <label><span>Commands <small>One per line: command | explanation</small></span><textarea class="form-control font-monospace" name="commands" rows="6">{% for command in article.commands %}{{ command.command }} | {{ command.description }}{% if not loop.last %}\n{% endif %}{% endfor %}</textarea></label>
-                <label class="review-grid-wide"><span>Sources <small>One per line: title | URL</small></span><textarea class="form-control" name="sources" rows="5">{% for source in article.sources %}{{ source.title }} | {{ source.url }}{% if not loop.last %}\n{% endif %}{% endfor %}</textarea></label>
+                <div class="review-grid-wide article-source-workspace" data-source-finder-url="{{ url_for('find_article_source_suggestions', article_id=article.id) }}">
+                    <div class="article-source-heading">
+                        <div><span>Sources <small>One per line: title | URL</small></span><p>Use grounded AI search to find current primary documentation. Open and review a source before attaching it.</p></div>
+                        <button id="findArticleSourcesButton" class="btn btn-sm btn-outline-info" type="button"><i class="bi bi-search" aria-hidden="true"></i> Find authoritative sources</button>
+                    </div>
+                    <div id="articleSourceFinderMessage" class="article-source-message" data-a11y-live></div>
+                    <div id="articleSourceSuggestions" class="article-source-suggestions" hidden></div>
+                    <label><span class="visually-hidden">Attached sources</span><textarea id="articleSourcesValue" class="form-control" name="sources" rows="5">{% for source in article.sources %}{{ source.title }} | {{ source.url }}{% if not loop.last %}\n{% endif %}{% endfor %}</textarea></label>
+                </div>
             </div>
         </section>
 
@@ -72,8 +81,14 @@
         </section>
 
         <div class="review-action-bar">
-            <div><button class="btn btn-outline-secondary" name="review_action" value="save" type="submit">Save draft</button><button class="btn btn-outline-primary" name="review_action" value="submit" type="submit">Submit for review</button></div>
-            <div><button class="btn btn-outline-danger" name="review_action" value="reject" type="submit">Reject</button><button class="btn btn-success" name="review_action" value="approve" type="submit">Approve review</button></div>
+            {% if article.review.status == 'pending_review' %}
+                <div><span class="text-muted">Review the article and complete all four technical checks.</span></div>
+                <div><button class="btn btn-outline-danger" name="review_action" value="reject" type="submit">Request changes</button><button class="btn btn-success" name="review_action" value="approve_and_publish" type="submit"><i class="bi bi-send-check me-2" aria-hidden="true"></i>Approve &amp; publish</button></div>
+            {% elif article.review.status == 'approved' %}
+                <div><span class="text-success">Review approved. This article is ready to publish.</span></div>
+            {% else %}
+                <div><button class="btn btn-outline-secondary" name="review_action" value="save" type="submit">Save draft</button><button class="btn btn-primary" name="review_action" value="submit" type="submit">Submit for review</button></div>
+            {% endif %}
         </div>
     </form>
 
@@ -87,10 +102,10 @@
 
     {% if workflow_references %}<section class="review-editor-section article-workflow-links" aria-labelledby="workflowLinksTitle"><span class="section-eyebrow">Used by workflows</span><h2 id="workflowLinksTitle">Linked Workflow Nodes</h2>{% for reference in workflow_references %}<article><div><strong>{{ reference.workflow_name }}</strong><span>{{ reference.node_title }}</span></div>{% if reference.filename %}<a class="btn btn-sm btn-outline-primary" href="{{ url_for('workflow_editor', filename=reference.filename, node=reference.node_id) }}">Open node</a>{% else %}<a class="btn btn-sm btn-outline-primary" href="{{ url_for('wizard', workflow=reference.workflow_id, restart='1') }}">Test workflow</a>{% endif %}</article>{% endfor %}</section>{% endif %}
 
-    <section class="publish-review-bar">
+    {% if article.review.status == 'approved' %}<section class="publish-review-bar">
         <div><strong>Publication status</strong><span>{% if analysis.can_publish %}Review approved and validation passed.{% else %}Complete validation and approve the technical review first.{% endif %}</span></div>
         <form method="post" action="{{ url_for('publish_draft', article_id=article.id) }}"><button class="btn btn-success" type="submit" {% if not analysis.can_publish %}disabled{% endif %}><i class="bi bi-send-check me-2" aria-hidden="true"></i>Publish article</button></form>
-    </section>
+    </section>{% endif %}
 </section>
 {% endblock %}
 

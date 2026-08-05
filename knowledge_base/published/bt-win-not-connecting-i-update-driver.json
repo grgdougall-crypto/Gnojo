@@ -1,0 +1,67 @@
+{
+  "schema_version": "1.0",
+  "id": "bt-win-not-connecting-i-update-driver",
+  "title": "How to Install the Approved Bluetooth Driver",
+  "category": "Desktop Support",
+  "difficulty": "Beginner",
+  "estimated_time": "5 to 10 minutes",
+  "overview": "This draft supports the “Install the Approved Bluetooth Driver” step in the Bluetooth Device Not Connecting workflow. It explains the intended check, safe execution, and the evidence to capture before continuing.",
+  "checklist": [
+    "Save open work and confirm the computer model and Windows version.",
+    "Check Windows Update for available driver updates.",
+    "If necessary, open Device Manager, expand Bluetooth, right-click the Bluetooth adapter, and select Update driver.",
+    "If Windows cannot locate an appropriate driver, use the computer manufacturer’s official support site and confirm the exact model.",
+    "Install only the approved matching driver and restart Windows if requested. Return to the workflow and test the Bluetooth connection again."
+  ],
+  "common_indicators": [
+    "The Bluetooth adapter is missing from Device Manager.",
+    "Device Manager displays a warning symbol or error code.",
+    "Bluetooth disappeared following an update.",
+    "Pairing repeatedly fails despite the device being charged and discoverable.",
+    "The installed driver is outdated, disabled, or corrupted."
+  ],
+  "commands": [],
+  "related_topics": [
+    "Bluetooth Device Not Connecting",
+    "Update Drivers Through Device Manager",
+    "Reinstall a Bluetooth Driver",
+    "Bluetooth Adapter Error Codes",
+    "Windows Update Driver Installation"
+  ],
+  "quiz": [
+    {
+      "question": "What should you do after completing this troubleshooting step?",
+      "answers": [
+        "The exact computer model and Windows version",
+        "Only the name of the Bluetooth device",
+        "Whether the website offers the newest file"
+      ],
+      "correct_answer": "The exact computer model and Windows version"
+    }
+  ],
+  "sources": [
+    {
+      "title": "Update Bluetooth drivers in Windows",
+      "url": "https://support.microsoft.com/en-US/Windows/Hardware/Bluetooth/update-bluetooth-drivers-in-windows"
+    }
+  ],
+  "generation": {
+    "provider": "Gnojo Coverage Assistant",
+    "model": "deterministic-node-draft-v1",
+    "generated_at": "2026-08-04T22:51:42.361573+00:00"
+  },
+  "review": {
+    "status": "approved",
+    "reviewed_by": null,
+    "reviewed_at": null,
+    "notes": [
+      "Revision created from the published article."
+    ],
+    "checks": {
+      "technical_accuracy": true,
+      "user_safety": true,
+      "sources_verified": true,
+      "commands_reviewed": true
+    }
+  }
+}

@@ -4,6 +4,7 @@ import os
 
 from dotenv import load_dotenv
 from google import genai
+from google.genai import types
 
 from app.ai.provider import AIProvider
 
@@ -121,6 +122,20 @@ class GeminiProvider(AIProvider):
             prompt=prompt,
             content_type="workflow node suggestion",
         )
+
+    def find_authoritative_sources(self, prompt):
+        """Find current web sources using Google Search grounding."""
+        response = self.client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                tools=[types.Tool(google_search=types.GoogleSearch())]
+            ),
+        )
+        response_text = self._remove_code_fence((response.text or "").strip())
+        if not response_text:
+            raise RuntimeError("Gemini returned no grounded source suggestions.")
+        return json.loads(response_text)
 
     def _load_prompt(
         self,

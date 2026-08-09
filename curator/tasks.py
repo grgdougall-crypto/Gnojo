@@ -40,7 +40,7 @@ class KnowledgeTaskService:
                 tasks[task_id] = task
                 created.append(task_id)
             else:
-                task.setdefault("durable_identity", durable_identity)
+                task["durable_identity"] = durable_identity
                 task.setdefault("execution_mode", self.execution_mode(task))
                 task["finding_id"] = finding.identifier
                 if task["status"] == "resolved":
@@ -64,6 +64,7 @@ class KnowledgeTaskService:
                 task["curator_rule"] = finding.rule
                 task["future_automated_fix"] = finding.future_automated_fix
                 task["safety_level"] = finding.safety_level
+                task["provenance"] = dict(finding.provenance)
                 task["knowledge_debt_score"] = 0.0
             task.setdefault("history", []).append({
                 "event": "observed",
@@ -106,7 +107,11 @@ class KnowledgeTaskService:
     @staticmethod
     def durable_identity(finding: Finding) -> str:
         """Identify the editorial work item, independent of changing evidence text."""
-        return "|".join((finding.rule, finding.content_type, finding.content_identifier, finding.finding_type))
+        parts = [finding.rule, finding.content_type, finding.content_identifier, finding.finding_type]
+        if finding.content_type in {"workflow", "workflow_node"} and finding.provenance:
+            parts.extend((str(finding.provenance.get("lifecycle") or ""),
+                          str(finding.provenance.get("source_path") or "")))
+        return "|".join(parts)
 
     @staticmethod
     def _existing_task_id(tasks: dict[str, dict[str, Any]], finding: Finding,
@@ -117,10 +122,16 @@ class KnowledgeTaskService:
             # Migration path for tasks created before durable identities existed.
             if task.get("finding_id") == finding.identifier:
                 return task_id
-            if (task.get("curator_rule") == finding.rule
+            same_legacy_fields = (task.get("curator_rule") == finding.rule
                     and task.get("content_type") == finding.content_type
                     and task.get("content_identifier") == finding.content_identifier
-                    and task.get("finding_type") == finding.finding_type):
+                    and task.get("finding_type") == finding.finding_type)
+            task_provenance = task.get("provenance") or {}
+            finding_provenance = finding.provenance or {}
+            same_provenance = (not task_provenance or not finding_provenance
+                               or (task_provenance.get("lifecycle") == finding_provenance.get("lifecycle")
+                                   and task_provenance.get("source_path") == finding_provenance.get("source_path")))
+            if same_legacy_fields and same_provenance:
                 return task_id
         return None
 
@@ -166,6 +177,7 @@ class KnowledgeTaskService:
             "curator_rule": finding.rule,
             "future_automated_fix": finding.future_automated_fix,
             "safety_level": finding.safety_level,
+            "provenance": dict(finding.provenance),
             "confidence": finding.confidence,
             "evidence": list(finding.evidence),
             "current_evidence": list(finding.evidence),

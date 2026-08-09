@@ -7,9 +7,11 @@ from pathlib import Path
 from typing import Any
 
 from app.services.workflow_draft_service import WorkflowDraftService
+from app.services.curator_workflow_lifecycle_service import CuratorWorkflowLifecycleService
 from curator.checks import CuratorChecks
 from curator.memory import CuratorMemoryError, CuratorMemoryStore
 from curator.models import InventoryRecord
+from curator.resolution import ResolutionPackageError, ResolutionPackageRepository
 
 
 class CuratorTargetedVerificationService:
@@ -20,6 +22,7 @@ class CuratorTargetedVerificationService:
         self.store = CuratorMemoryStore(self.root / "curation_memory")
         self.drafts_path = self.root / "app" / "workflow_drafts"
         self.checks = CuratorChecks(self.root)
+        self.lifecycle = CuratorWorkflowLifecycleService(self.root)
 
     def _drafts(self) -> WorkflowDraftService | None:
         # Verification is read-only. Never create repository structure merely to
@@ -43,6 +46,26 @@ class CuratorTargetedVerificationService:
         }
         if task.get("content_type") not in {"workflow", "workflow_node"}:
             return self._record(task_id, base)
+        if task.get("curator_rule") == "CUR-REL-ARTICLE-CANDIDATE":
+            relationship = self.lifecycle.relationship(workflow_id, node_id)
+            semantic = relationship.get("status", "target_unavailable")
+            expected = self._expected_canonical_article(task_id)
+            if (semantic == "relationship_satisfied" and expected
+                    and relationship.get("canonical_article_id") != expected):
+                semantic = "relationship_conflict_or_unresolved"
+                relationship["expected_canonical_article_id"] = expected
+            messages = {
+                "relationship_missing": "The authoritative workflow node still has no knowledge article relationship.",
+                "relationship_satisfied": "The authoritative workflow node already links to a canonical published article; no repair is required.",
+                "relationship_conflict_or_unresolved": "The current relationship is not resolvable as a canonical published article and requires human review.",
+                "target_unavailable": "The authoritative workflow or affected node could not be located.",
+            }
+            result = {**base, **{key: value for key, value in relationship.items() if key != "node"},
+                      "status": semantic, "message": messages[semantic],
+                      "human_approval_required": semantic != "relationship_satisfied",
+                      "no_action_required": semantic == "relationship_satisfied",
+                      "affected_fingerprint": relationship.get("content_fingerprint", "")}
+            return self._record(task_id, result, reconcile_satisfied=True)
         drafts = self._drafts()
         if drafts is None:
             return self._record(task_id, {**base, "status": "not_found",
@@ -91,16 +114,26 @@ class CuratorTargetedVerificationService:
                       "affected_fingerprint": fingerprint}
         return self._record(task_id, result)
 
+    def _expected_canonical_article(self, task_id: str) -> str:
+        """Read a package's reviewed identity expectation without creating one."""
+        try:
+            package = ResolutionPackageRepository(self.root / "curation_memory").get(task_id) or {}
+        except ResolutionPackageError:
+            return ""
+        values = (
+            package.get("canonical_recommendation"),
+            package.get("proposed_article_id"),
+            (package.get("identity_resolution") or {}).get("canonical_article_id"),
+        )
+        normalized = {str(value).strip() for value in values if str(value or "").strip()}
+        return next(iter(normalized)) if len(normalized) == 1 else ""
+
     def current_fingerprint(self, task: dict[str, Any]) -> str:
         workflow_id, _, node_id = str(task.get("content_identifier") or "").partition(":")
-        drafts = self._drafts()
-        if drafts is None:
+        target = self.lifecycle.resolve(workflow_id)
+        if not target:
             return ""
-        draft = next((item for item in drafts.list_drafts()
-                      if item.get("workflow_id") == workflow_id and not item.get("is_damaged")), None)
-        if not draft:
-            return ""
-        workflow = drafts.get_draft(draft["filename"]) or {}
+        workflow = target.workflow
         affected = workflow.get("nodes", {}).get(node_id) if node_id else workflow
         return self.fingerprint(affected) if isinstance(affected, dict) else ""
 
@@ -109,6 +142,16 @@ class CuratorTargetedVerificationService:
         payload = json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
         return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
-    def _record(self, task_id: str, value: dict[str, Any]) -> dict[str, Any]:
+    def _record(self, task_id: str, value: dict[str, Any], *, reconcile_satisfied: bool = False) -> dict[str, Any]:
         self.store.record_verification(task_id, value)
+        if reconcile_satisfied and value.get("status") == "relationship_satisfied":
+            task = self.store.load().get("tasks", {}).get(task_id, {})
+            if task.get("status") not in {"resolved", "ignored", "superseded"}:
+                self.store.update_task(
+                    task_id, status="resolved", actor="Curator targeted verification",
+                    note="Relationship already satisfied on authoritative lifecycle copy; no repair was performed.",
+                    event_name="relationship_satisfied_no_action_required",
+                    metadata={"resolution_kind": "no_action_required", "repair_performed": False,
+                              "source_path": value.get("source_path"), "lifecycle": value.get("lifecycle")},
+                )
         return value

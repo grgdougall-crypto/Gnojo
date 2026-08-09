@@ -9,6 +9,7 @@ from urllib.parse import urlparse
 
 from app.knowledge.article_validator import ArticleValidator
 from app.services.workflow_validation_service import WorkflowValidationService
+from app.services.curator_workflow_lifecycle_service import CuratorWorkflowLifecycleService
 
 from .models import Finding, InventoryRecord
 from .runtime_rules import ActiveRuleRegistry
@@ -56,14 +57,26 @@ class FindingFactory:
             "risk" if finding_type in RISK_TYPES else
             "recommendation" if finding_type in RECOMMENDATION_TYPES else "opportunity"
         )
-        signature = "|".join((classification, finding_type, record.content_type, record.identifier, rule, title))
+        identity_parts = [classification, finding_type, record.content_type, record.identifier, rule, title]
+        if record.content_type in {"workflow", "workflow_node"}:
+            # Lifecycle copies may carry materially different deterministic
+            # conditions. Preserve their identity instead of deduplicating them
+            # before task reconciliation.
+            identity_parts.extend((record.state, record.source_path))
+        signature = "|".join(identity_parts)
         identifier = "CUR-" + hashlib.sha256(signature.encode("utf-8")).hexdigest()[:12].upper()
+        workflow_id, _, node_id = record.identifier.partition(":")
         return Finding(
             identifier=identifier, classification=classification, finding_type=finding_type, severity=severity,
             confidence=confidence, content_type=record.content_type,
             content_identifier=record.identifier, title=title, explanation=explanation,
             evidence=list(evidence), rule=rule, recommended_action=action,
             domain=domain, future_automated_fix=future_fix, safety_level=safety_level,
+            provenance={"source_path": record.source_path, "lifecycle": record.state,
+                        "workflow_filename": Path(record.source_path).name,
+                        "workflow_id": workflow_id if record.content_type in {"workflow", "workflow_node"} else None,
+                        "node_id": (node_id if record.content_type == "workflow_node" and node_id else None),
+                        "content_fingerprint": CuratorWorkflowLifecycleService.fingerprint(record.raw)},
         )
 
 
@@ -71,7 +84,9 @@ class CuratorChecks:
     def __init__(self, repository_root: Path | None = None,
                  active_rules: ActiveRuleRegistry | None = None):
         root = (repository_root or Path(__file__).resolve().parents[1]).resolve()
+        self.root = root
         self.active_rules = active_rules or ActiveRuleRegistry.from_repository(root)
+        self.lifecycle = CuratorWorkflowLifecycleService(root)
 
     def run_record(self, record: InventoryRecord) -> list[Finding]:
         """Evaluate one persisted record with the canonical Curator rules.
@@ -205,7 +220,14 @@ class CuratorChecks:
                     action="Confirm the action and add only the proportional reminder, save-work, backup, recovery, or administrative guidance it requires.",
                     domain="workflow", future_fix=False, safety_level=safety_level,
                 ))
-            if node.get("type") == "instruction" and len(str(node.get("instruction") or "").strip()) > 180 and not node.get("knowledge_article"):
+            actionable = self.lifecycle.resolve(record.identifier)
+            # Synthetic records used by narrow verification/tests may not exist in
+            # a repository store. In that case the supplied record is the only
+            # available copy. Real stored records must match the shared resolver.
+            is_actionable_copy = not actionable or actionable.source_path == record.source_path
+            if (node.get("type") == "instruction"
+                    and len(str(node.get("instruction") or "").strip()) > 180
+                    and not node.get("knowledge_article") and is_actionable_copy):
                 node_record = self._node_record(record, node_id, node)
                 findings.append(FindingFactory.create(
                     finding_type="article_candidate", severity="low", confidence="low", record=node_record,

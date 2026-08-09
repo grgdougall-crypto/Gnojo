@@ -9,6 +9,7 @@ from urllib.parse import quote, urlencode
 from curator.memory import CuratorMemoryError, CuratorMemoryStore
 
 from app.services.workflow_draft_service import WorkflowDraftService
+from app.services.curator_workflow_lifecycle_service import CuratorWorkflowLifecycleService
 
 
 class CuratorTaskService:
@@ -43,6 +44,7 @@ class CuratorTaskService:
         value["repair_preview"] = self._repair_preview(value)
         value["original_evidence"] = self._original_evidence(value)
         value["current_content"] = self._current_content(value)
+        value["live_related_knowledge"] = self._live_related_knowledge(value)
         value["current_verification"] = deepcopy(value.get("current_verification") or {})
         value["saved_work_note_available"] = bool(self._latest_work_note(task_id))
         from app.services.curator_targeted_verification_service import CuratorTargetedVerificationService
@@ -101,15 +103,10 @@ class CuratorTaskService:
         if task.get("content_type") not in {"workflow", "workflow_node"}:
             return None
         workflow_id, _, node_id = str(task.get("content_identifier") or "").partition(":")
-        drafts_path = self.repository_root / "app" / "workflow_drafts"
-        if not drafts_path.is_dir():
+        target = CuratorWorkflowLifecycleService(self.repository_root).resolve(workflow_id)
+        if not target:
             return None
-        drafts = WorkflowDraftService(drafts_path)
-        draft = next((item for item in drafts.list_drafts()
-                      if item.get("workflow_id") == workflow_id and not item.get("is_damaged")), None)
-        if not draft:
-            return None
-        workflow = drafts.get_draft(draft["filename"])
+        workflow = target.workflow
         node = (workflow or {}).get("nodes", {}).get(node_id) if node_id else None
         if not isinstance(node, dict):
             return None
@@ -119,8 +116,24 @@ class CuratorTaskService:
             "title": node.get("title") or node.get("question") or node_id,
             "instruction": node.get("instruction") or node.get("message") or node.get("help_text") or "",
             "help_text": node.get("help_text") or "",
-            "source": draft["filename"],
+            "knowledge_article": node.get("knowledge_article") or "",
+            "source": target.filename,
+            "source_path": target.source_path,
+            "lifecycle": target.lifecycle,
         }
+
+    def _live_related_knowledge(self, task: dict[str, Any]) -> dict[str, Any]:
+        if task.get("content_type") not in {"workflow", "workflow_node"}:
+            return {"articles": [], "source_path": None, "lifecycle": None}
+        workflow_id, _, node_id = str(task.get("content_identifier") or "").partition(":")
+        relationship = CuratorWorkflowLifecycleService(self.repository_root).relationship(workflow_id, node_id)
+        articles = []
+        if relationship.get("knowledge_article"):
+            articles.append({"id": relationship["knowledge_article"],
+                             "title": relationship.get("article_title"),
+                             "status": relationship.get("status")})
+        return {"articles": articles, "source_path": relationship.get("source_path"),
+                "lifecycle": relationship.get("lifecycle"), "status": relationship.get("status")}
 
     def grouped(self, tasks: list[dict[str, Any]]) -> list[dict[str, Any]]:
         active = [item for item in tasks if item.get("status") not in {"resolved", "ignored", "superseded"}]

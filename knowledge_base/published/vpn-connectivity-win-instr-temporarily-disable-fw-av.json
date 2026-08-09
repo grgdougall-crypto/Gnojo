@@ -1,0 +1,91 @@
+{
+  "schema_version": "1.0",
+  "id": "vpn-connectivity-win-instr-temporarily-disable-fw-av",
+  "title": "How to Check Security Software for VPN Conflicts",
+  "category": "Networking",
+  "difficulty": "Beginner",
+  "estimated_time": "5 to 10 minutes",
+  "overview": "This draft supports the “Check Security Software for VPN Conflicts” step in the VPN Connectivity Troubleshooting (Windows) workflow. It explains the intended check, safe execution, and the evidence to capture before continuing.",
+  "tags": [
+    "vpn",
+    "windows",
+    "check",
+    "security",
+    "software",
+    "conflicts",
+    "networking"
+  ],
+  "checklist": [
+    "Save open work and confirm you are working on the intended device.",
+    "Open your firewall or security software and check for alerts, blocked connections, or application-control settings related to the VPN client.",
+    "Confirm that the VPN client is allowed to communicate through the firewall and that required VPN services are not being blocked.",
+    "If your organization manages the device or security software, do not disable or change security protections. Follow your organization's approved procedure or contact IT support.",
+    "If a security setting appears to be causing the problem, use the security vendor's documented procedure to allow the VPN client rather than disabling protection.",
+    "After making an approved change, try connecting to the VPN again and record the result.",
+    "Record what changed and return to the workflow before making additional changes."
+  ],
+  "common_indicators": [
+    "The workflow reached the Check Security Software for VPN Conflicts step.",
+    "The observed result will determine which diagnostic step should come next."
+  ],
+  "commands": [],
+  "related_topics": [
+    "VPN Connectivity Troubleshooting (Windows)",
+    "Check Security Software for VPN Conflicts",
+    "Diagnostic reasoning"
+  ],
+  "quiz": [
+    {
+      "question": "What should you do after completing this troubleshooting step?",
+      "answers": [
+        "Record the result and return to the workflow",
+        "Change several unrelated settings",
+        "Ignore what happened"
+      ],
+      "correct_answer": "Record the result and return to the workflow"
+    }
+  ],
+  "sources": [
+    {
+      "title": "Firewall and network protection in the Windows Security app | Microsoft Support | https://support.microsoft.com/en-us/windows/security/windows-security/firewall-and-network-protection-in-the-windows-security-app\\nRisks of Allowing Apps Through Windows Firewall | Microsoft Support",
+      "url": "https://support.microsoft.com/en-us/windows/security/firewall/risks-of-allowing-apps-through-windows-firewall"
+    }
+  ],
+  "generation": {
+    "provider": "Gnojo Coverage Assistant",
+    "model": "deterministic-node-draft-v1",
+    "generated_at": "2026-08-08T23:05:56.049195+00:00"
+  },
+  "review": {
+    "status": "approved",
+    "reviewed_by": "Gnojo reviewer",
+    "reviewed_at": "2026-08-08T23:12:34.776003+00:00",
+    "notes": [
+      "Generated from a workflow node.",
+      "Verify technical accuracy and add authoritative sources before publication."
+    ],
+    "checks": {
+      "technical_accuracy": true,
+      "user_safety": true,
+      "sources_verified": true,
+      "commands_reviewed": true
+    }
+  },
+  "workflow_origin": {
+    "filename": "vpn_connectivity_win.json",
+    "workflow_id": "vpn_connectivity_win",
+    "workflow_name": "VPN Connectivity Troubleshooting (Windows)",
+    "node_id": "instr_temporarily_disable_fw_av",
+    "node_title": "Check Security Software for VPN Conflicts"
+  },
+  "canonical_id": "vpn-connectivity-win-instr-temporarily-disable-fw-av",
+  "version": 1,
+  "published_at": "2026-08-08T23:12:34.776003+00:00",
+  "version_history": [
+    {
+      "version": 1,
+      "published_at": "2026-08-08T23:12:34.776003+00:00",
+      "reviewed_by": "Gnojo reviewer"
+    }
+  ]
+}

@@ -4,6 +4,7 @@ import re
 import secrets
 from copy import deepcopy
 from datetime import datetime
+from pathlib import Path
 from uuid import uuid4
 
 from flask import (
@@ -37,6 +38,7 @@ from app.repositories.script_repository import ScriptRepository
 
 from app.services.search_service import SearchService
 from app.services.article_tag_service import ArticleTagService
+from app.services.article_identity_resolver import ArticleIdentityResolver
 
 from app.services.relationship_service import RelationshipService
 
@@ -98,8 +100,19 @@ from app.services.troubleshooting_history_service import (
 from app.services.content_quality_service import ContentQualityService
 from app.services.curator_dashboard_service import CuratorDashboardService
 from app.services.curator_task_service import CuratorTaskService
+from app.services.curator_resolution_service import CuratorResolutionService
+from app.services.curator_batch_service import CuratorBatchService
+from app.services.curator_fix_session_service import CuratorFixSessionError, CuratorFixSessionService
+from app.services.curator_repair_executor import CuratorRepairError, CuratorRepairExecutor
+from app.services.curator_repair_planner import CuratorRepairPlanner
+from app.services.curator_session_reconciliation_service import CuratorSessionReconciliationService
+from app.services.curator_targeted_verification_service import CuratorTargetedVerificationService
+from app.services.curator_growth_service import CuratorGrowthService
 from curator.locking import AuditAlreadyRunningError
-from curator.memory import CuratorMemoryError
+from curator.governance import CuratorGovernanceError
+from curator.growth import CuratorGrowthError
+from curator.memory import CuratorMemoryError, CuratorMemoryStore
+from curator.resolution import ResolutionPackageError
 from app.services.workflow_coverage_service import (
     WorkflowCoverageError,
     WorkflowCoverageService,
@@ -110,6 +123,8 @@ from app.services.workflow_help_text_service import (
 )
 from app.services.article_review_service import ArticleReviewError, ArticleReviewService
 from app.services.article_source_finder_service import ArticleSourceFinderError, ArticleSourceFinderService
+from app.services.knowledge_publication_service import KnowledgePublicationError, KnowledgePublicationService
+from app.services.knowledge_integrity_service import KnowledgeIntegrityError, KnowledgeIntegrityService
 from app.services.script_authoring_service import ScriptAuthoringError, ScriptAuthoringService
 
 load_dotenv()
@@ -170,6 +185,7 @@ explanation_service = ExplanationService()
 draft_generation_service = DraftGenerationService()
 publish_validation_service = PublishValidationService()
 publication_service = PublicationService()
+knowledge_publication_service = KnowledgePublicationService(knowledge_repository)
 
 
 app.secret_key = os.getenv("FLASK_SECRET_KEY") or secrets.token_hex(32)
@@ -649,6 +665,8 @@ def curator_dashboard():
         "completed": ("success", "Curator audit completed. The dashboard now shows the latest operational findings."),
         "running": ("warning", "A Curator audit is already running. Return shortly to review the completed report."),
         "failed": ("danger", "The Curator audit could not be completed. Existing reports and trusted content were not changed."),
+        "batch_completed": ("success", "The first Assisted Resolution batch was prepared. No drafts, links, or publications were changed."),
+        "batch_failed": ("danger", "The Assisted Resolution batch could not be completed safely."),
     }
     kind, message = messages.get(status, ("info", ""))
     try:
@@ -656,50 +674,225 @@ def curator_dashboard():
     except CuratorMemoryError:
         dashboard = {"has_audit": False, "tasks": [], "recent_audits": []}
         kind, message = "danger", "Curator memory could not be read. Existing trusted content was not changed."
-    return render_template("curator_dashboard.html", dashboard=dashboard, status_kind=kind, status_message=message)
+    return render_template(
+        "curator_dashboard.html", dashboard=dashboard, status_kind=kind, status_message=message,
+        assisted_batch=CuratorBatchService().latest(),
+    )
+
+
+@app.route("/curator/growth")
+def curator_growth_dashboard():
+    messages = {
+        "updated": ("success", "The human decision was recorded in Curator Memory."),
+        "control_updated": ("success", "The Curator operating control was updated and logged."),
+        "invalid": ("danger", request.args.get("error") or "The requested growth decision was rejected."),
+    }
+    kind, message = messages.get(request.args.get("status", ""), ("info", ""))
+    try:
+        growth = CuratorGrowthService().dashboard()
+    except CuratorMemoryError:
+        abort(503)
+    return render_template("curator_growth.html", growth=growth,
+                           status_kind=kind, status_message=message)
+
+
+@app.post("/curator/growth/<subject_type>/<subject_id>/decision")
+def curator_growth_decision(subject_type, subject_id):
+    try:
+        CuratorGrowthService().decide(
+            subject_type, subject_id, request.form.get("status", ""),
+            reviewer=request.form.get("reviewer", ""), reason=request.form.get("reason", ""),
+        )
+        status, error = "updated", ""
+    except (CuratorGrowthError, CuratorMemoryError, ValueError) as exception:
+        status, error = "invalid", str(exception)
+    return redirect(url_for("curator_growth_dashboard", status=status, error=error))
+
+
+@app.post("/curator/growth/controls")
+def curator_growth_control():
+    try:
+        CuratorGrowthService().set_control(
+            request.form.get("control", ""), request.form.get("disabled") == "true",
+            reviewer=request.form.get("reviewer", ""), reason=request.form.get("reason", ""),
+        )
+        status, error = "control_updated", ""
+    except (CuratorGrowthError, CuratorMemoryError) as exception:
+        status, error = "invalid", str(exception)
+    return redirect(url_for("curator_growth_dashboard", status=status, error=error))
 
 
 @app.route("/curator/tasks/<task_id>")
 def curator_task_detail(task_id):
+    return_to = request.args.get("return_to", "")
+    if return_to and not return_to.startswith("/curator/fix/"):
+        return_to = ""
+    session_id = request.args.get("curator_session", "")
+    category = request.args.get("category", "all")
     try:
-        task = CuratorTaskService().get(task_id)
-    except CuratorMemoryError:
+        if request.args.get("verify") == "1":
+            CuratorTargetedVerificationService().verify(task_id)
+        task = CuratorTaskService().get(task_id, session_id=session_id,
+                                        return_to=return_to, category=category)
+        session_task_actionable = (
+            CuratorFixSessionService().task_action_eligible(session_id, task_id)
+            if session_id else False
+        )
+    except (CuratorMemoryError, CuratorFixSessionError):
         abort(404)
     messages = {
         "updated": ("success", "Knowledge Task updated."),
-        "invalid": ("danger", "The requested task change could not be applied."),
+        "invalid": ("danger", request.args.get("error") or "The requested task change could not be applied."),
+        "resolved": ("success", "Task resolved and the maintenance session was reconciled. It is safe to return to the Fix Wizard."),
+        "prepared": ("success", "Assisted Resolution Package prepared for human review."),
+        "draft_created": ("success", "Article draft created. No workflow relationship was changed."),
+        "verified": ("success", "Current affected content was checked. Review the verification result before deciding whether to resolve."),
     }
     kind, message = messages.get(request.args.get("status", ""), ("info", ""))
     return render_template(
         "curator_task_detail.html", task=task,
         owners=CuratorTaskService.OWNERS, priorities=CuratorTaskService.PRIORITIES,
         status_kind=kind, status_message=message,
+        resolution_package=CuratorResolutionService().get(task_id),
+        session_task_actionable=session_task_actionable,
+        return_to=return_to, curator_session=session_id, category=category,
     )
+
+
+@app.post("/curator/tasks/<task_id>/verify")
+def curator_task_verify(task_id):
+    return_to = request.form.get("return_to", "")
+    session_id = request.form.get("curator_session", "")
+    category = request.form.get("category", "all")
+    try:
+        CuratorTargetedVerificationService().verify(task_id)
+        status, error = "verified", ""
+    except CuratorMemoryError as exception:
+        status, error = "invalid", str(exception)
+    return redirect(url_for("curator_task_detail", task_id=task_id, status=status,
+                            error=error, return_to=return_to,
+                            curator_session=session_id, category=category))
 
 
 @app.post("/curator/tasks/<task_id>/actions")
 def curator_task_action(task_id):
+    return_to = request.form.get("return_to", "")
+    session_id = request.form.get("curator_session", "")
+    action = request.form.get("action", "")
+    category = request.form.get("category", "all")
+    resolve_continue = action == "resolve_continue"
+    service_action = "resolve" if resolve_continue else action
     try:
+        session_service = None
+        if service_action == "defer" and session_id:
+            session_service = CuratorFixSessionService()
+            if not session_service.task_action_eligible(session_id, task_id):
+                raise CuratorFixSessionError(
+                    "This task is not an actionable item in the current maintenance session."
+                )
         CuratorTaskService().update(
             task_id,
-            action=request.form.get("action", ""),
+            action=service_action,
             owner=request.form.get("owner", ""),
             priority=request.form.get("priority", ""),
             note=request.form.get("note", ""),
+            session_id=session_id,
+            expected_fingerprint=request.form.get("affected_fingerprint", ""),
         )
         status = "updated"
-    except CuratorMemoryError:
+        if service_action == "defer" and session_id:
+            CuratorSessionReconciliationService().reconcile(session_id, trigger="task_deferral")
+            if return_to.startswith("/curator/fix/"):
+                separator = "&" if "?" in return_to else "?"
+                return redirect(f"{return_to}{separator}status=deferred")
+        if service_action == "resolve" and session_id:
+            reconciled = CuratorSessionReconciliationService().reconcile(session_id, trigger="task_resolution")
+            status = "resolved"
+            if resolve_continue:
+                return redirect(url_for("curator_fix_session", session_id=session_id,
+                                        category=category, status="task_resolved",
+                                        repaired_task=task_id,
+                                        debt=reconciled.get("session_debt_reduced", 0)))
+    except (CuratorMemoryError, CuratorFixSessionError) as error:
         status = "invalid"
-    return redirect(url_for("curator_task_detail", task_id=task_id, status=status))
+        app.logger.warning(json.dumps({"event": "curator_task_change_rejected", "request_id": g.request_id,
+                                       "task_id": task_id, "action": action,
+                                       "error_type": type(error).__name__}))
+        return redirect(url_for("curator_task_detail", task_id=task_id, status=status,
+                                error=str(error), return_to=return_to,
+                                curator_session=session_id, category=category))
+    return redirect(url_for("curator_task_detail", task_id=task_id, status=status,
+                            return_to=return_to, curator_session=session_id, category=category))
 
 
-@app.route("/curator/tasks/<task_id>/repair-preview")
-def curator_task_repair_preview(task_id):
+@app.post("/curator/tasks/<task_id>/assisted-resolution")
+def curator_assisted_resolution(task_id):
+    action = request.form.get("action", "")
+    return_to = request.form.get("return_to", "")
     try:
-        task = CuratorTaskService().get(task_id)
+        service = CuratorResolutionService()
+        if action == "prepare":
+            service.prepare(task_id)
+            status = "prepared"
+        elif action == "create_draft":
+            service.create_article_draft(task_id, confirmed=request.form.get("confirmed") == "yes")
+            return redirect(url_for("curator_assisted_resolution_article", task_id=task_id,
+                                    return_to=return_to))
+        else:
+            raise ResolutionPackageError("Unsupported assisted-resolution action.")
+    except (ResolutionPackageError, ValueError, KnowledgeRepositoryError):
+        status = "invalid"
+    return redirect(url_for("curator_task_detail", task_id=task_id, status=status, return_to=return_to))
+
+
+@app.get("/curator/tasks/<task_id>/assisted-resolution/article")
+def curator_assisted_resolution_article(task_id):
+    return_to = request.args.get("return_to", "")
+    if return_to and not return_to.startswith("/curator/fix/"):
+        return_to = ""
+    try:
+        state, article = CuratorResolutionService().article_location(task_id)
+    except ResolutionPackageError:
+        abort(404)
+    endpoint = "review_draft" if state == "draft" else "view_published"
+    return redirect(url_for(endpoint, article_id=article["id"], return_to=return_to))
+
+
+@app.post("/curator/assisted-resolution/first-batch")
+def curator_assisted_resolution_batch():
+    try:
+        CuratorBatchService().prepare_first_batch()
+        status = "batch_completed"
+    except ResolutionPackageError:
+        status = "batch_failed"
+    return redirect(url_for("curator_dashboard", status=status))
+
+
+@app.route("/curator/tasks/<task_id>/repair-preview", methods=["GET", "POST"])
+def curator_task_repair_preview(task_id):
+    from app.services.curator_article_link_repair_service import (
+        CuratorArticleLinkRepairError, CuratorArticleLinkRepairService,
+    )
+    session_id = request.values.get("curator_session", "")
+    error = ""
+    if request.method == "POST":
+        try:
+            result = CuratorArticleLinkRepairService().apply(
+                task_id, session_id=session_id,
+                preview_token=request.form.get("preview_token", ""),
+                approved=request.form.get("approved") == "yes",
+            )
+            return redirect(url_for("curator_fix_session", session_id=session_id,
+                                    item=result.get("next_item_id") or None,
+                                    status="repair_completed"))
+        except (CuratorArticleLinkRepairError, CuratorMemoryError, CuratorFixSessionError) as caught:
+            error = str(caught)
+    try:
+        task = CuratorTaskService().get(task_id, session_id=session_id)
     except CuratorMemoryError:
         abort(404)
-    return render_template("curator_repair_preview.html", task=task)
+    return render_template("curator_repair_preview.html", task=task,
+                           curator_session=session_id, repair_error=error)
 
 
 @app.route("/curator/run", methods=["POST"])
@@ -709,10 +902,241 @@ def run_curator_audit():
         status = "completed"
     except AuditAlreadyRunningError:
         status = "running"
+    except CuratorGovernanceError:
+        status = "failed"
     except Exception as error:
         app.logger.error(json.dumps({"event": "curator_audit_failed", "request_id": g.request_id, "error_type": type(error).__name__}))
         status = "failed"
     return redirect(url_for("curator_dashboard", status=status))
+
+
+@app.route("/curator/fix", methods=["GET", "POST"])
+def curator_fix_start():
+    integrity = KnowledgeIntegrityService().report()
+    session_service = CuratorFixSessionService()
+    sessions = session_service.list_sessions()
+    if request.method == "POST":
+        try:
+            memory = CuratorMemoryStore(Path(app.root_path).parent / "curation_memory").load()
+            audits = memory.get("audits", [])
+            audit_id = audits[-1].get("run_id") if audits else None
+            session, resumed = session_service.create_or_resume(
+                started_by=request.form.get("reviewer", ""), originating_audit_id=audit_id,
+                queue=CuratorRepairPlanner().build(integrity), baseline=integrity,
+            )
+            return redirect(url_for("curator_fix_session", session_id=session["session_id"],
+                                    status="resumed" if resumed else "created"))
+        except (CuratorFixSessionError, CuratorMemoryError) as error:
+            app.logger.warning(json.dumps({"event": "curator_fix_session_rejected",
+                                           "request_id": g.request_id,
+                                           "error_type": type(error).__name__}))
+            return render_template("curator_fix_start.html", integrity=integrity, sessions=sessions,
+                                   error=str(error)), 400
+        except Exception as error:
+            app.logger.exception(json.dumps({"event": "curator_fix_session_failed",
+                                              "request_id": g.request_id,
+                                              "error_type": type(error).__name__}))
+            return render_template(
+                "curator_fix_start.html", integrity=integrity,
+                sessions=session_service.list_sessions(),
+                error=f"The maintenance session could not be created. Your knowledge data was not changed. "
+                      f"Please retry. Request ID: {g.request_id}",
+            ), 503
+    return render_template("curator_fix_start.html", integrity=integrity, sessions=sessions, error=None)
+
+
+@app.route("/curator/fix/<session_id>")
+def curator_fix_session(session_id):
+    try:
+        trigger = "manual_refresh" if request.args.get("refresh") == "1" else "resume"
+        session = CuratorSessionReconciliationService().reconcile(session_id, trigger=trigger)
+    except CuratorFixSessionError:
+        abort(404)
+    item_id = request.args.get("item", "")
+    category = request.args.get("category", "all")
+    item = next((entry for entry in session["repair_queue"]
+                 if entry["item_id"] == item_id and entry.get("status", "open") == "open"
+                 and (category == "all" or entry.get("finding_type") == category)), None)
+    if not item:
+        item = next((entry for entry in session["repair_queue"]
+                     if entry.get("status") == "open" and
+                     (category == "all" or entry.get("finding_type") == category)), None)
+    progress = CuratorFixSessionService.progress(
+        session, category=category, current_item_id=item.get("item_id", "") if item else "")
+    return render_template("curator_fix_wizard.html", session=session, item=item, progress=progress,
+                           category=category, status=request.args.get("status", ""),
+                           error=request.args.get("error", ""))
+
+
+@app.post("/curator/fix/<session_id>/refresh")
+def curator_fix_refresh(session_id):
+    try:
+        session = CuratorSessionReconciliationService().reconcile(session_id, trigger="manual_refresh")
+    except CuratorFixSessionError:
+        abort(404)
+    changed = bool(session.get("last_reconciliation", {}).get("changed"))
+    status = "reconciled_changed" if changed else "reconciled_unchanged"
+    return redirect(url_for("curator_fix_session", session_id=session_id, status=status))
+
+
+@app.post("/curator/fix/<session_id>/items/<item_id>")
+def curator_fix_item_action(session_id, item_id):
+    sessions = CuratorFixSessionService()
+    category = request.form.get("category", "all")
+    try:
+        session = CuratorSessionReconciliationService().reconcile(
+            session_id, trigger="targeted_execution")
+        item = next((entry for entry in session["repair_queue"] if entry["item_id"] == item_id), None)
+        if not item:
+            raise CuratorFixSessionError("Repair item was not found.")
+        action = request.form.get("action", "")
+        if action == "apply":
+            result = CuratorRepairExecutor().apply(item, session_id=session_id,
+                                                    confirmed=request.form.get("confirmed") == "yes")
+            sessions.record(session_id, item_id, "completed", note="Verified deterministic repair applied.",
+                            verification=result["verification"], current=result["current_integrity"])
+            status = "applied"
+        elif action == "approve_legacy":
+            checks = request.form.getlist("review_check")
+            result = CuratorRepairExecutor().approve_legacy_validation(
+                item, session_id=session_id, reviewer=session["started_by"],
+                confirmed=request.form.get("confirmed") == "yes" and len(checks) == 4,
+            )
+            sessions.record(session_id, item_id, "completed", note="Current legacy validation approved.",
+                            verification=result["verification"], current=result["current_integrity"])
+            status = "legacy_validated"
+        elif action in {"deferred", "skipped", "rejected"}:
+            sessions.record(session_id, item_id, action, note=request.form.get("note", ""))
+            status = action
+        elif action == "keep_standalone" and item["classification"] == "AMBIGUOUS":
+            sessions.record(session_id, item_id, "completed",
+                            note="Reviewer confirmed this published article is valid standalone content.",
+                            current=KnowledgeIntegrityService().report())
+            status = "recorded"
+        else:
+            raise CuratorFixSessionError("Unsupported or unsafe maintenance action.")
+    except (CuratorFixSessionError, CuratorRepairError, OSError, ValueError) as error:
+        return redirect(url_for("curator_fix_session", session_id=session_id, item=item_id,
+                                category=category, error=str(error)))
+    return redirect(url_for("curator_fix_session", session_id=session_id,
+                            category=category, status=status))
+
+
+@app.route("/curator/fix/<session_id>/safe-items", methods=["GET", "POST"])
+def curator_fix_safe_items(session_id):
+    sessions = CuratorFixSessionService()
+    try:
+        session = CuratorSessionReconciliationService().reconcile(
+            session_id, trigger="safe_execution" if request.method == "POST" else "safe_preview")
+        safe_items = [item for item in session["repair_queue"]
+                      if item.get("status") == "open" and item.get("safe_automatic")
+                      and item.get("classification") in CuratorRepairExecutor.ALLOWED]
+        previews = [CuratorRepairExecutor().preview(item) for item in safe_items]
+        if request.method == "POST":
+            if request.form.get("confirmed") != "yes":
+                raise CuratorRepairError("Confirm the complete safe-repair preview before applying it.")
+            for item in safe_items:
+                session = CuratorSessionReconciliationService().reconcile(
+                    session_id, trigger="pre_repair_verification")
+                item = next((entry for entry in session["repair_queue"]
+                             if entry["item_id"] == item["item_id"] and entry.get("status") == "open"), None)
+                if not item or not item.get("safe_automatic") or item.get("classification") not in CuratorRepairExecutor.ALLOWED:
+                    continue
+                result = CuratorRepairExecutor().apply(item, session_id=session_id, confirmed=True)
+                sessions.record(session_id, item["item_id"], "completed",
+                                note="Verified by Repair All Safe Items.", verification=result["verification"],
+                                current=result["current_integrity"])
+            return redirect(url_for("curator_fix_session", session_id=session_id, status="safe_applied"))
+    except (CuratorFixSessionError, CuratorRepairError, OSError, ValueError) as error:
+        if request.method == "POST":
+            return redirect(url_for("curator_fix_session", session_id=session_id, error=str(error)))
+        abort(404)
+    return render_template("curator_fix_safe_preview.html", session=session, previews=previews)
+
+
+@app.route("/curator/fix/<session_id>/complete", methods=["GET", "POST"])
+def curator_fix_complete(session_id):
+    sessions = CuratorFixSessionService()
+    try:
+        session = sessions.finish(session_id, KnowledgeIntegrityService().report()) if request.method == "POST" else sessions.get(session_id)
+    except CuratorFixSessionError:
+        abort(404)
+    return render_template("curator_fix_complete.html", session=session)
+
+@app.route("/curator/integrity")
+def knowledge_integrity_dashboard():
+    return render_template(
+        "knowledge_integrity.html",
+        integrity=KnowledgeIntegrityService().report(),
+        status=request.args.get("status", ""),
+    )
+
+
+@app.post("/curator/integrity/reindex")
+def knowledge_integrity_reindex():
+    KnowledgeIntegrityService().rebuild_index()
+    return redirect(url_for("knowledge_integrity_dashboard", status="reindexed"))
+
+
+@app.post("/curator/integrity/normalize-identities")
+def knowledge_integrity_normalize_identities():
+    result = KnowledgeIntegrityService().normalize_identities()
+    return redirect(url_for("knowledge_integrity_dashboard", status="normalized", changed=result["count"]))
+
+
+@app.route("/curator/integrity/merge", methods=["GET", "POST"])
+def knowledge_integrity_merge():
+    service = KnowledgeIntegrityService()
+    report = service.report()
+    previews = []
+    for group in report["duplicate_groups"]:
+        ids = [record["id"] for record in group["records"] if record["state"] == "published"]
+        if len(ids) > 1:
+            try:
+                preview = service.merge_preview(ids[0], ids[1:])
+                preview["match_reason"] = group.get("reason")
+                preview["confidence"] = group.get("confidence")
+                preview["identity_reasoning"] = group.get("identity_reasoning")
+                previews.append(preview)
+            except (KnowledgeIntegrityError, KnowledgeRepositoryError):
+                pass
+    if request.method == "POST":
+        if request.form.get("confirmed") != "yes":
+            return render_template("knowledge_merge.html", integrity=report, previews=previews, error="Confirm the merge after reviewing every record."), 400
+        try:
+            record_ids = request.form.getlist("record_id")
+            canonical_id = request.form.get("canonical_id", "")
+            service.merge(canonical_id, [item for item in record_ids if item != canonical_id])
+        except (KnowledgeIntegrityError, KnowledgeRepositoryError, ArticleNotFoundError) as error:
+            return render_template("knowledge_merge.html", integrity=report, previews=previews, error=str(error)), 400
+        return_to = request.form.get("return_to", "")
+        if return_to.startswith("/curator/fix/"):
+            return redirect(return_to)
+        return redirect(url_for("knowledge_integrity_dashboard", status="merged"))
+    return render_template("knowledge_merge.html", integrity=report, previews=previews, error=None,
+                           return_to=request.args.get("return_to", ""))
+
+
+@app.route("/knowledge/manage/<article_id>")
+def manage_knowledge_article(article_id):
+    try:
+        policy = KnowledgeIntegrityService().lifecycle_policy(article_id)
+    except KnowledgeIntegrityError:
+        abort(404)
+    return render_template("knowledge_manage.html", policy=policy, error=request.args.get("error", ""))
+
+
+@app.post("/knowledge/manage/<article_id>/<action>")
+def knowledge_lifecycle_action(article_id, action):
+    service = KnowledgeIntegrityService()
+    try:
+        if action == "archive": service.archive(article_id)
+        elif action == "soft-delete": service.soft_delete(article_id)
+        elif action == "permanent-delete": service.permanent_delete(article_id, request.form.get("confirmation", ""))
+        else: abort(404)
+    except (KnowledgeIntegrityError, KnowledgeRepositoryError) as error:
+        return redirect(url_for("manage_knowledge_article", article_id=article_id, error=str(error)))
+    return redirect(url_for("knowledge_integrity_dashboard", status=action))
 
 @app.route("/workflow-studio")
 def workflow_studio():
@@ -806,6 +1230,9 @@ def workflow_editor(filename):
         .build(workflow)
     )
 
+    curator_return = request.args.get("curator_return", "")
+    if curator_return and not curator_return.startswith("/curator/tasks/"):
+        curator_return = ""
     return render_template(
         "workflow_editor.html",
         workflow=workflow,
@@ -814,6 +1241,11 @@ def workflow_editor(filename):
         filename=filename,
         workflow_category=workflow_category(workflow),
         workflow_platform=workflow_platform(workflow),
+        curator_session=request.args.get("curator_session", ""),
+        curator_item=request.args.get("curator_item", ""),
+        curator_task=request.args.get("curator_task", ""),
+        curator_return=curator_return,
+        curator_category=request.args.get("category", "all"),
     )
 
 
@@ -955,6 +1387,15 @@ def generate_workflow_help_text(filename, node_id):
     methods=["POST"],
 )
 def create_workflow_article_draft(filename, node_id):
+    curator_session = request.args.get("curator_session", "")
+    curator_item = request.args.get("curator_item", "")
+    return_to = ""
+    if curator_session:
+        return_to = url_for(
+            "curator_fix_session",
+            session_id=curator_session,
+            item=curator_item,
+        )
     draft_service = WorkflowDraftService()
     workflow = draft_service.get_draft(filename)
     if workflow is None:
@@ -971,6 +1412,14 @@ def create_workflow_article_draft(filename, node_id):
             "node_id": node_id,
             "node_title": node.get("title") or node_id.replace("_", " ").title(),
         }
+        existing = ArticleIdentityResolver(knowledge_repository).resolve(candidate=article, include_drafts=True)
+        if existing:
+            workflow = draft_service.update_node(filename, node_id, {"knowledge_article": existing.article["id"]})
+            normalized = next(item for item in WorkflowNodeService().build(workflow) if item["id"] == node_id)
+            return {"ok": True, "created": False, "reused": True, "article_id": existing.article["id"],
+                    "duplicate_confidence": round(existing.confidence * 100, 1),
+                    "review_url": (url_for("view_published", article_id=existing.article["id"], return_to=return_to) if return_to else url_for("view_published", article_id=existing.article["id"])) if any(a.get("id") == existing.article["id"] for a in knowledge_repository.get_published()) else (url_for("review_draft", article_id=existing.article["id"], return_to=return_to) if return_to else url_for("review_draft", article_id=existing.article["id"])),
+                    "node": normalized}, 200
         created = True
         try:
             knowledge_repository.save_draft(article)
@@ -998,7 +1447,7 @@ def create_workflow_article_draft(filename, node_id):
         "ok": True,
         "created": created,
         "article_id": article["id"],
-        "review_url": url_for("review_draft", article_id=article["id"]),
+        "review_url": url_for("review_draft", article_id=article["id"], return_to=return_to) if return_to else url_for("review_draft", article_id=article["id"]),
         "node": normalized,
     }, 201 if created else 200
 
@@ -1770,12 +2219,16 @@ def workflow_references_for_article(article_id):
 
 
 def render_article_review(article, error=None, status=200):
+    return_to = request.form.get("return_to", "") if request.method == "POST" else request.args.get("return_to", "")
+    if not return_to.startswith("/curator/fix/"):
+        return_to = ""
     return render_template(
         "draft_review.html",
         article=article,
         analysis=ArticleReviewService().analyze(article),
         workflow_references=workflow_references_for_article(article.get("id")),
-        workflow_return_url=workflow_return_location(article),
+        workflow_return_url=return_to or workflow_return_location(article),
+        return_to=return_to,
         error=error,
     ), status
 
@@ -1830,12 +2283,18 @@ def review_draft(article_id):
                         "Complete validation and every technical review check before publishing.",
                         400,
                     )
-                return_location = workflow_return_location(article)
-                knowledge_repository.publish_article(article_id, overwrite=True)
+                return_location = request.form.get("return_to", "")
+                if not return_location.startswith("/curator/fix/"):
+                    return_location = workflow_return_location(article)
+                KnowledgePublicationService(knowledge_repository, WorkflowDraftService()).publish(
+                    article_id,
+                    reviewer=article.get("review", {}).get("reviewed_by") or "Gnojo reviewer",
+                )
                 return redirect(return_location or url_for("view_published", article_id=article_id))
-        except (ArticleReviewError, KnowledgeRepositoryError) as error:
+        except (ArticleReviewError, KnowledgeRepositoryError, KnowledgePublicationError) as error:
             return render_article_review(article, str(error), 400)
-        return redirect(url_for("review_draft", article_id=article_id, saved="1"))
+        return_to = request.form.get("return_to", "")
+        return redirect(url_for("review_draft", article_id=article_id, saved="1", return_to=return_to))
 
     return render_article_review(article)
 
@@ -1921,7 +2380,7 @@ def view_published(article_id):
     """
 
     try:
-        article = knowledge_repository.get_published_article(
+        article = knowledge_repository.resolve_published_article(
             article_id
         )
 
@@ -1933,7 +2392,7 @@ def view_published(article_id):
         ):
             try:
                 related_article = (
-                    knowledge_repository.get_published_article(
+                    knowledge_repository.resolve_published_article(
                         related_id
                     )
                 )
@@ -1947,7 +2406,7 @@ def view_published(article_id):
 
         related_commands = (
             relationship_service.related_commands_for_article(
-                article_id
+                article["id"]
             )
         )
 
@@ -1962,11 +2421,15 @@ def view_published(article_id):
     if article.get("type") == "command":
         template_name = "published_command.html"
 
+    return_to = request.args.get("return_to", "")
+    if not return_to.startswith("/curator/fix/"):
+        return_to = ""
     return render_template(
         template_name,
         article=article,
         related_articles=related_articles,
         related_commands=related_commands,
+        return_to=return_to,
     )
 
 
@@ -2021,12 +2484,15 @@ def publish_draft(article_id):
                 400,
             )
 
-        knowledge_repository.publish_article(article_id, overwrite=True)
+        KnowledgePublicationService(knowledge_repository, WorkflowDraftService()).publish(
+            article_id,
+            reviewer=article.get("review", {}).get("reviewed_by") or "Gnojo reviewer",
+        )
 
     except ArticleNotFoundError:
         abort(404)
 
-    except KnowledgeRepositoryError:
+    except (KnowledgeRepositoryError, KnowledgePublicationError):
         abort(500)
 
     return redirect(

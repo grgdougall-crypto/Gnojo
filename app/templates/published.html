@@ -166,7 +166,7 @@
 
                                         </div>
 
-                                        <a
+                                        <div class="d-flex gap-2"><a
                                             href="{{ url_for(
                                                 'view_published',
                                                 article_id=article.id
@@ -175,7 +175,7 @@
                                         >
                                             View Article
                                             <i class="bi bi-arrow-right ms-2"></i>
-                                        </a>
+                                        </a><a class="btn btn-outline-secondary" href="{{ url_for('manage_knowledge_article', article_id=article.id) }}">Manage</a></div>
 
                                     </div>
 

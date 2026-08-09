@@ -1,0 +1,79 @@
+{
+  "schema_version": "1.0",
+  "id": "how-to-clear-the-printer-warning",
+  "title": "How to Clear the Printer Warning",
+  "category": "Desktop Support",
+  "difficulty": "Beginner",
+  "estimated_time": "5 to 10 minutes",
+  "overview": "Help a reviewer support the Clear the Printer Warning step without changing the workflow automatically.",
+  "tags": [
+    "printer",
+    "clear",
+    "warning",
+    "desktop support"
+  ],
+  "checklist": [
+    "Follow the printer manufacturer's displayed or documented instructions. Before reaching inside to remove a jam, turn the printer off and unplug it if the manufacturer directs you to do so; internal components can be hot or moving. Do not force paper or touch unfamiliar internal parts."
+  ],
+  "common_indicators": [
+    "Record the observed result and return to the originating workflow."
+  ],
+  "commands": [],
+  "related_topics": [
+    "Printer",
+    "Printing"
+  ],
+  "quiz": [
+    {
+      "question": "What should you do after completing this support step?",
+      "answers": [
+        "Record the result and return to the workflow",
+        "Make unrelated changes",
+        "Ignore the result"
+      ],
+      "correct_answer": "Record the result and return to the workflow"
+    }
+  ],
+  "sources": [
+    {
+      "title": "\"Jam\" Error Messages | https://help.brother-usa.com/app/answers/detail/a_id/182556/~/jam-error-messages\\nClearing Jams | https://oip.manual.canon/USRM1-9803-zz-SSM-enUS/contents/devu-trb-jam.html\\nPaper Jam Problems Inside the Product",
+      "url": "https://files.support.epson.com/docid/cpd6/cpd62647/source/troubleshooting/tasks/et2840_l3560/problem_jam_inside_et2840_l3560.html"
+    }
+  ],
+  "generation": {
+    "provider": "Gnojo Curator",
+    "model": "deterministic-assisted-resolution",
+    "generated_at": "2026-08-08T23:49:25.112561+00:00"
+  },
+  "review": {
+    "status": "approved",
+    "reviewed_by": "Gnojo reviewer",
+    "reviewed_at": "2026-08-08T23:54:22.152243+00:00",
+    "notes": [
+      "Originating Curator task: GKT-2D6D4F43A882",
+      "Authoritative sources require human review before publication."
+    ],
+    "checks": {
+      "technical_accuracy": true,
+      "user_safety": true,
+      "sources_verified": true,
+      "commands_reviewed": true
+    }
+  },
+  "workflow_origin": {
+    "filename": "printer.json",
+    "workflow_id": "printer",
+    "node_id": "clear_printer_warning",
+    "curator_task_id": "GKT-2D6D4F43A882"
+  },
+  "canonical_id": "how-to-clear-the-printer-warning",
+  "version": 1,
+  "published_at": "2026-08-08T23:54:22.152243+00:00",
+  "version_history": [
+    {
+      "version": 1,
+      "published_at": "2026-08-08T23:54:22.152243+00:00",
+      "reviewed_by": "Gnojo reviewer"
+    }
+  ]
+}

@@ -16,9 +16,21 @@
     data-settings-url="{{ url_for('update_workflow_settings', filename=filename) }}"
     data-node-improve-url="{{ url_for('improve_workflow_node', filename=filename, node_id='__NODE_ID__') }}"
     data-help-text-url="{{ url_for('generate_workflow_help_text', filename=filename, node_id='__NODE_ID__') }}"
-    data-article-draft-url="{{ url_for('create_workflow_article_draft', filename=filename, node_id='__NODE_ID__') }}"
+    data-article-draft-url="{{ url_for('create_workflow_article_draft', filename=filename, node_id='__NODE_ID__', curator_session=curator_session|default(''), curator_item=curator_item|default('')) }}"
     data-export-url="{{ url_for('export_workflow_draft', filename=filename, export_format='__FORMAT__') }}"
+    data-curator-return="{{ curator_return|default('') }}"
 >
+    {% if curator_task and curator_return %}
+    <aside class="alert alert-info d-flex flex-wrap align-items-center justify-content-between gap-2" role="status">
+        <span><strong>Curator task:</strong> Save this node, then return for a targeted check of the current content.</span>
+        <a class="btn btn-sm btn-outline-info" href="{{ curator_return }}">Return to Curator Task</a>
+    </aside>
+    {% elif curator_session %}
+    <aside class="alert alert-info d-flex flex-wrap align-items-center justify-content-between gap-2" role="status">
+        <span><strong>Curator maintenance session:</strong> Review this workflow, then return to the same repair item.</span>
+        <a class="btn btn-sm btn-outline-info" href="{{ url_for('curator_fix_session', session_id=curator_session, item=curator_item) }}">Back to Fix Wizard</a>
+    </aside>
+    {% endif %}
     {% include "workflow/_page_header.html" %}
 
     <nav class="workflow-mobile-tabs" aria-label="Workflow Designer panels">

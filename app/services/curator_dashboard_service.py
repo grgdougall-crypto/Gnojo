@@ -7,8 +7,11 @@ from typing import Any
 from curator.auditor import CuratorAuditor
 from curator.locking import AuditLock
 from curator.memory import CuratorMemoryStore
+from curator.governance import CuratorGovernancePolicy
+from curator.tasks import KnowledgeTaskService
 
 from app.services.curator_task_service import CuratorTaskService
+from app.services.knowledge_integrity_service import KnowledgeIntegrityService
 
 
 class CuratorDashboardService:
@@ -20,6 +23,8 @@ class CuratorDashboardService:
         self.memory_root = self.repository_root / "curation_memory"
 
     def run_audit(self) -> dict[str, Any]:
+        state = CuratorMemoryStore(self.memory_root).load()
+        CuratorGovernancePolicy.authorize("audit", "write_audit_output", state["controls"])
         with AuditLock(self.repository_root / ".curator-audit.lock"):
             result, location = CuratorAuditor(
                 self.repository_root, self.output_root, self.memory_root
@@ -35,6 +40,8 @@ class CuratorDashboardService:
         state = CuratorMemoryStore(self.memory_root).load()
         latest = self._latest_report()
         tasks = list(state.get("tasks", {}).values())
+        for task in tasks:
+            task.setdefault("execution_mode", KnowledgeTaskService.execution_mode(task))
         keys = {
             "priority": lambda item: ({"Critical": 0, "High": 1, "Medium": 2, "Low": 3, "Info": 4}.get(item.get("priority"), 5), item.get("task_id", "")),
             "recurrence": lambda item: (-int(item.get("times_observed", 0)), item.get("task_id", "")),
@@ -58,6 +65,7 @@ class CuratorDashboardService:
             "sort_by": sort_by,
             "recent_audits": list(reversed(state.get("audits", [])[-10:])),
             "memory_updated_at": state.get("updated_at"),
+            "integrity": KnowledgeIntegrityService(self.repository_root).report(),
         }
 
     def _latest_report(self) -> dict[str, Any]:

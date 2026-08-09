@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import re
 from collections import Counter, defaultdict
+from pathlib import Path
 from typing import Any, Iterable
 from urllib.parse import urlparse
 
@@ -10,6 +11,7 @@ from app.knowledge.article_validator import ArticleValidator
 from app.services.workflow_validation_service import WorkflowValidationService
 
 from .models import Finding, InventoryRecord
+from .runtime_rules import ActiveRuleRegistry
 
 
 SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
@@ -26,11 +28,12 @@ SAFETY_LEVELS = (
 DEFECT_TYPES = {
     "unreadable_content", "missing_metadata", "workflow_integrity", "unreachable_node",
     "article_validation", "insufficient_source_evidence", "malformed_source",
-    "malformed_relationship", "entry_behavior_mismatch",
+    "malformed_relationship", "entry_behavior_mismatch", "canonical_identity_mismatch",
+    "multiple_published_versions", "missing_review_provenance", "stale_relationship",
 }
 RISK_TYPES = {
     "overly_general_field", "missing_safety_guidance", "command_quality_gap",
-    "script_safety_gap", "duplicate_candidate", "inconsistent_review_state",
+    "script_safety_gap", "duplicate_candidate", "duplicate_knowledge_candidate", "inconsistent_review_state",
 }
 RECOMMENDATION_TYPES = {
     "inconsistent_taxonomy", "taxonomy_improvement", "coverage_imbalance",
@@ -65,20 +68,36 @@ class FindingFactory:
 
 
 class CuratorChecks:
+    def __init__(self, repository_root: Path | None = None,
+                 active_rules: ActiveRuleRegistry | None = None):
+        root = (repository_root or Path(__file__).resolve().parents[1]).resolve()
+        self.active_rules = active_rules or ActiveRuleRegistry.from_repository(root)
+
+    def run_record(self, record: InventoryRecord) -> list[Finding]:
+        """Evaluate one persisted record with the canonical Curator rules.
+
+        This deliberately excludes collection-wide duplicate, relationship, coverage,
+        and application checks. It is the narrow evaluation boundary used after a
+        reviewer edits one workflow; it is not a second rule engine or a full audit.
+        """
+        findings: list[Finding] = []
+        findings.extend(self._metadata(record))
+        findings.extend(self._taxonomy(record))
+        if record.content_type == "workflow":
+            findings.extend(self._workflow(record))
+        elif record.content_type == "article":
+            findings.extend(self._article(record))
+        elif record.content_type == "command":
+            findings.extend(self._command(record))
+        elif record.content_type == "script":
+            findings.extend(self._script(record))
+        return findings
+
     def run(self, inventory: list[InventoryRecord]) -> tuple[list[Finding], dict[str, Any]]:
         findings: list[Finding] = []
         findings.extend(self._duplicates(inventory))
         for record in inventory:
-            findings.extend(self._metadata(record))
-            findings.extend(self._taxonomy(record))
-            if record.content_type == "workflow":
-                findings.extend(self._workflow(record))
-            elif record.content_type == "article":
-                findings.extend(self._article(record))
-            elif record.content_type == "command":
-                findings.extend(self._command(record))
-            elif record.content_type == "script":
-                findings.extend(self._script(record))
+            findings.extend(self.run_record(record))
         findings.extend(self._relationships(inventory))
         findings.extend(self._editorial_intelligence(inventory))
         findings.extend(self._system_recommendations(inventory))
@@ -261,9 +280,20 @@ class CuratorChecks:
     def _relationships(self, inventory: list[InventoryRecord]) -> list[Finding]:
         findings = []
         by_type = defaultdict(dict)
+        article_records = defaultdict(list)
         for item in inventory:
             by_type[item.content_type][item.identifier] = item
+            if item.content_type == "article":
+                article_records[item.identifier].append(item)
         article_links: Counter[str] = Counter()
+        published_article_ids = {
+            item.identifier for item in inventory
+            if item.content_type == "article" and item.state == "published"
+        }
+        published_by_title = {
+            self._normalized_identity(item.title): item for item in inventory
+            if item.content_type == "article" and item.state == "published"
+        }
         command_links: Counter[str] = Counter()
         script_links: Counter[str] = Counter()
         for workflow in by_type["workflow"].values():
@@ -273,8 +303,17 @@ class CuratorChecks:
                 article_id = node.get("knowledge_article")
                 if article_id:
                     article_links[str(article_id)] += 1
-                    if article_id not in by_type["article"]:
-                        findings.append(self._missing_link(workflow, node_id, "article", str(article_id)))
+                    if str(article_id) not in published_article_ids:
+                        equivalent = published_by_title.get(self._normalized_identity(article_id))
+                        if equivalent:
+                            findings.append(FindingFactory.create(
+                                finding_type="duplicate_knowledge_candidate", severity="medium", confidence="high", record=workflow,
+                                title="Duplicate Knowledge Candidate", explanation="The referenced identifier is absent, but an equivalent published article title exists.",
+                                evidence=[str(article_id), equivalent.identifier, equivalent.source_path], rule="CUR-REL-DUPLICATE-001",
+                                action=f"Reuse existing article '{equivalent.identifier}' or review it in the merge workspace.", domain="content", future_fix=True,
+                            ))
+                        else:
+                            findings.append(self._missing_link(workflow, node_id, "article", str(article_id)))
         for article in by_type["article"].values():
             for command_id in article.raw.get("related_commands", []):
                 command_links[str(command_id)] += 1
@@ -306,6 +345,29 @@ class CuratorChecks:
                     action="Confirm the article remains sufficiently general and consider it when reviewing similar unlinked workflow steps.",
                     domain="content", future_fix=False,
                 ))
+        for canonical, records in article_records.items():
+            published = [item for item in records if item.state == "published"]
+            if len(published) > 1:
+                findings.append(FindingFactory.create(
+                    finding_type="multiple_published_versions", severity="critical", confidence="high",
+                    record=published[0], title="Multiple published records share one canonical identity",
+                    explanation="Only one live published record may own a canonical article identity.",
+                    evidence=[item.source_path for item in published], rule="CUR-IDENTITY-002",
+                    action="Open the Knowledge Integrity merge workspace and retain one canonical publication.",
+                    domain="content", future_fix=True,
+                ))
+            for item in published:
+                review = item.raw.get("review") or {}
+                missing = [field for field in ("reviewed_by", "reviewed_at") if not review.get(field)]
+                if missing:
+                    findings.append(FindingFactory.create(
+                        finding_type="missing_review_provenance", severity="high", confidence="high",
+                        record=item, title="Published article is missing review provenance",
+                        explanation="Published knowledge must record who approved it and when.",
+                        evidence=[f"Missing: {', '.join(missing)}", item.source_path], rule="CUR-LIFE-002",
+                        action="Create a reviewed revision and record the reviewer and approval timestamp.",
+                        domain="content", future_fix=True,
+                    ))
         return findings
 
     def _application_invariants(self, inventory: list[InventoryRecord]) -> list[Finding]:
@@ -451,6 +513,20 @@ class CuratorChecks:
                 evidence=[f"{item.identifier} ({item.source_path})" for item in items], rule="CUR-DUP-001",
                 action="Compare the records and retain, merge, version, or archive them intentionally.", domain="content", future_fix=True,
             ))
+        published_by_identity = defaultdict(list)
+        for item in inventory:
+            if item.content_type == "article" and self._lifecycle(item.state) == "published":
+                published_by_identity[item.identifier].append(item)
+        for identity, items in published_by_identity.items():
+            if len(items) < 2:
+                continue
+            findings.append(FindingFactory.create(
+                finding_type="multiple_published_versions", severity="critical", confidence="high",
+                record=items[0], title="Canonical identity is published more than once",
+                explanation="The live knowledge library contains multiple records for one canonical identity.",
+                evidence=[item.source_path for item in items], rule="CUR-IDENTITY-001",
+                action="Merge the records and archive superseded copies.", domain="content", future_fix=True,
+            ))
         return findings
 
     @staticmethod
@@ -466,8 +542,10 @@ class CuratorChecks:
                 return level
         return 0
 
-    @staticmethod
-    def _has_proportional_safety(node: dict[str, Any], level: int) -> bool:
+    def _has_proportional_safety(self, node: dict[str, Any], level: int) -> bool:
+        governed = self.active_rules.has_proportional_safety(node, level)
+        if governed is not None:
+            return governed
         guidance = " ".join(str(node.get(key) or "") for key in ("warning", "prerequisites", "rollback", "help_text", "instruction")).casefold()
         requirements = {
             1: ("wait", "close", "reopen", "brief interruption"),
@@ -494,6 +572,10 @@ class CuratorChecks:
             action="Correct the identifier, publish the intended target, or remove the stale relationship after review.",
             domain="content", future_fix=True,
         )
+
+    @staticmethod
+    def _normalized_identity(value: Any) -> str:
+        return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9]+", " ", str(value or "").casefold())).strip()
 
     @staticmethod
     def _node_record(workflow: InventoryRecord, node_id: str, node: dict[str, Any]) -> InventoryRecord:

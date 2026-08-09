@@ -279,7 +279,9 @@
             setSaving(false);
             if (saved) {
                 updateDirtyState();
-                element("nodeDetailsHint").textContent = "Changes saved";
+                element("nodeDetailsHint").textContent = designer.dataset.curatorReturn
+                    ? "Changes saved. Return to the Curator task to verify current content."
+                    : "Changes saved";
             } else {
                 resetButton.disabled = false;
                 saveButton.disabled = false;

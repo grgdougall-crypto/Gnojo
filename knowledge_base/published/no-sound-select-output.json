@@ -65,8 +65,8 @@
   },
   "review": {
     "status": "approved",
-    "reviewed_by": null,
-    "reviewed_at": null,
+    "reviewed_by": "Codex Runtime Verification",
+    "reviewed_at": "2026-08-08T22:32:25.223271+00:00",
     "notes": [
       "Generated from workflow node.",
       "Reviewed for Windows audio output selection procedures.",
@@ -78,7 +78,9 @@
       "user_safety": true,
       "sources_verified": true,
       "commands_reviewed": true
-    }
+    },
+    "review_type": "legacy_validation",
+    "original_historical_reviewer": "unknown"
   },
   "workflow_origin": {
     "filename": "no_sound.json",
@@ -86,5 +88,6 @@
     "workflow_name": "No Sound",
     "node_id": "select_output",
     "node_title": "Select the Intended Audio Output"
-  }
+  },
+  "canonical_id": "no-sound-select-output"
 }

@@ -1,0 +1,194 @@
+{
+  "schema_version": "1.0",
+  "generated_at": "2026-08-09T02:39:18.513690+00:00",
+  "articles": [
+    {
+      "id": "ethernet-connection-check",
+      "title": "Checking an Ethernet Connection",
+      "category": "Networking",
+      "version": 1
+    },
+    {
+      "id": "application-crash-check-update",
+      "title": "How to Check for an Approved Application Update",
+      "category": "Administration",
+      "version": 1
+    },
+    {
+      "id": "vpn-connectivity-win-instr-check-adapter-status",
+      "title": "How to Check Network Adapter Status",
+      "category": "Networking",
+      "version": 1
+    },
+    {
+      "id": "vpn-connectivity-win-instr-temporarily-disable-fw-av",
+      "title": "How to Check Security Software for VPN Conflicts",
+      "category": "Networking",
+      "version": 1
+    },
+    {
+      "id": "no-sound-check-connection",
+      "title": "How to Check Speaker or Headset Connections",
+      "category": "Desktop Support",
+      "version": 1
+    },
+    {
+      "id": "no-sound-check-app-volume",
+      "title": "How to Check the Application's Audio Controls",
+      "category": "Desktop Support",
+      "version": 1
+    },
+    {
+      "id": "how-to-check-video-cable-connections",
+      "title": "How to Check Video Cable Connections",
+      "category": "Desktop Support",
+      "version": 1
+    },
+    {
+      "id": "webcam-not-working-windows-i1-check-privacy",
+      "title": "How to Check Windows Camera Privacy Settings",
+      "category": "Desktop Support",
+      "version": 1
+    },
+    {
+      "id": "windows-slow-check-updates",
+      "title": "How to Check Windows Update",
+      "category": "Administration",
+      "version": 1
+    },
+    {
+      "id": "how-to-clear-the-printer-warning",
+      "title": "How to Clear the Printer Warning",
+      "category": "Desktop Support",
+      "version": 1
+    },
+    {
+      "id": "vpn-connectivity-win-instr-configure-fw-av",
+      "title": "How to Configure Security Software for the VPN",
+      "category": "Networking",
+      "version": 1
+    },
+    {
+      "id": "windows-slow-confirm-windows",
+      "title": "How to Confirm the Windows Device",
+      "category": "Desktop Support",
+      "version": 1
+    },
+    {
+      "id": "external-monitor-not-detected-windows-i-force-detect-display",
+      "title": "How to Force Windows to Detect Display",
+      "category": "Desktop Support",
+      "version": 1
+    },
+    {
+      "id": "vpn-connectivity-win-instr-search-error-code-kb",
+      "title": "How to Identify and Research the VPN Error",
+      "category": "Networking",
+      "version": 1
+    },
+    {
+      "id": "printer-inspect-printer-display",
+      "title": "How to Inspect the Printer Status",
+      "category": "Desktop Support",
+      "version": 1
+    },
+    {
+      "id": "bt-win-not-connecting-i-update-driver",
+      "title": "How to Install the Approved Bluetooth Driver",
+      "category": "Desktop Support",
+      "version": 1
+    },
+    {
+      "id": "vpn-connectivity-win-instr-reinstall-vpn-client",
+      "title": "How to Reinstall VPN Client",
+      "category": "Networking",
+      "version": 1
+    },
+    {
+      "id": "vpn-connectivity-win-instr-reset-ip-stack",
+      "title": "How to Reset IP Stack and Flush DNS",
+      "category": "Networking",
+      "version": 1
+    },
+    {
+      "id": "internet-restart-network-equipment",
+      "title": "How to Restart the Network Equipment",
+      "category": "Networking",
+      "version": 1
+    },
+    {
+      "id": "windows-slow-run-security-scan",
+      "title": "How to Run a Windows Security Quick Scan",
+      "category": "Security",
+      "version": 1
+    },
+    {
+      "id": "no-sound-select-output",
+      "title": "How to Select the Intended Audio Output",
+      "category": "Desktop Support",
+      "version": 1
+    },
+    {
+      "id": "webcam-not-working-windows-i4-update-driver",
+      "title": "How to Update or Reinstall Webcam Driver",
+      "category": "Desktop Support",
+      "version": 1
+    },
+    {
+      "id": "webcam-not-working-windows-i2-app-settings",
+      "title": "How to Verify Application Camera Settings",
+      "category": "Desktop Support",
+      "version": 1
+    },
+    {
+      "id": "how-to-verify-monitor-power-and-input",
+      "title": "How to Verify Monitor Power and Input",
+      "category": "Desktop Support",
+      "version": 1
+    },
+    {
+      "id": "application-crash-test-update",
+      "title": "How to Verify the Application After an Update",
+      "category": "Desktop Support",
+      "version": 1
+    },
+    {
+      "id": "inspect-windows-network-ipconfig",
+      "title": "Inspect Windows Network Configuration with ipconfig",
+      "category": "Networking",
+      "version": 1
+    },
+    {
+      "id": "windows-task-manager-performance",
+      "title": "Reading Windows Performance in Task Manager",
+      "category": "Desktop Support",
+      "version": 1
+    },
+    {
+      "id": "windows-storage-performance",
+      "title": "Storage Space and Windows Performance",
+      "category": "Desktop Support",
+      "version": 1
+    },
+    {
+      "id": "using-device-manager-to-troubleshoot-hardware",
+      "title": "Using Device Manager to Troubleshoot Hardware",
+      "category": "Desktop Support",
+      "version": 1
+    }
+  ],
+  "integrity": {
+    "published_articles": 29,
+    "draft_articles": 2,
+    "broken_relationships": 0,
+    "duplicate_groups": 0,
+    "missing_review_metadata": 0,
+    "orphaned_articles": 0,
+    "inventory_mismatches": 0,
+    "duplicate_articles": 0,
+    "merge_candidates": 0,
+    "archived_articles": 2,
+    "knowledge_debt_reduction_potential": 0,
+    "estimated_cleanup_minutes": 0
+  }
+}

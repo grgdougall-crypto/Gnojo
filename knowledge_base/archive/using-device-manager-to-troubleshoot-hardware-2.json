@@ -1,0 +1,85 @@
+{
+  "schema_version": "1.0",
+  "id": "using-device-manager-to-troubleshoot-hardware-2",
+  "title": "Using Device Manager to Troubleshoot Hardware",
+  "category": "Desktop Support",
+  "difficulty": "Beginner",
+  "estimated_time": "5 to 10 minutes",
+  "overview": "Help a reviewer support the Check Device Manager for Webcam Status step without changing the workflow automatically.",
+  "tags": [
+    "device manager",
+    "camera",
+    "windows",
+    "using",
+    "device",
+    "manager",
+    "troubleshoot",
+    "hardware"
+  ],
+  "checklist": [
+    "Open Device Manager (you can search for 'Device Manager' in the Windows Start Menu). Expand 'Cameras' or 'Sound, video and game controllers'. Locate your webcam in the list. Is there a yellow exclamation mark, a red 'X', or is the device completely missing from the list?"
+  ],
+  "common_indicators": [
+    "Record the observed result and return to the originating workflow."
+  ],
+  "commands": [],
+  "related_topics": [
+    "Webcam Not Working",
+    "Device Management"
+  ],
+  "quiz": [
+    {
+      "question": "What should you do after completing this support step?",
+      "answers": [
+        "Record the result and return to the workflow",
+        "Make unrelated changes",
+        "Ignore the result"
+      ],
+      "correct_answer": "Record the result and return to the workflow"
+    }
+  ],
+  "sources": [
+    {
+      "title": "Using Device Manager",
+      "url": "https://learn.microsoft.com/en-us/windows-hardware/drivers/install/using-device-manager"
+    }
+  ],
+  "generation": {
+    "provider": "Gnojo Curator",
+    "model": "deterministic-assisted-resolution",
+    "generated_at": "2026-08-06T09:25:08.280567+00:00"
+  },
+  "review": {
+    "status": "approved",
+    "reviewed_by": null,
+    "reviewed_at": null,
+    "notes": [
+      "Originating Curator task: GKT-65F0A6F87690",
+      "Authoritative sources require human review before publication."
+    ],
+    "checks": {
+      "technical_accuracy": true,
+      "user_safety": true,
+      "sources_verified": true,
+      "commands_reviewed": true
+    }
+  },
+  "workflow_origin": {
+    "filename": "webcam_not_working_windows.json",
+    "workflow_id": "webcam_not_working_windows",
+    "node_id": "i3_device_manager",
+    "curator_task_id": "GKT-65F0A6F87690"
+  },
+  "version_history": [
+    {
+      "event": "merged_into_canonical",
+      "at": "2026-08-07T17:58:40.612039+00:00",
+      "canonical_id": "using-device-manager-to-troubleshoot-hardware"
+    }
+  ],
+  "lifecycle": {
+    "state": "published",
+    "merged_into": "using-device-manager-to-troubleshoot-hardware"
+  },
+  "canonical_id": "using-device-manager-to-troubleshoot-hardware-2"
+}

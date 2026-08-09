@@ -1,0 +1,93 @@
+{
+  "schema_version": "1.0",
+  "id": "vpn-connectivity-win-instr-reinstall-vpn-client",
+  "title": "How to Reinstall VPN Client",
+  "category": "Networking",
+  "difficulty": "Beginner",
+  "estimated_time": "5 to 10 minutes",
+  "overview": "Use this article when reinstalling a VPN client is an appropriate troubleshooting step for a Windows device. It covers safely removing the existing application, restarting Windows, reinstalling the VPN client from an approved source, and recording the result before continuing troubleshooting.",
+  "tags": [
+    "vpn",
+    "windows",
+    "vpn client",
+    "reinstall",
+    "networking"
+  ],
+  "checklist": [
+    "Save your work and close the VPN client and any related applications.",
+    "Confirm that you know how to obtain the approved VPN client before uninstalling the existing installation.",
+    "Uninstall the VPN client using Windows Apps settings or another approved Windows removal method.",
+    "Restart the computer after the VPN client has been removed.",
+    "Reinstall the VPN client using the software and installation method approved by your organization or VPN provider. If this is a managed work device, follow your organization's IT instructions.",
+    "Open the VPN client and confirm that it starts normally.",
+    "Record the result and return to the troubleshooting workflow before making additional changes."
+  ],
+  "common_indicators": [
+    "The VPN client does not open or repeatedly crashes.",
+    "The VPN client installation appears damaged or incomplete.",
+    "A VPN client update or repair did not resolve the problem.",
+    "Other troubleshooting steps indicate that reinstalling the VPN client is appropriate."
+  ],
+  "commands": [],
+  "related_topics": [
+    "VPN Connectivity Troubleshooting (Windows)",
+    "VPN Client Installation",
+    "VPN Client Updates",
+    "Windows Application Troubleshooting",
+    "Network Connectivity"
+  ],
+  "quiz": [
+    {
+      "question": "What should you do after reinstalling the VPN client?",
+      "answers": [
+        "Open the VPN client, verify the result, and return to the troubleshooting workflow",
+        "Change several unrelated network settings",
+        "Disable Windows security features",
+        "Ignore the result and continue troubleshooting"
+      ],
+      "correct_answer": "Open the VPN client, verify the result, and return to the troubleshooting workflow"
+    }
+  ],
+  "sources": [
+    {
+      "title": "Uninstall or remove apps and programs in Windows | https://support.microsoft.com/en-us/windows/uninstall-or-remove-apps-and-programs-in-windows-4b55f974-2cc6-2d2b-d092-5905080eaf98\\nRestart (reboot) your PC",
+      "url": "https://support.microsoft.com/en-us/windows/restart-reboot-your-pc-110262aa-fc79-1c33-7b00-c140ae3a6dac"
+    }
+  ],
+  "generation": {
+    "provider": "Gnojo Coverage Assistant",
+    "model": "deterministic-node-draft-v1",
+    "generated_at": "2026-08-07T19:25:16.970871+00:00"
+  },
+  "review": {
+    "status": "approved",
+    "reviewed_by": "Gnojo reviewer",
+    "reviewed_at": "2026-08-07T19:32:50.219413+00:00",
+    "notes": [
+      "Reviewed the workflow-generated draft against the attached Microsoft Support documentation. Microsoft guidance supports the Windows application removal and restart procedures. VPN client installation methods vary by VPN provider and organization, so the article directs users to obtain and reinstall the client only through an approved organizational or provider source."
+    ],
+    "checks": {
+      "technical_accuracy": true,
+      "user_safety": true,
+      "sources_verified": true,
+      "commands_reviewed": true
+    }
+  },
+  "workflow_origin": {
+    "filename": "vpn_connectivity_win.json",
+    "workflow_id": "vpn_connectivity_win",
+    "workflow_name": "VPN Connectivity Troubleshooting (Windows)",
+    "node_id": "instr_reinstall_vpn_client",
+    "node_title": "Reinstall VPN Client"
+  },
+  "canonical_id": "vpn-connectivity-win-instr-reinstall-vpn-client",
+  "version": 1,
+  "published_at": "2026-08-07T19:32:50.219413+00:00",
+  "version_history": [
+    {
+      "version": 1,
+      "published_at": "2026-08-07T19:32:50.219413+00:00",
+      "reviewed_by": "Gnojo reviewer"
+    }
+  ]
+}

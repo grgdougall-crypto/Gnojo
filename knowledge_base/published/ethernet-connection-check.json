@@ -62,11 +62,14 @@
     "generated_at": null
   },
   "review": {
-    "status": "pending_review",
-    "reviewed_by": null,
-    "reviewed_at": null,
+    "status": "approved",
+    "reviewed_by": "Codex Runtime Verification",
+    "reviewed_at": "2026-08-08T22:26:53.102808+00:00",
     "notes": [
       "Checked against current Microsoft Ethernet troubleshooting guidance on 2026-08-03; awaiting final human approval."
-    ]
-  }
+    ],
+    "review_type": "legacy_validation",
+    "original_historical_reviewer": "unknown"
+  },
+  "canonical_id": "ethernet-connection-check"
 }

@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Knowledge Integrity | Gnojo{% endblock %}
+{% block content %}
+<main class="container curator-page">
+  <header class="curator-heading"><div><span class="section-eyebrow">Curator operations</span><h1>Knowledge Integrity</h1><p>One view of canonical identities, workflow relationships, publication provenance, and lifecycle health.</p></div><div class="d-flex flex-wrap gap-2"><a class="btn btn-success" href="{{ url_for('curator_fix_start') }}">Start Fix Wizard</a><a class="btn btn-outline-primary" href="{{ url_for('curator_dashboard') }}">Back to Curator</a></div></header>
+  {% if status == 'reindexed' %}<div class="alert alert-success">Knowledge inventory rebuilt from the current canonical records.</div>{% elif status == 'normalized' %}<div class="alert alert-success">Canonical identity metadata normalized for {{ request.args.get('changed', '0') }} records and the index was rebuilt.</div>{% elif status == 'merged' %}<div class="alert alert-success">Duplicate records merged, references updated, and superseded copies archived.</div>{% endif %}
+  <section class="curator-metrics">{% set detail_keys = ['broken_relationships','duplicate_groups','inventory_mismatches','missing_review_metadata','orphaned_articles'] %}{% for key, value in integrity.counts.items() %}{% if key in detail_keys %}<a class="curator-metric-link" href="#integrity-{{ key }}">{% endif %}<article><span>{{ key|replace('_',' ')|title }}</span><strong>{{ value }}</strong></article>{% if key in detail_keys %}</a>{% endif %}{% endfor %}</section>
+  <section class="quality-section"><div class="quality-section__heading"><div><h2>Deterministic maintenance</h2><p>These actions do not rewrite instructional content. Identity normalization adds a canonical ID only when the existing valid article ID proves the value.</p></div><div class="d-flex gap-2"><form method="post" action="{{ url_for('knowledge_integrity_normalize_identities') }}" onsubmit="return confirm('Normalize proven canonical IDs and rebuild the generated index?');"><button class="btn btn-info">Normalize IDs and re-index</button></form><form method="post" action="{{ url_for('knowledge_integrity_reindex') }}"><button class="btn btn-outline-info">Rebuild index only</button></form></div></div></section>
+  {% for key, title in [('broken_relationships','Broken Relationships'),('duplicate_groups','Duplicate Identities'),('inventory_mismatches','Inventory Mismatches'),('missing_review_metadata','Missing Review Provenance'),('orphaned_articles','Orphaned Published Articles')] %}
+  <section class="quality-section" id="integrity-{{ key }}"><div class="quality-section__heading"><div><h2>{{ title }}</h2><p>{{ integrity.explanations[key] }}</p></div>{% if key == 'duplicate_groups' and integrity[key] %}<a class="btn btn-outline-warning" href="{{ url_for('knowledge_integrity_merge') }}">Open merge workspace</a>{% endif %}</div>
+  {% if integrity[key] %}
+    {% if key == 'broken_relationships' %}
+      <div class="table-responsive"><table class="table align-middle"><thead><tr><th>Workflow</th><th>Node</th><th>Current Reference</th><th>Match Status</th><th>Action</th></tr></thead><tbody>{% for relation in integrity[key] %}<tr><td>{{ relation.workflow }}</td><td><code>{{ relation.node }}</code></td><td><code>{{ relation.article }}</code></td><td><span class="badge text-bg-warning">Needs resolution</span></td><td><a href="{{ url_for('workflow_editor', filename=relation.source.split('/')[-1], node=relation.node) }}">Open workflow</a></td></tr>{% endfor %}</tbody></table></div><details><summary>View raw data</summary><pre class="integrity-evidence">{{ integrity[key]|tojson(indent=2) }}</pre></details>
+    {% elif key == 'missing_review_metadata' %}
+      <div class="alert alert-info"><strong>Legacy Review Provenance</strong><br>{{ integrity[key]|length }} historical records require modern validation. No historical reviewer or date will be invented.</div><div class="d-grid gap-2">{% for record in integrity[key] %}<article class="integrity-record"><strong>{{ record.title }}</strong><br><code>{{ record.id }}</code> <a class="ms-2" href="{{ url_for('view_published', article_id=record.id) }}">Open article</a></article>{% endfor %}</div><details class="mt-3"><summary>View raw data</summary><pre class="integrity-evidence">{{ integrity[key]|tojson(indent=2) }}</pre></details>
+    {% elif key == 'orphaned_articles' %}
+      <div class="d-grid gap-2">{% for record in integrity[key] %}<article class="integrity-record"><strong>{{ record.title }}</strong><p class="mb-1">No inbound workflow link. This may still be valid standalone search content.</p><code>{{ record.id }}</code> <a class="ms-2" href="{{ url_for('view_published', article_id=record.id) }}">Open article</a></article>{% endfor %}</div><details class="mt-3"><summary>View raw data</summary><pre class="integrity-evidence">{{ integrity[key]|tojson(indent=2) }}</pre></details>
+    {% elif key == 'duplicate_groups' %}
+      <div class="d-grid gap-3">
+      {% for group in integrity[key] %}
+        <article class="integrity-record">
+          <div class="d-flex flex-wrap justify-content-between gap-2 mb-2">
+            <div><strong>{{ group.records|length }} records share one identity</strong><p class="mb-0 text-secondary">{{ group.identity_reasoning }}</p></div>
+            <span class="badge text-bg-warning">{{ group.confidence }}% confidence</span>
+          </div>
+          <div class="d-grid gap-2">
+          {% for record in group.records %}
+            <div class="d-flex flex-wrap justify-content-between gap-2 border rounded p-2">
+              <div><strong>{{ record.title }}</strong><br><code>{{ record.id }}</code></div>
+              <span class="badge text-bg-secondary align-self-start">{{ record.state|replace('_', ' ')|title }}</span>
+            </div>
+          {% endfor %}
+          </div>
+          <p class="small text-secondary mt-2 mb-0">Match method: {{ group.reason|replace('_', ' ') }}. No record has been changed.</p>
+        </article>
+      {% endfor %}
+      </div>
+    {% else %}<pre class="integrity-evidence">{{ integrity[key]|tojson(indent=2) }}</pre>{% endif %}
+  {% else %}<p class="text-success mb-0">No findings in this category.</p>{% endif %}</section>
+  {% endfor %}
+</main>
+{% endblock %}

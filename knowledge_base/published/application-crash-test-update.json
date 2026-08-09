@@ -60,8 +60,8 @@
   },
   "review": {
     "status": "approved",
-    "reviewed_by": null,
-    "reviewed_at": null,
+    "reviewed_by": "Codex Runtime Verification",
+    "reviewed_at": "2026-08-08T22:45:12.910313+00:00",
     "notes": [
       "Generated from a workflow node.",
       "Verify technical accuracy and add authoritative sources before publication."
@@ -71,6 +71,9 @@
       "user_safety": true,
       "sources_verified": true,
       "commands_reviewed": true
-    }
-  }
+    },
+    "review_type": "legacy_validation",
+    "original_historical_reviewer": "unknown"
+  },
+  "canonical_id": "application-crash-test-update"
 }

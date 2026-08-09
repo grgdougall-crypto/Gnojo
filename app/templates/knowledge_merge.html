@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Merge Knowledge | Gnojo{% endblock %}
+{% block content %}
+<main class="container curator-page">
+  {% if return_to %}<div class="alert alert-info">You are reviewing a merge from a maintenance session. After a successful merge, Gnojo will return you to the Fix Wizard.</div>{% endif %}
+  <header class="curator-heading"><div><span class="section-eyebrow">Knowledge integrity</span><h1>Merge Workspace</h1><p>Compare duplicate candidates, preview every addition and reference update, then explicitly confirm the merge.</p></div><a class="btn btn-outline-primary" href="{{ url_for('knowledge_integrity_dashboard') }}">Back</a></header>
+  {% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+  {% for preview in previews %}
+  <form method="post" class="quality-section">
+    <input type="hidden" name="return_to" value="{{ return_to|default('') }}">
+    <div class="quality-section__heading"><div><span class="section-eyebrow">Canonical recommendation</span><h2>{{ preview.canonical.title }}</h2><code>{{ preview.canonical.id }}</code><p class="mt-2 mb-0 text-secondary">{{ preview.identity_reasoning }} Match confidence: {{ preview.confidence }}%.</p></div></div>
+    {% for article in [preview.canonical] + preview.duplicates %}<input type="hidden" name="record_id" value="{{ article.id }}">{% endfor %}
+    <div class="row g-3">{% for article in [preview.canonical] + preview.duplicates %}<div class="col-lg-6"><article class="integrity-record">
+      <label><input type="radio" name="canonical_id" value="{{ article.id }}" {% if article.id == preview.canonical.id %}checked{% endif %}> Preserve as canonical</label><h3>{{ article.title }}</h3><code>{{ article.id }}</code>
+      {% for field in ['overview','checklist','commands','sources','tags','related_topics','workflow_references','version_history'] %}<details><summary>{{ field|replace('_',' ')|title }}</summary><pre>{{ article.get(field)|tojson(indent=2) }}</pre></details>{% endfor %}
+      <a class="btn btn-sm btn-outline-secondary mt-2" href="{{ url_for('manage_knowledge_article', article_id=article.id) }}">Archive / delete options</a>
+    </article></div>{% endfor %}</div>
+    <section class="merge-preview mt-4"><h3>Merge preview</h3><p><strong>{{ preview.workflow_updates|length }}</strong> workflow/node references will be updated. <strong>{{ preview.aliases|length }}</strong> aliases will be added.</p>
+      <div class="row g-3">{% for field, values in preview.additions.items() %}<div class="col-md-6"><article class="integrity-record"><strong>{{ field|replace('_',' ')|title }}</strong><span class="badge text-bg-primary float-end">{{ values|length }} added</span><pre>{{ values|tojson(indent=2) }}</pre></article></div>{% endfor %}</div>
+      <details><summary>Reference and alias changes</summary><pre>{{ {'workflow_updates': preview.workflow_updates, 'aliases': preview.aliases, 'history': preview.history_event}|tojson(indent=2) }}</pre></details>
+    </section>
+    <p class="text-warning mt-3">The canonical record is never silently overwritten. Only missing list values are added; duplicates are archived and remain recoverable.</p>
+    <label><input type="checkbox" name="confirmed" value="yes"> I reviewed the comparison and merge preview.</label><div class="mt-3"><button class="btn btn-warning">Merge into canonical</button></div>
+  </form>
+  {% else %}<section class="quality-section"><p>No duplicate groups currently require merging.</p></section>{% endfor %}
+</main>
+{% endblock %}

@@ -51,8 +51,8 @@
   },
   "review": {
     "status": "approved",
-    "reviewed_by": null,
-    "reviewed_at": null,
+    "reviewed_by": "Codex Runtime Verification",
+    "reviewed_at": "2026-08-08T22:23:56.570557+00:00",
     "notes": [
       "Generated from a workflow node.",
       "Reviewed for safe identification of physical and VPN network adapters.",
@@ -64,7 +64,9 @@
       "user_safety": true,
       "sources_verified": true,
       "commands_reviewed": true
-    }
+    },
+    "review_type": "legacy_validation",
+    "original_historical_reviewer": "unknown"
   },
   "tags": [
     "network adapter",
@@ -72,5 +74,6 @@
     "ethernet",
     "wi-fi",
     "connectivity"
-  ]
+  ],
+  "canonical_id": "vpn-connectivity-win-instr-check-adapter-status"
 }

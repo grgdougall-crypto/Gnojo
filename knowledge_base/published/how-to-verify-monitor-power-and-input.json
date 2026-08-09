@@ -1,0 +1,80 @@
+{
+  "schema_version": "1.0",
+  "id": "how-to-verify-monitor-power-and-input",
+  "title": "How to Verify Monitor Power and Input",
+  "category": "Desktop Support",
+  "difficulty": "Beginner",
+  "estimated_time": "5 to 10 minutes",
+  "overview": "Help a reviewer support the Verify Monitor Power and Input step without changing the workflow automatically.",
+  "tags": [
+    "monitor",
+    "verify",
+    "power",
+    "input",
+    "desktop support"
+  ],
+  "checklist": [
+    "Verify the monitor's power connection, power button, and confirm the active input source (e.g., HDMI 1, DisplayPort) matches the computer's connection. Ensure the monitor is not in standby mode."
+  ],
+  "common_indicators": [
+    "Record the observed result and return to the originating workflow."
+  ],
+  "commands": [],
+  "related_topics": [
+    "External Monitor Not Detected",
+    "Displays"
+  ],
+  "quiz": [
+    {
+      "question": "What should you do after completing this support step?",
+      "answers": [
+        "Record the result and return to the workflow",
+        "Make unrelated changes",
+        "Ignore the result"
+      ],
+      "correct_answer": "Record the result and return to the workflow"
+    }
+  ],
+  "sources": [
+    {
+      "title": "Computer Turns On But No Display: Troubleshoot Display Problems | Dell US | https://www.dell.com/support/contents/en-us/article/product-support/self-support-knowledgebase/monitor-screen-video/monitors-and-screens\\nHow to Wake a Computer or Monitor From Sleep, Standby, Suspend or Hibernate | Dell US",
+      "url": "https://www.dell.com/support/kbdoc/en-us/000130380/how-to-wake-a-computer-or-monitor-from-sleep-suspend-or-hibernate"
+    }
+  ],
+  "generation": {
+    "provider": "Gnojo Curator",
+    "model": "deterministic-assisted-resolution",
+    "generated_at": "2026-08-08T23:35:14.625133+00:00"
+  },
+  "review": {
+    "status": "approved",
+    "reviewed_by": "Gnojo reviewer",
+    "reviewed_at": "2026-08-08T23:38:38.038000+00:00",
+    "notes": [
+      "Originating Curator task: GKT-11C63B76EF54",
+      "Authoritative sources require human review before publication."
+    ],
+    "checks": {
+      "technical_accuracy": true,
+      "user_safety": true,
+      "sources_verified": true,
+      "commands_reviewed": true
+    }
+  },
+  "workflow_origin": {
+    "filename": "external_monitor_not_detected_windows.json",
+    "workflow_id": "external_monitor_not_detected_windows",
+    "node_id": "i_verify_power_input",
+    "curator_task_id": "GKT-11C63B76EF54"
+  },
+  "canonical_id": "how-to-verify-monitor-power-and-input",
+  "version": 1,
+  "published_at": "2026-08-08T23:38:38.038000+00:00",
+  "version_history": [
+    {
+      "version": 1,
+      "published_at": "2026-08-08T23:38:38.038000+00:00",
+      "reviewed_by": "Gnojo reviewer"
+    }
+  ]
+}

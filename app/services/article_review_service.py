@@ -1,4 +1,5 @@
 import re
+from datetime import datetime, timezone
 
 from app.knowledge.article_validator import ArticleValidator
 from app.services.article_tag_service import ArticleTagService
@@ -103,6 +104,8 @@ class ArticleReviewService:
             if not all(checks.values()):
                 raise ArticleReviewError("Complete every technical review check before approval.")
             review["status"] = "approved"
+            review["reviewed_by"] = str(form.get("reviewed_by") or "Gnojo reviewer").strip()
+            review["reviewed_at"] = datetime.now(timezone.utc).isoformat()
         elif action == "reject":
             if not review["notes"]:
                 raise ArticleReviewError("Add a review note explaining what needs revision.")

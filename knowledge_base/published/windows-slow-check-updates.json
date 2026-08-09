@@ -66,8 +66,8 @@
   },
   "review": {
     "status": "approved",
-    "reviewed_by": null,
-    "reviewed_at": null,
+    "reviewed_by": "Codex Runtime Verification",
+    "reviewed_at": "2026-08-08T22:36:11.398968+00:00",
     "notes": [
       "Revision created from the published article."
     ],
@@ -76,6 +76,9 @@
       "user_safety": true,
       "sources_verified": true,
       "commands_reviewed": true
-    }
-  }
+    },
+    "review_type": "legacy_validation",
+    "original_historical_reviewer": "unknown"
+  },
+  "canonical_id": "windows-slow-check-updates"
 }

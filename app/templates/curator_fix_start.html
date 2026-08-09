@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Start Fix Wizard | Gnojo{% endblock %}
+{% block content %}
+<main class="container curator-page" id="main-content">
+  <nav aria-label="Breadcrumb"><a href="{{ url_for('curator_dashboard') }}">Curator</a> / <a href="{{ url_for('knowledge_integrity_dashboard') }}">Knowledge Integrity</a> / Start Fix Wizard</nav>
+  <header class="curator-heading"><div><span class="section-eyebrow">Guided maintenance</span><h1>Start Fix Wizard</h1><p>Review one current integrity finding at a time. Nothing changes until you preview and confirm a supported repair.</p></div></header>
+  {% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
+  <section class="quality-section" aria-labelledby="baselineTitle">
+    <h2 id="baselineTitle">Current maintenance baseline</h2>
+    <div class="curator-status-grid">
+      <article><span>Broken relationships</span><strong>{{ integrity.counts.broken_relationships }}</strong></article>
+      <article><span>Duplicate groups</span><strong>{{ integrity.counts.duplicate_groups }}</strong></article>
+      <article><span>Inventory mismatches</span><strong>{{ integrity.counts.inventory_mismatches }}</strong></article>
+      <article><span>Orphaned articles</span><strong>{{ integrity.counts.orphaned_articles }}</strong></article>
+      <article><span>Legacy review records</span><strong>{{ integrity.counts.missing_review_metadata }}</strong></article>
+    </div>
+    <form method="post" class="mt-4">
+      <label class="form-label" for="reviewer">Reviewer name</label>
+      <input class="form-control" id="reviewer" name="reviewer" required autocomplete="name" aria-describedby="reviewerHelp">
+      <p id="reviewerHelp" class="form-text">Gnojo has no login system yet, so the session records the name you enter. It is never used to backdate legacy reviews.</p>
+      <button class="btn btn-primary btn-lg" type="submit">{{ 'Resume Maintenance Session' if sessions|selectattr('ended_at', 'none')|list else 'Create Maintenance Session' }}</button>
+    </form>
+  </section>
+  {% if sessions %}<section class="quality-section mt-4" aria-labelledby="resumeTitle"><h2 id="resumeTitle">Resume Maintenance Session</h2><div class="d-grid gap-2">{% for session in sessions if not session.ended_at %}<a class="integrity-record text-decoration-none" href="{{ url_for('curator_fix_session', session_id=session.session_id) }}"><strong>{{ session.session_id }}</strong><span class="d-block">Reviewer {{ session.started_by }} &middot; {{ session.handled }} of {{ session.finding_count }} reviewed &middot; Current debt {{ session.current_debt }}</span></a>{% endfor %}</div></section>{% endif %}
+</main>
+{% endblock %}

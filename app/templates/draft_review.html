@@ -4,9 +4,10 @@
 
 {% block content %}
 <section class="container article-review-page" aria-labelledby="articleReviewTitle">
+    {% if return_to %}<div class="alert alert-info" role="status">You are reviewing this article from a Curator maintenance session. Save or publish to return to the Fix Wizard.</div>{% endif %}
     <div class="article-review-heading">
         <div><span class="section-eyebrow">Knowledge Review Workspace</span><h1 id="articleReviewTitle">{{ article.title }}</h1><p>Edit, validate, preview, and approve this article without touching its JSON file.</p></div>
-        {% if workflow_return_url %}<a class="btn btn-outline-primary" href="{{ workflow_return_url }}"><i class="bi bi-arrow-left me-2" aria-hidden="true"></i>Back to workflow</a>{% else %}<a class="btn btn-outline-primary" href="{{ url_for('list_drafts') }}"><i class="bi bi-arrow-left me-2" aria-hidden="true"></i>Back to drafts</a>{% endif %}
+        {% if workflow_return_url %}<a class="btn btn-outline-primary" href="{{ workflow_return_url }}"><i class="bi bi-arrow-left me-2" aria-hidden="true"></i>{{ 'Back to Fix Wizard' if return_to else 'Back to workflow' }}</a>{% else %}<a class="btn btn-outline-primary" href="{{ url_for('list_drafts') }}"><i class="bi bi-arrow-left me-2" aria-hidden="true"></i>Back to drafts</a>{% endif %}
     </div>
 
     {% if error %}<div class="alert alert-danger" role="alert"><strong>Review could not be saved.</strong> {{ error }}</div>{% elif request.args.get('revision') == '1' %}<div class="alert alert-info" role="status"><strong>Revision draft created.</strong> The published article remains live until this revision is reviewed and published.</div>{% elif request.args.get('saved') == '1' %}<div class="alert alert-success" role="status">Article review saved.</div>{% endif %}
@@ -17,6 +18,9 @@
         <article><span>Validation</span><strong>{{ 'Passed' if not analysis.validation_errors else analysis.validation_errors|length ~ ' issue(s)' }}</strong></article>
         <article><span>Workflow links</span><strong>{{ workflow_references|length }}</strong></article>
     </div>
+    {% if not workflow_references and article.workflow_origin %}
+    <div class="alert alert-info" role="status"><strong>Pending workflow relationship:</strong> This draft originated from {{ article.workflow_origin.workflow_name or article.workflow_origin.workflow_id }} / {{ article.workflow_origin.node_title }}. The workflow-link count will update after publication finalizes the relationship.</div>
+    {% endif %}
 
     {% if analysis.warnings or analysis.validation_errors %}
     <section class="review-warning-panel" aria-labelledby="reviewWarningsTitle">
@@ -32,6 +36,7 @@
     </div>
 
     <form id="articleReviewForm" method="post" class="article-review-form" data-review-panel="editor">
+        <input type="hidden" name="return_to" value="{{ return_to|default('') }}">
         <section class="review-editor-section">
             <span class="section-eyebrow">Article identity</span><h2>Basics</h2>
             <div class="review-editor-grid">

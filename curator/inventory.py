@@ -7,6 +7,7 @@ from typing import Any
 from app.repositories.command_repository import CommandRepository
 from app.repositories.knowledge_repository import KnowledgeRepository
 from app.repositories.script_repository import ScriptRepository
+from app.services.knowledge_identity_service import KnowledgeIdentityError, KnowledgeIdentityService
 
 from .models import AuditFilter, InventoryRecord
 
@@ -58,23 +59,23 @@ class CuratorInventory:
     def _articles(self) -> list[InventoryRecord]:
         repository = KnowledgeRepository(self.root / "knowledge_base")
         records: list[InventoryRecord] = []
-        for state, articles, directory in (
-            ("draft", repository.get_drafts(), repository.draft_directory),
-            ("published", repository.get_published(), repository.published_directory),
-            ("archived", repository.get_archived(), repository.archive_directory),
+        for state, directory in (
+            ("draft", repository.draft_directory),
+            ("published", repository.published_directory),
+            ("archived", repository.archive_directory),
         ):
-            for article in articles:
-                identifier = str(article.get("id") or "unknown")
-                records.append(self._record("article", identifier, directory / f"{identifier}.json", article, state))
-            loaded = {Path(record.source_path).stem for record in records if record.state == state}
-            for path in sorted(directory.glob("*.json")) if directory.exists() else []:
-                if path.stem in loaded:
-                    continue
+            for path in sorted(directory.glob("*.json")):
                 try:
-                    self._json(path)
+                    article = self._json(path)
                 except InventoryError as error:
                     raw = {"id": path.stem, "title": path.stem, "_inventory_error": str(error)}
                     records.append(self._record("article", path.stem, path, raw, state))
+                    continue
+                try:
+                    identifier = KnowledgeIdentityService.canonical_id(article)
+                except KnowledgeIdentityError:
+                    identifier = str(article.get("id") or "unknown")
+                records.append(self._record("article", identifier, path, article, state))
         return records
 
     def _commands(self) -> list[InventoryRecord]:

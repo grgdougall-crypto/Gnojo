@@ -1,0 +1,97 @@
+{
+  "schema_version": "1.0",
+  "id": "vpn-connectivity-win-instr-configure-fw-av",
+  "title": "How to Configure Security Software for the VPN",
+  "category": "Networking",
+  "difficulty": "Beginner",
+  "estimated_time": "5 to 10 minutes",
+  "overview": "Use this article when security software appears to be interfering with a VPN connection on a Windows device. It covers reviewing firewall or security-software settings, creating an approved exception or allow rule for the VPN when appropriate, keeping security protections enabled, and verifying the VPN connection afterward. On managed devices, follow organizational policy or contact IT support before changing security settings.",
+  "tags": [
+    "vpn",
+    "windows",
+    "configure",
+    "security",
+    "software",
+    "networking"
+  ],
+  "checklist": [
+    "Confirm that security software has been identified as a likely cause of the VPN connection problem.",
+    "Keep the firewall, antivirus, and other security protections enabled while reviewing the configuration.",
+    "Check the security software for blocked connections, application-control rules, or other settings affecting the VPN client.",
+    "If the VPN client is being blocked, use the security vendor's documented procedure to create an appropriate exception or allow rule for the VPN application or required network traffic.",
+    "Do not create broad exclusions or disable protections to make the VPN work.",
+    "On a managed device, follow your organization's approved procedure or contact IT support before changing security settings.",
+    "Retry the VPN connection after making an approved change.",
+    "Record the result and return to the troubleshooting workflow."
+  ],
+  "common_indicators": [
+    "The VPN works only when a security-software restriction is removed or changed.",
+    "Security software reports that the VPN client or its network traffic was blocked.",
+    "An application-control or firewall rule prevents the VPN client from communicating.",
+    "The VPN client is not included in an approved application or firewall rule.",
+    "Other troubleshooting indicates that the VPN client and network connection are functioning normally."
+  ],
+  "commands": [],
+  "related_topics": [
+    "VPN Connectivity Troubleshooting (Windows)",
+    "Check Security Software for VPN Conflicts",
+    "Windows Firewall and Application Rules",
+    "VPN Client Troubleshooting",
+    "Network Connectivity"
+  ],
+  "quiz": [
+    {
+      "question": "What should you do if security software is blocking the VPN client?",
+      "answers": [
+        "Use the vendor's documented procedure to create an appropriate VPN exception or allow rule",
+        "Disable all security protections permanently",
+        "Create a broad exclusion for all network traffic",
+        "Ignore the security software and continue troubleshooting"
+      ],
+      "correct_answer": "Use the vendor's documented procedure to create an appropriate VPN exception or allow rule"
+    }
+  ],
+  "sources": [
+    {
+      "title": "Firewall and network protection in the Windows Security app | Microsoft Support | https://support.microsoft.com/en-us/windows/security/windows-security/firewall-and-network-protection-in-the-windows-security-app\\nRisks of Allowing Apps Through Windows Firewall | Microsoft Support",
+      "url": "https://support.microsoft.com/en-us/windows/security/firewall/risks-of-allowing-apps-through-windows-firewall"
+    }
+  ],
+  "generation": {
+    "provider": "Gnojo Coverage Assistant",
+    "model": "deterministic-node-draft-v1",
+    "generated_at": "2026-08-08T01:58:21.152607+00:00"
+  },
+  "review": {
+    "status": "approved",
+    "reviewed_by": "Gnojo reviewer",
+    "reviewed_at": "2026-08-08T02:03:45.169017+00:00",
+    "notes": [
+      "Generated from a workflow node.",
+      "Verify technical accuracy and add authoritative sources before publication."
+    ],
+    "checks": {
+      "technical_accuracy": true,
+      "user_safety": true,
+      "sources_verified": true,
+      "commands_reviewed": true
+    }
+  },
+  "workflow_origin": {
+    "filename": "vpn_connectivity_win.json",
+    "workflow_id": "vpn_connectivity_win",
+    "workflow_name": "VPN Connectivity Troubleshooting (Windows)",
+    "node_id": "instr_configure_fw_av",
+    "node_title": "Configure Security Software for the VPN"
+  },
+  "canonical_id": "vpn-connectivity-win-instr-configure-fw-av",
+  "version": 1,
+  "published_at": "2026-08-08T02:03:45.169017+00:00",
+  "version_history": [
+    {
+      "version": 1,
+      "published_at": "2026-08-08T02:03:45.169017+00:00",
+      "reviewed_by": "Gnojo reviewer"
+    }
+  ]
+}

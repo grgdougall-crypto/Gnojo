@@ -1,0 +1,81 @@
+{
+  "schema_version": "1.0",
+  "id": "how-to-check-video-cable-connections",
+  "title": "How to Check Video Cable Connections",
+  "category": "Desktop Support",
+  "difficulty": "Beginner",
+  "estimated_time": "5 to 10 minutes",
+  "overview": "Help a reviewer support the Check Video Cable Connections step without changing the workflow automatically.",
+  "tags": [
+    "monitor",
+    "check",
+    "video",
+    "cable",
+    "connections",
+    "desktop support"
+  ],
+  "checklist": [
+    "Ensure the video cable (HDMI, DisplayPort, USB-C, VGA, DVI) is securely connected at both the computer's output port and the monitor's input port. If possible, try a different video cable or a different port on both the computer and monitor."
+  ],
+  "common_indicators": [
+    "Record the observed result and return to the originating workflow."
+  ],
+  "commands": [],
+  "related_topics": [
+    "External Monitor Not Detected",
+    "Displays"
+  ],
+  "quiz": [
+    {
+      "question": "What should you do after completing this support step?",
+      "answers": [
+        "Record the result and return to the workflow",
+        "Make unrelated changes",
+        "Ignore the result"
+      ],
+      "correct_answer": "Record the result and return to the workflow"
+    }
+  ],
+  "sources": [
+    {
+      "title": "Computer Turns On But No Display: Troubleshoot Display Problems | Dell US | https://www.dell.com/support/contents/en-us/article/product-support/self-support-knowledgebase/monitor-screen-video/monitors-and-screens?msockid=21c3dc47de1365aa1680cabbdf13643f\\nTroubleshooting blank screens in Windows - Microsoft Support",
+      "url": "https://support.microsoft.com/en-US/Windows/Hardware/Display-Graphics/troubleshooting-blank-screens-in-windows"
+    }
+  ],
+  "generation": {
+    "provider": "Gnojo Curator",
+    "model": "deterministic-assisted-resolution",
+    "generated_at": "2026-08-08T22:51:50.680994+00:00"
+  },
+  "review": {
+    "status": "approved",
+    "reviewed_by": "Gnojo reviewer",
+    "reviewed_at": "2026-08-08T22:57:35.258279+00:00",
+    "notes": [
+      "Originating Curator task: GKT-3EC7BEE6322B",
+      "Authoritative sources require human review before publication."
+    ],
+    "checks": {
+      "technical_accuracy": true,
+      "user_safety": true,
+      "sources_verified": true,
+      "commands_reviewed": true
+    }
+  },
+  "workflow_origin": {
+    "filename": "external_monitor_not_detected_windows.json",
+    "workflow_id": "external_monitor_not_detected_windows",
+    "node_id": "i_check_cable",
+    "curator_task_id": "GKT-3EC7BEE6322B"
+  },
+  "canonical_id": "how-to-check-video-cable-connections",
+  "version": 1,
+  "published_at": "2026-08-08T22:57:35.258279+00:00",
+  "version_history": [
+    {
+      "version": 1,
+      "published_at": "2026-08-08T22:57:35.258279+00:00",
+      "reviewed_by": "Gnojo reviewer"
+    }
+  ]
+}

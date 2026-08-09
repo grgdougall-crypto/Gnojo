@@ -2,16 +2,34 @@
 {% block title %}Repair Preview | {{ task.task_id }} | Gnojo{% endblock %}
 {% block content %}
 <main class="container curator-task-page" aria-labelledby="repairTitle">
-    <nav class="curator-breadcrumb"><a href="{{ url_for('curator_task_detail', task_id=task.task_id) }}"><i class="bi bi-arrow-left"></i> Return to Knowledge Task</a></nav>
-    <header class="curator-task-heading"><div><span class="section-eyebrow">Deterministic repair preview</span><h1 id="repairTitle">{{ task.title }}</h1><p>No trusted content is changed from this preview.</p></div></header>
-    <section class="quality-section">
-        {% if task.repair_preview and task.repair_preview.available %}
-        <div class="row g-4"><div class="col-md-6"><h2>Before</h2><pre>{{ task.repair_preview.before|join('\n') }}</pre></div><div class="col-md-6"><h2>After</h2><pre>{{ task.repair_preview.after|join('\n') }}</pre></div></div>
-        {% else %}
-        <div class="alert alert-info" role="status"><strong>Repair adapter not available</strong><p class="mb-0">{{ task.repair_preview.reason if task.repair_preview else 'This observation requires human judgment and cannot be repaired automatically.' }}</p></div>
-        {% endif %}
-        <h2>Why this is safe</h2><p>A repair can only become approvable after a dedicated adapter proves the before/after transformation and preserves Gnojo's review lifecycle.</p>
-        <a class="btn btn-outline-primary" href="{{ url_for('curator_task_detail', task_id=task.task_id) }}">Cancel and return</a>
-    </section>
+  <nav class="curator-breadcrumb"><a href="{{ url_for('curator_task_detail', task_id=task.task_id, curator_session=curator_session) }}"><i class="bi bi-arrow-left"></i> Return to Knowledge Task</a></nav>
+  <header class="curator-task-heading"><div><span class="section-eyebrow">Deterministic repair preview</span><h1 id="repairTitle">{{ task.title }}</h1><p>This preview is read-only. Nothing is changed until you explicitly approve.</p></div></header>
+  <section class="quality-section">
+    {% if repair_error %}<div class="alert alert-danger" role="alert"><strong>Repair was not applied.</strong><p class="mb-0">{{ repair_error }}</p></div>{% endif %}
+    {% set p = task.repair_preview %}
+    {% if p and p.available %}
+      <div class="row g-3 mb-4">
+        <div class="col-md-6"><div class="quality-stat"><span>Workflow</span><strong>{{ p.workflow_id }}</strong></div></div>
+        <div class="col-md-6"><div class="quality-stat"><span>Node</span><strong>{{ p.node_title }}</strong><small>{{ p.node_id }}</small></div></div>
+        <div class="col-md-6"><div class="quality-stat"><span>Current relationship</span><strong>{{ p.current_relationships|join(', ') if p.current_relationships else 'None' }}</strong></div></div>
+        <div class="col-md-6"><div class="quality-stat"><span>Proposed canonical article</span><strong>{{ p.proposed_article_title }}</strong><small>{{ p.proposed_article_id }} · {{ p.article_publication_state }} / {{ p.article_review_state }}</small></div></div>
+      </div>
+      <div class="row g-4"><div class="col-md-6"><h2>Before</h2><pre>{{ p.before|tojson(indent=2) }}</pre></div><div class="col-md-6"><h2>After</h2><pre>{{ p.after|tojson(indent=2) }}</pre></div></div>
+      <h2>Validation</h2><p>{{ 'Passed' if p.validation.passed else 'Blocked' }}</p>
+      {% if p.blocking_reason %}<div class="alert alert-info"><strong>{{ p.blocking_reason }}</strong></div>{% endif %}
+      <h2>What will change</h2><p>{{ p.what_changes }}</p>
+      <h2>What will not change</h2><p>{{ p.what_does_not_change }}</p>
+      {% if p.eligible and curator_session %}
+      <form method="post" class="mt-4">
+        <input type="hidden" name="curator_session" value="{{ curator_session }}">
+        <input type="hidden" name="preview_token" value="{{ p.preview_token }}">
+        <label class="form-check mb-3"><input class="form-check-input" type="checkbox" name="approved" value="yes" required> <span class="form-check-label">I reviewed this exact before/after change and approve linking the published canonical article.</span></label>
+        <button class="btn btn-success" type="submit">Approve and apply repair</button>
+      </form>
+      {% elif p.eligible %}<div class="alert alert-warning">Open this task from its active Fix Wizard session to approve the repair.</div>{% endif %}
+    {% else %}
+      <div class="alert alert-info" role="status"><strong>Repair adapter not available</strong><p class="mb-0">{{ p.blocking_reason if p else 'This observation requires human judgment and cannot be repaired automatically.' }}</p></div>
+    {% endif %}
+  </section>
 </main>
 {% endblock %}

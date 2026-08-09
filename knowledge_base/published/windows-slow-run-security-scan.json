@@ -65,8 +65,8 @@
   },
   "review": {
     "status": "approved",
-    "reviewed_by": null,
-    "reviewed_at": null,
+    "reviewed_by": "Codex Runtime Verification",
+    "reviewed_at": "2026-08-08T22:46:51.426040+00:00",
     "notes": [
       "Generated from workflow node.",
       "Reviewed for safe Microsoft Defender Quick Scan procedures.",
@@ -78,6 +78,9 @@
       "user_safety": true,
       "sources_verified": true,
       "commands_reviewed": true
-    }
-  }
+    },
+    "review_type": "legacy_validation",
+    "original_historical_reviewer": "unknown"
+  },
+  "canonical_id": "windows-slow-run-security-scan"
 }

@@ -1,0 +1,97 @@
+{
+  "schema_version": "1.0",
+  "id": "vpn-connectivity-win-instr-reset-ip-stack",
+  "title": "How to Reset IP Stack and Flush DNS",
+  "category": "Networking",
+  "difficulty": "Beginner",
+  "estimated_time": "5 to 10 minutes",
+  "overview": "This draft supports the “Reset IP Stack and Flush DNS” step in the VPN Connectivity Troubleshooting (Windows) workflow. It explains the intended check, safe execution, and the evidence to capture before continuing.",
+  "tags": [
+    "ipconfig",
+    "dns",
+    "vpn",
+    "windows",
+    "reset",
+    "stack",
+    "flush",
+    "networking"
+  ],
+  "checklist": [
+    "Save open work and confirm you are working on the intended Windows device.",
+    "Open Command Prompt as Administrator.",
+    "Run the network reset commands in the order shown below.",
+    "Allow each command to complete before continuing to the next command.",
+    "Be aware that releasing the IP configuration can temporarily interrupt network connectivity.",
+    "Restart the computer after the commands have completed.",
+    "After restart, reconnect to the network and return to the workflow to verify whether the issue is resolved."
+  ],
+  "common_indicators": [
+    "The workflow reached the Reset IP Stack and Flush DNS step.",
+    "The observed result will determine which diagnostic step should come next."
+  ],
+  "commands": [
+    {
+      "command": "netsh winsock reset",
+      "description": "Resets the Winsock catalog to its default configuration.\\nnetsh int ip reset | Resets TCP/IP configuration components.\\nipconfig /release | Releases the current DHCP-assigned IP configuration and temporarily interrupts network connectivity.\\nipconfig /renew | Requests a new DHCP-assigned IP configuration.\\nipconfig /flushdns | Clears the Windows DNS resolver cache."
+    }
+  ],
+  "related_topics": [
+    "VPN Connectivity Troubleshooting (Windows)",
+    "Reset IP Stack and Flush DNS",
+    "Diagnostic reasoning"
+  ],
+  "quiz": [
+    {
+      "question": "What should you do after completing this troubleshooting step?",
+      "answers": [
+        "Record the result and return to the workflow",
+        "Change several unrelated settings",
+        "Ignore what happened"
+      ],
+      "correct_answer": "Record the result and return to the workflow"
+    }
+  ],
+  "sources": [
+    {
+      "title": "Fix Wi-Fi connection issues in Windows | Microsoft Support | https://support.microsoft.com/en-US/Windows/Experience/Connectivity-Networking/fix-wi-fi-connection-issues-in-windows\\nipconfig | Microsoft Learn | https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/ipconfig?view=windows-server-2019\\nReset TCP/IP by Using the NetShell Utility - Windows Server | Microsoft Learn",
+      "url": "https://learn.microsoft.com/en-us/troubleshoot/windows-server/networking/reset-tcp-ip-net-shell"
+    }
+  ],
+  "generation": {
+    "provider": "Gnojo Coverage Assistant",
+    "model": "deterministic-node-draft-v1",
+    "generated_at": "2026-08-08T02:29:11.843392+00:00"
+  },
+  "review": {
+    "status": "approved",
+    "reviewed_by": "Gnojo reviewer",
+    "reviewed_at": "2026-08-08T02:33:57.965074+00:00",
+    "notes": [
+      "Generated from a workflow node.",
+      "Verify technical accuracy and add authoritative sources before publication."
+    ],
+    "checks": {
+      "technical_accuracy": true,
+      "user_safety": true,
+      "sources_verified": true,
+      "commands_reviewed": true
+    }
+  },
+  "workflow_origin": {
+    "filename": "vpn_connectivity_win.json",
+    "workflow_id": "vpn_connectivity_win",
+    "workflow_name": "VPN Connectivity Troubleshooting (Windows)",
+    "node_id": "instr_reset_ip_stack",
+    "node_title": "Reset IP Stack and Flush DNS"
+  },
+  "canonical_id": "vpn-connectivity-win-instr-reset-ip-stack",
+  "version": 1,
+  "published_at": "2026-08-08T02:33:57.965074+00:00",
+  "version_history": [
+    {
+      "version": 1,
+      "published_at": "2026-08-08T02:33:57.965074+00:00",
+      "reviewed_by": "Gnojo reviewer"
+    }
+  ]
+}

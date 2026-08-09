@@ -1,0 +1,91 @@
+{
+  "schema_version": "1.0",
+  "id": "vpn-connectivity-win-instr-search-error-code-kb",
+  "title": "How to Identify and Research the VPN Error",
+  "category": "Networking",
+  "difficulty": "Beginner",
+  "estimated_time": "5 to 10 minutes",
+  "overview": "This draft supports the “Identify and Research the VPN Error” step in the VPN Connectivity Troubleshooting (Windows) workflow. It explains the intended check, safe execution, and the evidence to capture before continuing.",
+  "tags": [
+    "vpn",
+    "windows",
+    "identify",
+    "research",
+    "error",
+    "networking"
+  ],
+  "checklist": [
+    "Save open work and confirm you are working on the intended device.",
+    "If the VPN client displays an error code or message, record the complete code and message exactly as shown.",
+    "Identify the VPN client or provider and, if available, the installed client version.",
+    "Search the VPN provider's official documentation or your organization's approved support resources for the specific error.",
+    "Follow only troubleshooting steps that apply to the identified VPN client and error. Do not apply fixes intended for a different VPN product or configuration.",
+    "If the error cannot be identified or the recommended action requires administrative access or changes to a managed configuration, contact your IT administrator or support team.",
+    "Record the error and any troubleshooting performed before continuing.",
+    "Record what changed and return to the workflow before making additional changes."
+  ],
+  "common_indicators": [
+    "The workflow reached the Identify and Research the VPN Error step.",
+    "The observed result will determine which diagnostic step should come next."
+  ],
+  "commands": [],
+  "related_topics": [
+    "VPN Connectivity Troubleshooting (Windows)",
+    "Identify and Research the VPN Error",
+    "Diagnostic reasoning"
+  ],
+  "quiz": [
+    {
+      "question": "What should you do after completing this troubleshooting step?",
+      "answers": [
+        "Record the result and return to the workflow",
+        "Change several unrelated settings",
+        "Ignore what happened"
+      ],
+      "correct_answer": "Record the result and return to the workflow"
+    }
+  ],
+  "sources": [
+    {
+      "title": "Error codes for dial-up or VPN connections - Windows Client | Microsoft Learn | https://learn.microsoft.com/en-us/troubleshoot/windows-client/networking/error-codes-for-dial-up-vpn-connection\\nGuidance for troubleshooting Remote Access (VPN and AOVPN) - Windows Server | Microsoft Learn | https://learn.microsoft.com/en-us/troubleshoot/windows-server/networking/troubleshoot-remote-access-vpn-and-aovpn-guidance\\nConnect to a VPN in Windows | Microsoft Support",
+      "url": "https://support.microsoft.com/en-us/windows/experience/connectivity-networking/connect-to-a-vpn-in-windows"
+    }
+  ],
+  "generation": {
+    "provider": "Gnojo Coverage Assistant",
+    "model": "deterministic-node-draft-v1",
+    "generated_at": "2026-08-08T02:11:02.003778+00:00"
+  },
+  "review": {
+    "status": "approved",
+    "reviewed_by": "Gnojo reviewer",
+    "reviewed_at": "2026-08-08T02:16:00.077822+00:00",
+    "notes": [
+      "Generated from a workflow node.",
+      "Verify technical accuracy and add authoritative sources before publication."
+    ],
+    "checks": {
+      "technical_accuracy": true,
+      "user_safety": true,
+      "sources_verified": true,
+      "commands_reviewed": true
+    }
+  },
+  "workflow_origin": {
+    "filename": "vpn_connectivity_win.json",
+    "workflow_id": "vpn_connectivity_win",
+    "workflow_name": "VPN Connectivity Troubleshooting (Windows)",
+    "node_id": "instr_search_error_code_kb",
+    "node_title": "Identify and Research the VPN Error"
+  },
+  "canonical_id": "vpn-connectivity-win-instr-search-error-code-kb",
+  "version": 1,
+  "published_at": "2026-08-08T02:16:00.077822+00:00",
+  "version_history": [
+    {
+      "version": 1,
+      "published_at": "2026-08-08T02:16:00.077822+00:00",
+      "reviewed_by": "Gnojo reviewer"
+    }
+  ]
+}

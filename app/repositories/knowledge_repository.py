@@ -18,9 +18,15 @@ Does NOT:
 """
 
 import json
+import os
 import shutil
+import tempfile
 from pathlib import Path
 from typing import Any
+from app.services.knowledge_identity_service import (
+    KnowledgeIdentityError,
+    KnowledgeIdentityService,
+)
 
 
 class KnowledgeRepositoryError(Exception):
@@ -83,6 +89,7 @@ class KnowledgeRepository:
             self.knowledge_base_directory
             / "archive"
         )
+        self.deleted_directory = self.knowledge_base_directory / "deleted"
 
         self._ensure_directories()
 
@@ -124,6 +131,22 @@ class KnowledgeRepository:
         return self._load_articles_from_directory(
             self.archive_directory
         )
+
+    def get_deleted(self) -> list[dict[str, Any]]:
+        return self._load_articles_from_directory(self.deleted_directory)
+
+    def get_archived_article(self, article_id: str) -> dict[str, Any]:
+        return self._load_article(self.archive_directory, article_id)
+
+    def get_deleted_article(self, article_id: str) -> dict[str, Any]:
+        return self._load_article(self.deleted_directory, article_id)
+
+    def resolve_published_article(self, article_id: str) -> dict[str, Any]:
+        from app.services.article_identity_resolver import ArticleIdentityResolver
+        match = ArticleIdentityResolver(self).resolve(identifier=article_id)
+        if not match:
+            raise ArticleNotFoundError(f"Article '{article_id}' was not found.")
+        return match.article
 
     def get_draft(
         self,
@@ -243,10 +266,19 @@ class KnowledgeRepository:
                 f"Published article '{article_id}' already exists."
             )
 
-        shutil.move(
-            str(source_path),
-            str(destination_path),
-        )
+        article = KnowledgeIdentityService.normalize(self._read_json_file(source_path))
+        self._assert_unique_published_identity(article, destination_path)
+        self._write_json_atomic(destination_path, article)
+        try:
+            source_path.unlink()
+        except OSError as error:
+            try:
+                destination_path.unlink()
+            except OSError:
+                pass
+            raise KnowledgeRepositoryError(
+                f"Unable to complete publication for '{article_id}'."
+            ) from error
 
         return destination_path
 
@@ -285,6 +317,22 @@ class KnowledgeRepository:
         )
 
         return destination_path
+
+    def soft_delete_article(self, article_id: str) -> Path:
+        source = self._article_path(self.archive_directory, article_id)
+        destination = self._article_path(self.deleted_directory, article_id)
+        if not source.exists():
+            raise ArticleNotFoundError(f"Archived article '{article_id}' was not found.")
+        if destination.exists():
+            raise ArticleAlreadyExistsError(f"Deleted article '{article_id}' already exists.")
+        shutil.move(str(source), str(destination))
+        return destination
+
+    def permanently_delete_article(self, article_id: str) -> None:
+        path = self._article_path(self.deleted_directory, article_id)
+        if not path.exists():
+            raise ArticleNotFoundError(f"Soft-deleted article '{article_id}' was not found.")
+        path.unlink()
 
     def count_drafts(self) -> int:
         """
@@ -378,6 +426,11 @@ class KnowledgeRepository:
         Save one article as formatted JSON.
         """
 
+        try:
+            article = KnowledgeIdentityService.normalize(article)
+        except KnowledgeIdentityError as error:
+            raise KnowledgeRepositoryError(str(error)) from error
+
         article_id = article.get("id")
 
         if not isinstance(article_id, str):
@@ -402,24 +455,65 @@ class KnowledgeRepository:
                 f"Article '{article_id}' already exists."
             )
 
-        try:
-            with article_path.open(
-                "w",
-                encoding="utf-8",
-            ) as article_file:
-                json.dump(
-                    article,
-                    article_file,
-                    indent=2,
-                    ensure_ascii=False,
-                )
-
-        except OSError as error:
-            raise KnowledgeRepositoryError(
-                f"Unable to save article '{article_id}'."
-            ) from error
+        if directory == self.published_directory:
+            self._assert_unique_published_identity(article, article_path)
+        self._write_json_atomic(article_path, article)
 
         return article_path
+
+    def find_all_by_canonical_id(self, article_id: str) -> list[tuple[str, Path, dict[str, Any]]]:
+        canonical = KnowledgeIdentityService.canonical_id(article_id)
+        matches = []
+        for state, directory in (
+            ("draft", self.draft_directory),
+            ("published", self.published_directory),
+            ("archived", self.archive_directory),
+        ):
+            for path in directory.glob("*.json"):
+                try:
+                    article = self._read_json_file(path)
+                    if KnowledgeIdentityService.canonical_id(article) == canonical:
+                        matches.append((state, path, article))
+                except (KnowledgeRepositoryError, KnowledgeIdentityError):
+                    continue
+        return matches
+
+    def _assert_unique_published_identity(self, article: dict[str, Any], destination: Path) -> None:
+        canonical = KnowledgeIdentityService.canonical_id(article)
+        for path in self.published_directory.glob("*.json"):
+            if path.resolve() == destination.resolve():
+                continue
+            try:
+                existing = self._read_json_file(path)
+                existing_id = KnowledgeIdentityService.canonical_id(existing)
+            except (KnowledgeRepositoryError, KnowledgeIdentityError):
+                continue
+            if existing_id == canonical:
+                raise ArticleAlreadyExistsError(
+                    f"Canonical article '{canonical}' is already published in '{path.name}'."
+                )
+
+    def _write_json_atomic(self, path: Path, article: dict[str, Any]) -> None:
+        temporary_name = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                "w", encoding="utf-8", dir=path.parent, delete=False,
+                suffix=".tmp",
+            ) as article_file:
+                temporary_name = article_file.name
+                json.dump(article, article_file, indent=2, ensure_ascii=False)
+                article_file.flush()
+                os.fsync(article_file.fileno())
+            os.replace(temporary_name, path)
+        except OSError as error:
+            if temporary_name:
+                try:
+                    Path(temporary_name).unlink(missing_ok=True)
+                except OSError:
+                    pass
+            raise KnowledgeRepositoryError(
+                f"Unable to save article '{article.get('id', path.stem)}'."
+            ) from error
 
     def _read_json_file(
         self,
@@ -525,6 +619,7 @@ class KnowledgeRepository:
             self.draft_directory,
             self.published_directory,
             self.archive_directory,
+            self.deleted_directory,
         ]:
             directory.mkdir(
                 parents=True,

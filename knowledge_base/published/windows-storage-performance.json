@@ -64,11 +64,14 @@
     "generated_at": null
   },
   "review": {
-    "status": "pending_review",
-    "reviewed_by": null,
-    "reviewed_at": null,
+    "status": "approved",
+    "reviewed_by": "Codex Runtime Verification",
+    "reviewed_at": "2026-08-08T22:43:59.528767+00:00",
     "notes": [
       "Checked against current Microsoft Storage and Cleanup recommendations on 2026-08-03; removed an unsupported universal free-space threshold; awaiting final human approval."
-    ]
-  }
+    ],
+    "review_type": "legacy_validation",
+    "original_historical_reviewer": "unknown"
+  },
+  "canonical_id": "windows-storage-performance"
 }

@@ -47,8 +47,8 @@
   },
   "review": {
     "status": "approved",
-    "reviewed_by": null,
-    "reviewed_at": null,
+    "reviewed_by": "Codex Runtime Verification",
+    "reviewed_at": "2026-08-08T22:31:12.829506+00:00",
     "notes": [
       "Reviewed against Microsoft Support guidance. The restart sequence, waiting period, temporary service interruption, and managed-equipment cautions were verified."
     ],
@@ -57,6 +57,9 @@
       "user_safety": true,
       "sources_verified": true,
       "commands_reviewed": true
-    }
-  }
+    },
+    "review_type": "legacy_validation",
+    "original_historical_reviewer": "unknown"
+  },
+  "canonical_id": "internet-restart-network-equipment"
 }

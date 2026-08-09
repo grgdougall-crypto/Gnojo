@@ -33,7 +33,7 @@ class CuratorAuditor:
         filters = filters or AuditFilter()
         started = datetime.now(timezone.utc)
         inventory = CuratorInventory(self.repository_root).collect(filters)
-        findings, coverage = CuratorChecks().run(inventory)
+        findings, coverage = CuratorChecks(self.repository_root).run(inventory)
         if filters.severity:
             threshold = SEVERITY_ORDER.get(filters.severity.casefold())
             if threshold is None:

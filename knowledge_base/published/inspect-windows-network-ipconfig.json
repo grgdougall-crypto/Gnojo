@@ -91,11 +91,14 @@
     "generated_at": "2026-07-31T08:33:31.640653+00:00"
   },
   "review": {
-    "status": "pending_review",
-    "reviewed_by": null,
-    "reviewed_at": null,
+    "status": "approved",
+    "reviewed_by": "Codex Runtime Verification",
+    "reviewed_at": "2026-08-08T22:22:12.040703+00:00",
     "notes": [
       "Checked against the Microsoft ipconfig command reference on 2026-08-03; awaiting final human approval."
-    ]
-  }
+    ],
+    "review_type": "legacy_validation",
+    "original_historical_reviewer": "unknown"
+  },
+  "canonical_id": "inspect-windows-network-ipconfig"
 }

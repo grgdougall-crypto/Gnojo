@@ -25,6 +25,9 @@ class KnowledgeOperationsService:
         debt = KnowledgeDebtService().calculate(state["tasks"], previous.get("knowledge_debt"))
         health = KnowledgeHealthService().calculate(result.inventory, result.findings, previous.get("knowledge_health"))
         learning = CuratorLearningService().analyze(state["tasks"])
+        proposed_lessons = CuratorLearningService().persist_proposed_lessons(
+            state, learning, observed_at=result.completed_at,
+        )
         task_snapshot = {
             "summary": {
                 "total": len(state["tasks"]),
@@ -72,5 +75,6 @@ class KnowledgeOperationsService:
             "knowledge_debt": debt,
             "knowledge_health": health,
             "task_changes": {key: reconciliation[key] for key in ("created", "resolved", "returned")},
+            "proposed_lessons": proposed_lessons,
         })
         self.store.save(state)

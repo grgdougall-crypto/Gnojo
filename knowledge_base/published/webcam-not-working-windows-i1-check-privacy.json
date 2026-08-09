@@ -1,0 +1,86 @@
+{
+  "schema_version": "1.0",
+  "id": "webcam-not-working-windows-i1-check-privacy",
+  "title": "How to Check Windows Camera Privacy Settings",
+  "category": "Desktop Support",
+  "difficulty": "Beginner",
+  "estimated_time": "5 to 10 minutes",
+  "overview": "This draft supports the “Check Windows Camera Privacy Settings” step in the Webcam Not Working workflow. It explains the intended check, safe execution, and the evidence to capture before continuing.",
+  "tags": [
+    "camera",
+    "windows",
+    "check",
+    "privacy",
+    "settings",
+    "desktop support"
+  ],
+  "checklist": [
+    "Save open work and confirm you are working on the intended device.",
+    "Navigate to Windows Settings > Privacy & security > Camera. Confirm that 'Camera access' is set to 'On' and 'Let apps access your camera' is also 'On'. Scroll down to 'Allow desktop apps to access your camera' or 'Choose which apps can access your camera' and verify that the specific application you're using (e.g., Zoom, Teams, browser) has camera access enabled.",
+    "Record what changed and return to the workflow before making additional changes."
+  ],
+  "common_indicators": [
+    "The workflow reached the Check Windows Camera Privacy Settings step.",
+    "The observed result will determine which diagnostic step should come next."
+  ],
+  "commands": [],
+  "related_topics": [
+    "Webcam Not Working",
+    "Check Windows Camera Privacy Settings",
+    "Diagnostic reasoning"
+  ],
+  "quiz": [
+    {
+      "question": "What should you do after completing this troubleshooting step?",
+      "answers": [
+        "Record the result and return to the workflow",
+        "Change several unrelated settings",
+        "Ignore what happened"
+      ],
+      "correct_answer": "Record the result and return to the workflow"
+    }
+  ],
+  "sources": [
+    {
+      "title": "Manage app permissions for a camera in Windows | https://support.microsoft.com/en-US/Windows/privacy/manage-app-permissions-for-a-camera-in-windows\\nWindows camera, microphone, and privacy",
+      "url": "https://support.microsoft.com/en-us/windows/privacy/windows-camera-microphone-and-privacy"
+    }
+  ],
+  "generation": {
+    "provider": "Gnojo Coverage Assistant",
+    "model": "deterministic-node-draft-v1",
+    "generated_at": "2026-08-08T02:22:50.852649+00:00"
+  },
+  "review": {
+    "status": "approved",
+    "reviewed_by": "Gnojo reviewer",
+    "reviewed_at": "2026-08-08T02:27:14.613071+00:00",
+    "notes": [
+      "Generated from a workflow node.",
+      "Verify technical accuracy and add authoritative sources before publication."
+    ],
+    "checks": {
+      "technical_accuracy": true,
+      "user_safety": true,
+      "sources_verified": true,
+      "commands_reviewed": true
+    }
+  },
+  "workflow_origin": {
+    "filename": "webcam_not_working_windows.json",
+    "workflow_id": "webcam_not_working_windows",
+    "workflow_name": "Webcam Not Working",
+    "node_id": "i1_check_privacy",
+    "node_title": "Check Windows Camera Privacy Settings"
+  },
+  "canonical_id": "webcam-not-working-windows-i1-check-privacy",
+  "version": 1,
+  "published_at": "2026-08-08T02:27:14.613071+00:00",
+  "version_history": [
+    {
+      "version": 1,
+      "published_at": "2026-08-08T02:27:14.613071+00:00",
+      "reviewed_by": "Gnojo reviewer"
+    }
+  ]
+}

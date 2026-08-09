@@ -60,8 +60,8 @@
   },
   "review": {
     "status": "approved",
-    "reviewed_by": null,
-    "reviewed_at": null,
+    "reviewed_by": "Codex Runtime Verification",
+    "reviewed_at": "2026-08-08T22:28:17.657063+00:00",
     "notes": [
       "Generated from workflow node.",
       "Reviewed for safe driver installation practices.",
@@ -73,7 +73,9 @@
       "user_safety": true,
       "sources_verified": true,
       "commands_reviewed": true
-    }
+    },
+    "review_type": "legacy_validation",
+    "original_historical_reviewer": "unknown"
   },
   "tags": [
     "bluetooth",
@@ -81,5 +83,6 @@
     "windows",
     "device manager",
     "driver installation"
-  ]
+  ],
+  "canonical_id": "bt-win-not-connecting-i-update-driver"
 }

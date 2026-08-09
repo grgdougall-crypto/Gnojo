@@ -4,7 +4,7 @@ from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 from curator.memory import CuratorMemoryError, CuratorMemoryStore
 
@@ -22,7 +22,8 @@ class CuratorTaskService:
         self.repository_root = (repository_root or Path(__file__).resolve().parents[2]).resolve()
         self.store = CuratorMemoryStore(self.repository_root / "curation_memory")
 
-    def get(self, task_id: str) -> dict[str, Any]:
+    def get(self, task_id: str, *, session_id: str = "", return_to: str = "",
+            category: str = "all") -> dict[str, Any]:
         state = self.store.load()
         task = state.get("tasks", {}).get(task_id)
         if not task:
@@ -34,14 +35,23 @@ class CuratorTaskService:
         value.setdefault("resolution_notes", "")
         for field in ("related_content", "related_workflows", "related_articles", "related_commands", "related_scripts", "evidence", "history", "resolution_history"):
             value.setdefault(field, [])
-        value["navigation"] = self._navigation(value)
+        value["navigation"] = self._navigation(value, session_id=session_id,
+                                                return_to=return_to, category=category)
         value["related_tasks"] = self._related_tasks(value, state.get("tasks", {}))
         value["audit_history"] = self._audit_history(value, state.get("audits", []))
         value["guidance"] = self._guidance(value)
         value["repair_preview"] = self._repair_preview(value)
+        value["original_evidence"] = self._original_evidence(value)
+        value["current_content"] = self._current_content(value)
+        value["current_verification"] = deepcopy(value.get("current_verification") or {})
+        value["saved_work_note_available"] = bool(self._latest_work_note(task_id))
+        from app.services.curator_targeted_verification_service import CuratorTargetedVerificationService
+        value["affected_fingerprint"] = CuratorTargetedVerificationService(
+            self.repository_root).current_fingerprint(value)
         return value
 
-    def update(self, task_id: str, *, action: str, owner: str = "", priority: str = "", note: str = "") -> dict[str, Any]:
+    def update(self, task_id: str, *, action: str, owner: str = "", priority: str = "", note: str = "",
+               session_id: str = "", expected_fingerprint: str = "") -> dict[str, Any]:
         status_by_action = {
             "start": "in_progress", "defer": "deferred", "ignore": "ignored",
             "resolve": "resolved", "reopen": "open",
@@ -49,7 +59,19 @@ class CuratorTaskService:
         if action not in {*status_by_action, "assign", "priority", "note"}:
             raise CuratorMemoryError(f"Unsupported task action: {action}")
         if action == "resolve" and not note.strip():
-            raise CuratorMemoryError("Resolution notes are required before resolving a task.")
+            note = self._latest_work_note(task_id)
+        if action == "resolve" and not note.strip():
+            raise CuratorMemoryError(
+                "Add a resolution note describing what changed and what you verified before marking this task resolved."
+            )
+        if action == "resolve" and expected_fingerprint:
+            from app.services.curator_targeted_verification_service import CuratorTargetedVerificationService
+            task = self.store.load().get("tasks", {}).get(task_id, {})
+            current = CuratorTargetedVerificationService(self.repository_root).current_fingerprint(task)
+            if current != expected_fingerprint:
+                raise CuratorMemoryError(
+                    "The affected workflow changed after this page was loaded. Verify the current repair before resolving it."
+                )
         return self.store.update_task(
             task_id,
             status=status_by_action.get(action),
@@ -57,7 +79,48 @@ class CuratorTaskService:
             priority=priority or None,
             note=note.strip(),
             event_name=action,
+            metadata={"maintenance_session_id": session_id} if action == "resolve" and session_id else None,
         )
+
+    def _latest_work_note(self, task_id: str) -> str:
+        """Reuse an explicitly saved human work note for the immediately following resolution."""
+        task = self.store.load().get("tasks", {}).get(task_id, {})
+        for event in reversed(task.get("history", [])):
+            if event.get("actor") == "Human" and event.get("event") == "note" and str(event.get("note") or "").strip():
+                return str(event["note"]).strip()
+        return ""
+
+    @staticmethod
+    def _original_evidence(task: dict[str, Any]) -> list[str]:
+        for event in task.get("history", []):
+            if event.get("event") == "observed" and event.get("evidence"):
+                return deepcopy(event["evidence"])
+        return deepcopy(task.get("evidence", []))
+
+    def _current_content(self, task: dict[str, Any]) -> dict[str, Any] | None:
+        if task.get("content_type") not in {"workflow", "workflow_node"}:
+            return None
+        workflow_id, _, node_id = str(task.get("content_identifier") or "").partition(":")
+        drafts_path = self.repository_root / "app" / "workflow_drafts"
+        if not drafts_path.is_dir():
+            return None
+        drafts = WorkflowDraftService(drafts_path)
+        draft = next((item for item in drafts.list_drafts()
+                      if item.get("workflow_id") == workflow_id and not item.get("is_damaged")), None)
+        if not draft:
+            return None
+        workflow = drafts.get_draft(draft["filename"])
+        node = (workflow or {}).get("nodes", {}).get(node_id) if node_id else None
+        if not isinstance(node, dict):
+            return None
+        return {
+            "workflow_id": workflow_id,
+            "node_id": node_id,
+            "title": node.get("title") or node.get("question") or node_id,
+            "instruction": node.get("instruction") or node.get("message") or node.get("help_text") or "",
+            "help_text": node.get("help_text") or "",
+            "source": draft["filename"],
+        }
 
     def grouped(self, tasks: list[dict[str, Any]]) -> list[dict[str, Any]]:
         active = [item for item in tasks if item.get("status") not in {"resolved", "ignored", "superseded"}]
@@ -115,19 +178,28 @@ class CuratorTaskService:
             events.append({"at": decision.get("at"), "event": decision.get("event", "Task updated").replace("_", " ").title(), "detail": f"{decision.get('task_id')}: {decision.get('note') or 'Task state changed.'}"})
         return sorted(events, key=lambda item: item.get("at") or "", reverse=True)[:25]
 
-    def _navigation(self, task: dict[str, Any]) -> dict[str, str]:
+    def _navigation(self, task: dict[str, Any], *, session_id: str = "",
+                    return_to: str = "", category: str = "all") -> dict[str, str]:
         kind = task.get("content_type", "")
         identifier = task.get("content_identifier", "")
         task_id = task.get("task_id", "")
-        return_path = quote(f"/curator/tasks/{task_id}", safe="/")
+        task_query = {"curator_session": session_id, "return_to": return_to,
+                      "category": category, "verify": "1"}
+        task_query = {key: value for key, value in task_query.items() if value}
+        task_return = f"/curator/tasks/{quote(task_id)}"
+        if task_query:
+            task_return += "?" + urlencode(task_query)
+        return_path = quote(task_return, safe="")
         if kind in {"workflow", "workflow_node"}:
             workflow_id, _, node_id = identifier.partition(":")
             drafts = WorkflowDraftService().list_drafts()
             draft = next((item for item in drafts if item.get("workflow_id") == workflow_id and not item.get("is_damaged")), None)
             if draft:
-                suffix = f"?curator_task={quote(task_id)}"
+                query = {"curator_task": task_id, "curator_session": session_id,
+                         "curator_return": task_return, "category": category}
                 if node_id:
-                    suffix += f"&node={quote(node_id)}"
+                    query["node"] = node_id
+                suffix = "?" + urlencode({key: value for key, value in query.items() if value})
                 return {"label": "Open affected workflow", "url": f"/workflow-editor/{quote(draft['filename'])}{suffix}", "kind": kind}
             return {"label": "Open Workflow Studio", "url": f"/workflow-studio?workflow={quote(workflow_id)}&curator_task={quote(task_id)}", "kind": kind}
         if kind == "article":
@@ -169,10 +241,12 @@ class CuratorTaskService:
             "certainty": "Human judgment is required." if human_required else "The Curator has enough evidence to preview a deterministic repair.",
         }
 
-    @staticmethod
-    def _repair_preview(task: dict[str, Any]) -> dict[str, Any] | None:
+    def _repair_preview(self, task: dict[str, Any]) -> dict[str, Any] | None:
         if not task.get("future_automated_fix"):
             return None
+        if task.get("curator_rule") == "CUR-REL-ARTICLE-CANDIDATE":
+            from app.services.curator_article_link_repair_service import CuratorArticleLinkRepairService
+            return CuratorArticleLinkRepairService(self.repository_root).preview(task["task_id"])
         return {
             "available": False,
             "reason": "This rule is marked as a future deterministic repair, but no trusted repair adapter is registered yet. No content will be changed.",

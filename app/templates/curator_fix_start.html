@@ -2,6 +2,7 @@
 {% block title %}Start Fix Wizard | Gnojo{% endblock %}
 {% block content %}
 <main class="container curator-page" id="main-content">
+  {% with curator_active='maintenance' %}{% include 'partials/_curator_nav.html' %}{% endwith %}
   <nav aria-label="Breadcrumb"><a href="{{ url_for('curator_dashboard') }}">Curator</a> / <a href="{{ url_for('knowledge_integrity_dashboard') }}">Knowledge Integrity</a> / Start Fix Wizard</nav>
   <header class="curator-heading"><div><span class="section-eyebrow">Guided maintenance</span><h1>Start Fix Wizard</h1><p>Review one current integrity finding at a time. Nothing changes until you preview and confirm a supported repair.</p></div></header>
   {% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}

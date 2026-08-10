@@ -40,6 +40,18 @@ class CuratorDashboardPageTests(unittest.TestCase):
                 "status": "open", "title": "Reference observation", "recommended_action": "Review the reference.",
                 "owner": "QA Reviewer", "knowledge_debt_score": 12, "times_observed": 1,
             }]}],
+            "task_presentation": {
+                "total_count": 1,
+                "displayed_count": 1,
+                "remaining_count": 0,
+                "working_groups": [{"title": "Critical Today", "tasks": [{
+                    "task_id": "GKT-TEST", "classification": "Defect", "priority": "High",
+                    "status": "open", "execution_mode": "human_review", "title": "Reference observation",
+                    "recommended_action": "Review the reference.", "owner": "QA Reviewer",
+                    "knowledge_debt_score": 12, "times_observed": 1,
+                }]}],
+                "remaining_groups": [],
+            },
             "curator_status": {"current_state": "Idle", "last_audit": "2026-08-05T12:00:00+00:00", "audit_duration": 1.25, "curator_version": "2.0.0", "memory_size": 2, "active_tasks": 1, "resolved_tasks": 0, "debt_trend": "stable"},
             "evolution": [{"at": "2026-08-05T12:00:00+00:00", "event": "Audit completed", "detail": "4 findings."}],
             "sort_by": "debt",

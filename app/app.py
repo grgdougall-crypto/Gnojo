@@ -99,6 +99,7 @@ from app.services.troubleshooting_history_service import (
 )
 from app.services.content_quality_service import ContentQualityService
 from app.services.curator_dashboard_service import CuratorDashboardService
+from app.services.curator_task_review_presentation_service import CuratorTaskReviewPresentationService
 from app.services.curator_task_service import CuratorTaskService
 from app.services.curator_resolution_service import CuratorResolutionService
 from app.services.curator_batch_service import CuratorBatchService
@@ -107,6 +108,7 @@ from app.services.curator_repair_executor import CuratorRepairError, CuratorRepa
 from app.services.curator_repair_planner import CuratorRepairPlanner
 from app.services.curator_session_reconciliation_service import CuratorSessionReconciliationService
 from app.services.curator_targeted_verification_service import CuratorTargetedVerificationService
+from app.services.curator_verification_presentation_service import CuratorVerificationPresentationService
 from app.services.curator_growth_service import CuratorGrowthService
 from curator.locking import AuditAlreadyRunningError
 from curator.governance import CuratorGovernanceError
@@ -754,6 +756,10 @@ def curator_task_detail(task_id):
         owners=CuratorTaskService.OWNERS, priorities=CuratorTaskService.PRIORITIES,
         status_kind=kind, status_message=message,
         resolution_package=CuratorResolutionService().get(task_id),
+        verification_presentation=CuratorVerificationPresentationService.present(
+            task.get("current_verification") if isinstance(task, dict) else task.current_verification
+        ),
+        task_review=CuratorTaskReviewPresentationService.present(task),
         session_task_actionable=session_task_actionable,
         return_to=return_to, curator_session=session_id, category=category,
     )

@@ -1,117 +1,62 @@
 {% extends "base.html" %}
-
 {% block title %}{{ task.task_id }} | Curator | Gnojo{% endblock %}
-
 {% block content %}
 <main class="container curator-task-page" aria-labelledby="taskTitle">
-    <nav class="curator-breadcrumb" aria-label="Curator navigation"><a href="{{ return_to or url_for('curator_dashboard') }}"><i class="bi bi-arrow-left" aria-hidden="true"></i> {{ 'Return to Fix Wizard' if return_to else 'Curator Dashboard' }}</a></nav>
-    {% if return_to %}<div class="alert alert-info" role="status">This task was opened from a maintenance session. Your Fix Wizard progress is saved.</div>{% endif %}
+  {% with curator_active='tasks' %}{% include 'partials/_curator_nav.html' %}{% endwith %}
 
-    {% if status_message %}<div class="alert alert-{{ status_kind }}" role="status">{{ status_message }}</div>{% endif %}
+  <nav class="curator-breadcrumb" aria-label="Task navigation"><a href="{{ return_to or url_for('curator_dashboard') }}"><i class="bi bi-arrow-left" aria-hidden="true"></i> {{ 'Return to Fix Wizard' if return_to else 'Curator Dashboard' }}</a></nav>
+  {% if return_to %}<div class="alert alert-info" role="status">This task was opened from a maintenance session. Your Fix Wizard progress is saved.</div>{% endif %}
+  {% if status_message %}<div class="alert alert-{{ status_kind }}" role="status">{{ status_message }}</div>{% endif %}
 
-    <header class="curator-task-heading">
-        <div><span class="section-eyebrow">Knowledge Task · {{ task.task_id }}</span><h1 id="taskTitle">{{ task.title }}</h1><p>{{ task.explanation }}</p></div>
-        <a class="btn btn-primary" href="{{ task.navigation.url }}"><i class="bi bi-box-arrow-up-right me-2" aria-hidden="true"></i>{{ task.navigation.label }}</a>
-    </header>
+  <header class="curator-task-heading">
+    <div><span class="section-eyebrow">Knowledge Task</span><h1 id="taskTitle">{{ task.title }}</h1><p>{{ task.explanation }}</p></div>
+    <div class="curator-task-context-actions"><span class="section-eyebrow">Affected content</span><a class="btn btn-primary" href="{{ task.navigation.url }}"><i class="bi bi-box-arrow-up-right me-2" aria-hidden="true"></i>{{ task.navigation.label }}</a></div>
+  </header>
 
-    <section class="curator-task-facts" aria-label="Task facts">
-        <article><span>Finding type</span><strong>{{ task.classification }}</strong></article>
-        <article><span>Status</span><strong>{{ task.status|replace('_', ' ')|title }}</strong></article>
-        <article><span>Priority</span><strong>{{ task.priority }}</strong></article>
-        <article><span>Owner</span><strong>{{ task.owner }}</strong></article>
-        <article><span>Knowledge Debt</span><strong>{{ task.knowledge_debt_score }}</strong></article>
-        <article><span>Confidence</span><strong>{{ task.confidence|title }}</strong></article>
-        <article><span>First seen</span><strong>{{ task.first_seen|friendly_datetime }}</strong></article>
-        <article><span>Last seen</span><strong>{{ task.last_seen|friendly_datetime }}</strong></article>
-        <article><span>Observed</span><strong>{{ task.times_observed }} times</strong></article>
-    </section>
+  <section class="curator-task-facts" aria-label="Current task state">
+    <article><span>Finding type</span><strong>{{ task.classification }}</strong></article><article><span>Status</span><strong>{{ task.status|replace('_', ' ')|title }}</strong></article><article><span>Priority</span><strong>{{ task.priority }}</strong></article><article><span>Owner</span><strong>{{ task.owner }}</strong></article><article><span>Knowledge Debt</span><strong>{{ task.knowledge_debt_score }}</strong></article><article><span>Confidence</span><strong>{{ task.confidence|title }}</strong></article>
+  </section>
 
-    <section class="quality-section mb-4" aria-labelledby="verificationTitle">
-        <span class="section-eyebrow">Current-content verification</span><h2 id="verificationTitle">Check the Exact Affected Content</h2>
-        {% set verification = task.current_verification or {} %}
-        <p>This targeted check reuses Curator's canonical rules for this workflow and node. It does not run a full audit or alter content. If the authoritative relationship is already satisfied, Curator records a no-action-required resolution without claiming a repair.</p>
-        {% if verification.status %}<div class="alert {{ 'alert-success' if verification.status in ['appears_corrected', 'relationship_satisfied'] else 'alert-warning' }}"><strong>{{ verification.status|replace('_',' ')|title }}.</strong> {{ verification.message }}</div>{% endif %}
-        <dl class="curator-definition-list">
-            <div><dt>Workflow</dt><dd>{{ task.related_workflows|first or 'Not identified' }}</dd></div>
-            <div><dt>Node</dt><dd>{{ task.content_identifier or 'Not identified' }}</dd></div>
-            <div><dt>Last checked</dt><dd>{{ verification.verified_at|friendly_datetime if verification.verified_at else 'Not checked yet' }}</dd></div>
-        </dl>
-        <form method="post" action="{{ url_for('curator_task_verify', task_id=task.task_id) }}">
-            <input type="hidden" name="return_to" value="{{ return_to }}"><input type="hidden" name="curator_session" value="{{ curator_session }}"><input type="hidden" name="category" value="{{ category }}">
-            <button class="btn btn-outline-info" type="submit">Verify Current Content</button>
-        </form>
-    </section>
+  <section class="quality-section curator-review-state" aria-labelledby="verificationTitle">
+    <div class="quality-section__heading"><div><span class="section-eyebrow">What is true now</span><h2 id="verificationTitle">Targeted Verification</h2></div>{% if verification_presentation %}<span class="badge text-bg-{{ 'success' if verification_presentation.tone == 'success' else 'warning' }}">{{ verification_presentation.headline }}</span>{% endif %}</div>
+    {% set verification = task.current_verification or {} %}
+    {% if verification_presentation %}<div class="alert alert-{{ verification_presentation.tone }} curator-verification-result"><strong>{{ verification_presentation.headline }}.</strong><p>{{ verification_presentation.explanation }}</p><p class="mb-0"><strong>Reviewer next step:</strong> {{ verification_presentation.next_action }}</p></div>{% else %}<div class="alert alert-secondary"><strong>Current content has not been verified yet.</strong> Run the targeted check before making a closure decision.</div>{% endif %}
+    <div class="curator-review-state__footer"><p>This check reads the exact affected content using Curator's existing canonical rules. It does not change content or resolve the task.</p><form method="post" action="{{ url_for('curator_task_verify', task_id=task.task_id) }}"><input type="hidden" name="return_to" value="{{ return_to }}"><input type="hidden" name="curator_session" value="{{ curator_session }}"><input type="hidden" name="category" value="{{ category }}"><button class="btn btn-outline-info" type="submit">Verify Current Content</button></form></div>
+    {% if verification_presentation and verification_presentation.technical_detail %}<details class="curator-technical-disclosure"><summary>Verification technical details</summary><p>{{ verification_presentation.technical_detail }}</p><code>{{ verification_presentation.technical_state }}</code></details>{% endif %}
+  </section>
 
-    <div class="row g-4">
-        <div class="col-xl-8">
-            <section class="quality-section" aria-labelledby="evidenceTitle">
-                <span class="section-eyebrow">Evidence and scope</span><h2 id="evidenceTitle">Why This Task Exists</h2>
-                <dl class="curator-definition-list">
-                    <div><dt>Curator rule</dt><dd><code>{{ task.curator_rule }}</code></dd></div>
-                    <div><dt>Affected content</dt><dd><code>{{ task.content_type }}:{{ task.content_identifier }}</code></dd></div>
-                    <div><dt>Category</dt><dd>{{ task.category or 'Not classified' }}</dd></div>
-                    <div><dt>Platform</dt><dd>{{ task.platform or 'Not specified' }}</dd></div>
-                </dl>
-                <h3>Original audit evidence</h3><p class="text-secondary">This snapshot is immutable and explains why the task was created.</p><ul>{% for evidence in task.original_evidence %}<li>{{ evidence }}</li>{% else %}<li>No detailed evidence was retained.</li>{% endfor %}</ul>
-                {% if task.current_content %}<h3>Current workflow content</h3><dl class="curator-definition-list"><div><dt>Node</dt><dd>{{ task.current_content.title }}</dd></div><div><dt>Instruction now</dt><dd>{{ task.current_content.instruction or 'No instruction text is currently stored.' }}</dd></div>{% if task.current_content.help_text %}<div><dt>Help text now</dt><dd>{{ task.current_content.help_text }}</dd></div>{% endif %}</dl>{% endif %}
-                <h3>Suggested next step</h3><p>{{ task.recommended_action }}</p>
-            </section>
-
-            <section class="quality-section mt-4" aria-labelledby="historyTitle">
-                <span class="section-eyebrow">Operational memory</span><h2 id="historyTitle">Task History</h2>
-                <ol class="curator-timeline">
-                    {% for event in (task.history|reverse) %}
-                    <li><strong>{{ event.event|default('observed')|replace('_', ' ')|title }}</strong><span>{{ event.at|friendly_datetime }}</span>{% if event.note %}<p>{{ event.note }}</p>{% endif %}{% if event.run_id %}<code>{{ event.run_id }}</code>{% endif %}</li>
-                    {% else %}<li>No history is available.</li>{% endfor %}
-                </ol>
-            </section>
-
-            <section class="quality-section mt-4" aria-labelledby="relatedTitle">
-                <span class="section-eyebrow">Knowledge ecosystem</span><h2 id="relatedTitle">Related Knowledge</h2>
-                {% set live = task.live_related_knowledge or {} %}
-                <p class="text-secondary">Live relationships from the {{ live.lifecycle|replace('_',' ') if live.lifecycle else 'current' }} workflow lifecycle{% if live.source_path %}: <code>{{ live.source_path }}</code>{% endif %}.</p>
-                <div class="curator-related-grid">
-                    <article><h3>Workflows</h3>{% for value in task.related_workflows %}<code>{{ value }}</code>{% else %}<span>None linked</span>{% endfor %}</article>
-                    <article><h3>Articles</h3>{% for article in live.articles %}<div><code>{{ article.id }}</code>{% if article.title %}<span>{{ article.title }}</span>{% endif %}</div>{% else %}<span>None linked in current workflow</span>{% endfor %}</article>
-                    <article><h3>Commands</h3>{% for value in task.related_commands %}<code>{{ value }}</code>{% else %}<span>None linked</span>{% endfor %}</article>
-                    <article><h3>Scripts</h3>{% for value in task.related_scripts %}<code>{{ value }}</code>{% else %}<span>None linked</span>{% endfor %}</article>
-                </div>
-                {% if task.related_articles %}<details class="mt-3"><summary>Historical task article metadata</summary>{% for value in task.related_articles %}<code>{{ value }}</code>{% endfor %}</details>{% endif %}
-                {% if task.related_tasks %}<h3 class="mt-4">Related Tasks</h3><div class="curator-related-tasks">{% for related in task.related_tasks %}<a href="{{ url_for('curator_task_detail', task_id=related.task_id) }}"><strong>{{ related.title }}</strong><span>{{ related.classification }} · {{ related.status|replace('_', ' ')|title }}</span></a>{% endfor %}</div>{% endif %}
-            </section>
-            {% if task.finding_type in ['article_candidate', 'malformed_relationship'] %}{% include '_curator_resolution_package.html' %}{% endif %}
+  <div class="row g-4 curator-decision-layout">
+    <div class="col-xl-8">
+      <section class="quality-section" aria-labelledby="evidenceTitle">
+        <div class="quality-section__heading"><div><span class="section-eyebrow">Then, now, verify</span><h2 id="evidenceTitle">Evidence Across the Task Lifecycle</h2><p>Original evidence remains preserved while current content and verification show what Curator sees today.</p></div></div>
+        <div class="curator-evidence-lifecycle">
+          <article><span>Then</span><h3>Original audit evidence</h3><p class="text-secondary">The immutable snapshot that caused Curator to create this task.</p><ul>{% for evidence in task.original_evidence %}<li>{{ evidence }}</li>{% else %}<li>No detailed evidence was retained.</li>{% endfor %}</ul></article>
+          <article><span>Now</span><h3>Current affected content</h3>{% if task.current_content %}<dl class="curator-definition-list"><div><dt>Node</dt><dd>{{ task.current_content.title }}</dd></div><div><dt>Instruction now</dt><dd>{{ task.current_content.instruction or 'No instruction text is currently stored.' }}</dd></div>{% if task.current_content.help_text %}<div><dt>Help text now</dt><dd>{{ task.current_content.help_text }}</dd></div>{% endif %}</dl>{% else %}<p class="text-secondary">The affected workflow content is not currently available.</p>{% endif %}</article>
+          <article><span>Verify</span><h3>Current conclusion</h3>{% if verification_presentation %}<p><strong>{{ verification_presentation.headline }}.</strong> {{ verification_presentation.explanation }}</p>{% else %}<p class="text-secondary">No targeted-verification conclusion has been recorded.</p>{% endif %}</article>
         </div>
+      </section>
 
-        <aside class="col-xl-4">
-            <section class="quality-section curator-guidance" aria-labelledby="guidanceTitle">
-                <span class="section-eyebrow">Curator guidance</span><h2 id="guidanceTitle">Recommended Approach</h2>
-                <p>{{ task.guidance.why }}</p><p>{{ task.guidance.impact }}</p><p><strong>{{ task.guidance.certainty }}</strong></p>
-                {% if task.future_automated_fix %}<a class="btn btn-outline-info w-100" href="{{ url_for('curator_task_repair_preview', task_id=task.task_id, curator_session=curator_session) }}">Preview deterministic repair</a>{% endif %}
-            </section>
+      <section class="quality-section mt-4" aria-labelledby="historyTitle">
+        <div class="quality-section__heading"><div><span class="section-eyebrow">Traceable lifecycle</span><h2 id="historyTitle">Task History</h2><p>{{ task_review.history_count }} recorded event{{ '' if task_review.history_count == 1 else 's' }}. The most recent events are shown first.</p></div></div>
+        <ol class="curator-timeline">{% for event in task_review.recent_history %}<li><strong>{{ event.event|default('observed')|replace('_', ' ')|title }}</strong><span>{{ event.at|friendly_datetime }}</span>{% if event.note %}<p>{{ event.note }}</p>{% endif %}{% if event.run_id %}<code>{{ event.run_id }}</code>{% endif %}</li>{% else %}<li>No history is available.</li>{% endfor %}</ol>
+        {% if task_review.remaining_history %}<details class="curator-history-disclosure"><summary>View complete task history <small>{{ task_review.remaining_history|length }} earlier event{{ '' if task_review.remaining_history|length == 1 else 's' }}</small></summary><ol class="curator-timeline">{% for event in task_review.remaining_history %}<li><strong>{{ event.event|default('observed')|replace('_', ' ')|title }}</strong><span>{{ event.at|friendly_datetime }}</span>{% if event.note %}<p>{{ event.note }}</p>{% endif %}{% if event.run_id %}<code>{{ event.run_id }}</code>{% endif %}</li>{% endfor %}</ol></details>{% endif %}
+      </section>
 
-            <section class="quality-section mt-4" aria-labelledby="actionsTitle">
-                <span class="section-eyebrow">Work item</span><h2 id="actionsTitle">Task Actions</h2>
-                <form method="post" action="{{ url_for('curator_task_action', task_id=task.task_id) }}" class="curator-action-form">
-                    <input type="hidden" name="return_to" value="{{ return_to }}">
-                    <input type="hidden" name="curator_session" value="{{ curator_session }}">
-                    <input type="hidden" name="category" value="{{ category }}">
-                    <input type="hidden" name="affected_fingerprint" value="{{ task.affected_fingerprint }}">
-                    <label for="taskOwner">Owner</label><select id="taskOwner" name="owner">{% for owner in owners %}<option value="{{ owner }}"{% if owner == task.owner %} selected{% endif %}>{{ owner }}</option>{% endfor %}</select>
-                    <label for="taskPriority">Priority</label><select id="taskPriority" name="priority">{% for priority in priorities %}<option value="{{ priority }}"{% if priority == task.priority %} selected{% endif %}>{{ priority }}</option>{% endfor %}</select>
-                    <label for="taskNote">Resolution or work notes</label><textarea id="taskNote" name="note" rows="4" placeholder="Record what changed, what was validated, or why this task is deferred."></textarea>
-                    <p class="form-text">To resolve the task, enter a note here or first save one with Add note. Mark resolved records that note with the resolution.</p>
-                    <div class="curator-action-grid">
-                        <button name="action" value="assign" class="btn btn-outline-primary">Assign owner</button>
-                        <button name="action" value="priority" class="btn btn-outline-primary">Set priority</button>
-                        <button name="action" value="start" class="btn btn-outline-primary">Mark in progress</button>
-                        {% if not curator_session or session_task_actionable %}<button name="action" value="defer" class="btn btn-outline-secondary">Defer</button>{% endif %}
-                        <button name="action" value="ignore" class="btn btn-outline-secondary">Ignore</button>
-                        <button name="action" value="note" class="btn btn-outline-primary">Add note</button>
-                        {% if task.status == 'resolved' %}<button name="action" value="reopen" class="btn btn-warning">Reopen</button>{% else %}<button name="action" value="resolve" class="btn btn-success">Mark resolved</button>{% if curator_session %}<button name="action" value="resolve_continue" class="btn btn-success">Resolve and Continue</button>{% endif %}{% endif %}
-                    </div>
-                </form>
-            </section>
-        </aside>
+      <details class="quality-section mt-4 curator-related-disclosure" id="relatedKnowledge"><summary><span><span class="section-eyebrow">Supporting context</span><strong>Related Knowledge and Tasks</strong></span><small>{{ task.related_workflows|length }} workflow{{ '' if task.related_workflows|length == 1 else 's' }} &middot; {{ (task.live_related_knowledge.articles or [])|length }} article{{ '' if (task.live_related_knowledge.articles or [])|length == 1 else 's' }} &middot; {{ task.related_tasks|length }} related task{{ '' if task.related_tasks|length == 1 else 's' }}</small></summary>
+        {% set live = task.live_related_knowledge or {} %}<p class="text-secondary">Live relationships from the {{ live.lifecycle|replace('_',' ') if live.lifecycle else 'current' }} workflow lifecycle.</p><div class="curator-related-grid"><article><h3>Workflows</h3>{% for value in task.related_workflows %}<code>{{ value }}</code>{% else %}<span>None linked</span>{% endfor %}</article><article><h3>Articles</h3>{% for article in live.articles %}<div><code>{{ article.id }}</code>{% if article.title %}<span>{{ article.title }}</span>{% endif %}</div>{% else %}<span>None linked in current workflow</span>{% endfor %}</article><article><h3>Commands</h3>{% for value in task.related_commands %}<code>{{ value }}</code>{% else %}<span>None linked</span>{% endfor %}</article><article><h3>Scripts</h3>{% for value in task.related_scripts %}<code>{{ value }}</code>{% else %}<span>None linked</span>{% endfor %}</article></div>
+        {% if task.related_articles %}<details class="mt-3"><summary>Historical task article metadata</summary>{% for value in task.related_articles %}<code>{{ value }}</code>{% endfor %}</details>{% endif %}{% if task.related_tasks %}<h3 class="mt-4">Related Tasks</h3><div class="curator-related-tasks">{% for related in task.related_tasks %}<a href="{{ url_for('curator_task_detail', task_id=related.task_id) }}"><strong>{{ related.title }}</strong><span>{{ related.classification }} &middot; {{ related.status|replace('_', ' ')|title }}</span></a>{% endfor %}</div>{% endif %}
+      </details>
+
+      <details class="quality-section mt-4 curator-technical-disclosure"><summary><span><span class="section-eyebrow">Debugging and traceability</span><strong>Technical Task Details</strong></span></summary><dl class="curator-definition-list"><div><dt>Task ID</dt><dd><code>{{ task.task_id }}</code></dd></div><div><dt>Curator rule</dt><dd><code>{{ task.curator_rule }}</code></dd></div><div><dt>Affected identifier</dt><dd><code>{{ task.content_type }}:{{ task.content_identifier }}</code></dd></div><div><dt>Workflow</dt><dd><code>{{ task.related_workflows|first or 'Not identified' }}</code></dd></div><div><dt>Source path</dt><dd><code>{{ task.current_content.source_path if task.current_content else (task.live_related_knowledge.source_path or 'Not available') }}</code></dd></div><div><dt>First seen</dt><dd>{{ task.first_seen|friendly_datetime }}</dd></div><div><dt>Last seen</dt><dd>{{ task.last_seen|friendly_datetime }}</dd></div><div><dt>Observations</dt><dd>{{ task.times_observed }}</dd></div><div><dt>Last verified</dt><dd>{{ verification.verified_at|friendly_datetime if verification.verified_at else 'Not checked yet' }}</dd></div>{% if verification_presentation %}<div><dt>Verification state</dt><dd><code>{{ verification_presentation.technical_state }}</code></dd></div>{% endif %}</dl></details>
+
+      {% if task.finding_type in ['article_candidate', 'malformed_relationship'] %}{% include '_curator_resolution_package.html' %}{% endif %}
     </div>
+
+    <aside class="col-xl-4 curator-decision-column">
+      <section class="quality-section curator-guidance" aria-labelledby="guidanceTitle"><span class="section-eyebrow">What Curator recommends</span><h2 id="guidanceTitle">Review Decision</h2><p>{{ task.guidance.why }}</p><p>{{ task.guidance.impact }}</p><div class="curator-next-step"><strong>Suggested next step</strong><p>{{ task.recommended_action }}</p></div><p class="alert alert-warning"><strong>{{ task.guidance.certainty }}</strong> Curator will not close this task automatically.</p>{% if task.future_automated_fix %}<a class="btn btn-outline-info w-100" href="{{ url_for('curator_task_repair_preview', task_id=task.task_id, curator_session=curator_session) }}">Preview deterministic repair</a>{% endif %}</section>
+
+      <section class="quality-section mt-4 curator-action-scope curator-action-scope--item" aria-labelledby="actionsTitle"><div class="curator-action-scope__heading"><span class="section-eyebrow">Human decision</span><h2 id="actionsTitle">Task Actions</h2><p>Manage the work item or record the review decision. Resolution requires a note.</p></div><form method="post" action="{{ url_for('curator_task_action', task_id=task.task_id) }}" class="curator-action-form"><input type="hidden" name="return_to" value="{{ return_to }}"><input type="hidden" name="curator_session" value="{{ curator_session }}"><input type="hidden" name="category" value="{{ category }}"><input type="hidden" name="affected_fingerprint" value="{{ task.affected_fingerprint }}"><label for="taskOwner">Owner</label><select id="taskOwner" name="owner">{% for owner in owners %}<option value="{{ owner }}"{% if owner == task.owner %} selected{% endif %}>{{ owner }}</option>{% endfor %}</select><label for="taskPriority">Priority</label><select id="taskPriority" name="priority">{% for priority in priorities %}<option value="{{ priority }}"{% if priority == task.priority %} selected{% endif %}>{{ priority }}</option>{% endfor %}</select><label for="taskNote">Resolution or work notes</label><textarea id="taskNote" name="note" rows="4" placeholder="Record what changed, what was validated, or why this task is deferred."></textarea><p class="form-text">A saved work note can support a later resolution decision.</p><div class="curator-task-action-group"><span>Task management</span><div class="curator-action-grid"><button name="action" value="assign" class="btn btn-outline-primary">Assign owner</button><button name="action" value="priority" class="btn btn-outline-primary">Set priority</button><button name="action" value="start" class="btn btn-outline-primary">Mark in progress</button>{% if not curator_session or session_task_actionable %}<button name="action" value="defer" class="btn btn-outline-secondary">Defer</button>{% endif %}<button name="action" value="ignore" class="btn btn-outline-secondary">Ignore</button><button name="action" value="note" class="btn btn-outline-primary">Add note</button></div></div><div class="curator-task-action-group curator-task-action-group--decision"><span>Decision and closure</span><div class="curator-action-grid">{% if task.status == 'resolved' %}<button name="action" value="reopen" class="btn btn-warning">Reopen</button>{% else %}<button name="action" value="resolve" class="btn btn-success">Mark resolved</button>{% if curator_session %}<button name="action" value="resolve_continue" class="btn btn-success">Resolve and Continue</button>{% endif %}{% endif %}</div></div></form></section>
+    </aside>
+  </div>
 </main>
 {% endblock %}

@@ -2,23 +2,24 @@
 {% block title %}Fix Wizard {{ session.session_id }} | Gnojo{% endblock %}
 {% block content %}
 <main class="container curator-page" id="main-content">
+  {% with curator_active='maintenance' %}{% include 'partials/_curator_nav.html' %}{% endwith %}
   <nav aria-label="Breadcrumb"><a href="{{ url_for('curator_dashboard') }}">Curator</a> / <a href="{{ url_for('knowledge_integrity_dashboard') }}">Knowledge Integrity</a> / Maintenance Session</nav>
-  <header class="curator-heading"><div><span class="section-eyebrow">Maintenance Session</span><h1>Curator Fix Wizard</h1><p><strong>Reviewer:</strong> {{ session.started_by }} &middot; <strong>Session:</strong> <code>{{ session.session_id }}</code> &middot; Started {{ session.started_at }} &middot; Last reconciled {{ session.last_reconciled_at or 'not yet' }}.</p></div><div class="d-flex flex-wrap gap-2"><form method="post" action="{{ url_for('curator_fix_refresh', session_id=session.session_id) }}"><button class="btn btn-outline-success">Refresh Session State</button></form><a class="btn btn-outline-primary" href="{{ url_for('curator_dashboard') }}">Back to Curator</a><a class="btn btn-outline-primary" href="{{ url_for('knowledge_integrity_dashboard') }}">Back to Knowledge Integrity</a><a class="btn btn-outline-info" href="{{ url_for('curator_fix_start') }}">Exit / Save Session</a></div></header>
+  <header class="curator-heading"><div><span class="section-eyebrow">Maintenance Session</span><h1>Curator Fix Wizard</h1><p><strong>Reviewer:</strong> {{ session.started_by }} &middot; <strong>Session:</strong> <code>{{ session.session_id }}</code> &middot; Started {{ session.started_at }} &middot; Last reconciled {{ session.last_reconciled_at or 'not yet' }}.</p></div><nav class="curator-action-scope curator-action-scope--navigation" aria-label="Maintenance session navigation"><span>Session navigation</span><div><form method="post" action="{{ url_for('curator_fix_refresh', session_id=session.session_id) }}"><button class="btn btn-outline-success">Refresh Session State</button></form><a class="btn btn-outline-primary" href="{{ url_for('curator_dashboard') }}">Back to Curator</a><a class="btn btn-outline-primary" href="{{ url_for('knowledge_integrity_dashboard') }}">Back to Knowledge Integrity</a><a class="btn btn-outline-info" href="{{ url_for('curator_fix_start') }}">Exit / Save Session</a></div></nav></header>
   {% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% elif status == 'task_resolved' %}<div class="alert alert-success" role="status">Task resolved and session reconciled. {{ progress.current_actionable }} actionable {{ 'item remains' if progress.current_actionable == 1 else 'items remain' }}; the next open repair in this filter is shown below.</div>{% elif status == 'reconciled_changed' %}<div class="alert alert-success" role="status">Session state updated from current Knowledge Task and repository evidence. {{ progress.current_actionable }} actionable {{ 'item remains' if progress.current_actionable == 1 else 'items remain' }}.</div>{% elif status == 'reconciled_unchanged' %}<div class="alert alert-info" role="status">Session state is already synchronized. No queue or counter changes were required.</div>{% elif status %}<div class="alert alert-success" role="status">Maintenance item {{ status|replace('_',' ') }}. Targeted verification controls debt reduction.</div>{% endif %}
   <section class="curator-metrics" aria-label="Session status">
-    <article><span>Original queue</span><strong>{{ progress.original_queue }}</strong></article>
+    <article><span>Starting review queue</span><strong>{{ progress.original_queue }}</strong></article>
     <article><span>New during session</span><strong>{{ progress.discovered_during_session }}</strong></article>
-    <article><span>Current actionable</span><strong>{{ progress.current_actionable or 0 }}</strong></article>
-    <article><span>Session repairs</span><strong>{{ progress.session_repairs or 0 }}</strong></article>
-    <article><span>External resolutions</span><strong>{{ progress.external_resolutions or 0 }}</strong></article>
-    <article><span>Unavailable externally</span><strong>{{ progress.external_unavailable or 0 }}</strong></article>
-    <article><span>Deferred</span><strong>{{ progress.deferred or 0 }}</strong></article>
-    <article><span>Remaining</span><strong>{{ progress.remaining or 0 }}</strong></article>
-    <article><span>Starting debt</span><strong>{{ session.starting_debt }}</strong></article>
-    <article><span>Current debt</span><strong>{{ session.current_debt }}</strong></article>
-    <article><span>Session reduction</span><strong>{{ session.session_debt_reduced or 0 }}</strong></article>
-    <article><span>External reduction</span><strong>{{ session.external_debt_reduced or 0 }}</strong></article>
-    <article><span>Total reduction</span><strong>{{ session.debt_reduced }}</strong></article>
+    <article><span>Ready to address now</span><strong>{{ progress.current_actionable or 0 }}</strong></article>
+    <article><span>Repairs applied in this session</span><strong>{{ progress.session_repairs or 0 }}</strong></article>
+    <article><span>Resolved outside this maintenance session</span><strong>{{ progress.external_resolutions or 0 }}</strong></article>
+    <article><span>Unavailable during external verification</span><strong>{{ progress.external_unavailable or 0 }}</strong></article>
+    <article><span>Deferred for later</span><strong>{{ progress.deferred or 0 }}</strong></article>
+    <article><span>Remaining review items</span><strong>{{ progress.remaining or 0 }}</strong></article>
+    <article><span>Starting knowledge debt</span><strong>{{ session.starting_debt }}</strong></article>
+    <article><span>Current knowledge debt</span><strong>{{ session.current_debt }}</strong></article>
+    <article><span>Debt reduced by session repairs</span><strong>{{ session.session_debt_reduced or 0 }}</strong></article>
+    <article><span>Debt reduced by external changes</span><strong>{{ session.external_debt_reduced or 0 }}</strong></article>
+    <article><span>Total knowledge debt reduced</span><strong>{{ session.debt_reduced }}</strong></article>
   </section>
   <section class="quality-section mb-3" aria-labelledby="integrityChangeTitle"><h2 id="integrityChangeTitle">Integrity since this session started</h2><div class="curator-status-grid">{% for key, label in [('broken_relationships','Broken relationships'),('orphaned_articles','Orphaned articles'),('duplicate_groups','Duplicate groups'),('inventory_mismatches','Inventory mismatches')] %}<article><span>{{ label }}</span><strong>{{ session.starting_integrity.counts[key] or 0 }} &rarr; {{ session.current_integrity.counts[key] or 0 }}</strong></article>{% endfor %}</div>{% if session.repository_changes_detected %}<p class="mt-3 mb-0"><span class="badge text-bg-info">Repository changes detected</span> The unresolved queue was replanned against current repository truth.</p>{% endif %}</section>
   <nav class="d-flex flex-wrap gap-2 mb-3" aria-label="Filter maintenance queue">
@@ -41,7 +42,9 @@
     <h3>Recommended repair</h3><p>{{ item.recommended_action }}</p>
     {% if item.previous_classification %}<div class="alert alert-info"><strong>Reclassified during reconciliation:</strong> {{ item.previous_classification|replace('_',' ')|title }} &rarr; {{ item.classification|replace('_',' ')|title }}. {{ item.classification_change_reason }}</div>{% endif %}
     <div class="row g-3"><div class="col-md-6"><article class="integrity-record h-100"><strong>What will change</strong><p>{{ item.what_will_change }}</p></article></div><div class="col-md-6"><article class="integrity-record h-100"><strong>What will not change</strong><p>{{ item.what_will_not_change }}</p></article></div></div>
-    <div class="d-flex flex-wrap gap-2 mt-4">
+    <section class="curator-action-scope curator-action-scope--item mt-4" aria-labelledby="currentFindingActionsTitle">
+      <div class="curator-action-scope__heading"><span class="section-eyebrow">Current finding</span><h3 id="currentFindingActionsTitle">Actions for this finding</h3></div>
+      <div class="d-flex flex-wrap gap-2">
       {% if item.safe_automatic %}<form method="post" action="{{ url_for('curator_fix_item_action', session_id=session.session_id, item_id=item.item_id) }}" onsubmit="return confirm('Apply this reviewed repair and run targeted verification?');"><input type="hidden" name="action" value="apply"><input type="hidden" name="confirmed" value="yes"><button class="btn btn-success" type="submit">Apply Verified Repair</button></form>{% endif %}
       {% if item.finding_type == 'broken_relationship' %}<a class="btn btn-outline-primary" href="{{ url_for('workflow_editor', filename=item.affected_content.source.split('/')[-1], curator_session=session.session_id, curator_item=item.item_id, node=item.affected_content.node) }}">{{ 'Create Article Draft in Workflow' if item.classification == 'CREATE_ARTICLE_REQUIRED' else 'Open Workflow' }}</a>{% if item.affected_content.canonical_target %}<a class="btn btn-outline-primary" href="{{ url_for('view_published', article_id=item.affected_content.canonical_target, return_to=request.full_path) }}">Open Article</a>{% endif %}{% endif %}
       {% if item.finding_type == 'duplicate_group' %}<a class="btn btn-outline-warning" href="{{ url_for('knowledge_integrity_merge', return_to=request.path) }}">Open Merge Workspace</a>{% endif %}
@@ -51,9 +54,10 @@
       <form method="post" action="{{ url_for('curator_fix_item_action', session_id=session.session_id, item_id=item.item_id) }}"><input type="hidden" name="category" value="{{ category }}"><input type="hidden" name="action" value="deferred"><button class="btn btn-outline-secondary">Defer</button></form>
       <form method="post" action="{{ url_for('curator_fix_item_action', session_id=session.session_id, item_id=item.item_id) }}"><input type="hidden" name="category" value="{{ category }}"><input type="hidden" name="action" value="skipped"><button class="btn btn-outline-secondary">Skip</button></form>
       <form method="post" action="{{ url_for('curator_fix_item_action', session_id=session.session_id, item_id=item.item_id) }}"><input type="hidden" name="category" value="{{ category }}"><input type="hidden" name="action" value="rejected"><button class="btn btn-outline-danger">Reject Recommendation</button></form>
-    </div>
+      </div>
+    </section>
   </section>
   {% else %}<section class="quality-section"><h2>Queue reviewed</h2><p>Every item in this maintenance session now has an outcome.</p></section>{% endif %}
-  <div class="d-flex flex-wrap justify-content-between gap-2"><a class="btn btn-outline-info" href="{{ url_for('curator_fix_safe_items', session_id=session.session_id) }}">Repair All Safe Items</a><form method="post" action="{{ url_for('curator_fix_complete', session_id=session.session_id) }}"><button class="btn btn-primary">Finish Maintenance Session</button></form></div>
+  <section class="quality-section curator-action-scope curator-action-scope--session" aria-labelledby="sessionActionsTitle"><div class="curator-action-scope__heading"><span class="section-eyebrow">Entire maintenance session</span><h2 id="sessionActionsTitle">Session actions</h2><p>These controls affect the complete maintenance queue, not only the finding shown above.</p></div><div class="d-flex flex-wrap justify-content-between gap-2"><a class="btn btn-outline-info" href="{{ url_for('curator_fix_safe_items', session_id=session.session_id) }}">Repair All Safe Items</a><form method="post" action="{{ url_for('curator_fix_complete', session_id=session.session_id) }}"><button class="btn btn-primary">Finish Maintenance Session</button></form></div></section>
 </main>
 {% endblock %}

@@ -98,7 +98,7 @@ class CuratorFixWizardTests(unittest.TestCase):
                 page = client.get(target)
                 self.assertEqual(page.status_code, 200)
                 self.assertIn(b"Browser Reviewer", page.data)
-                self.assertIn(b"Original queue", page.data)
+                self.assertIn(b"Starting review queue", page.data)
                 self.assertEqual(client.get(target).status_code, 200)
                 duplicate = client.post("/curator/fix", data={"reviewer": "Browser Reviewer"})
                 self.assertEqual(duplicate.status_code, 302)

@@ -2,6 +2,7 @@
 {% block title %}Curator Growth | Gnojo{% endblock %}
 {% block content %}
 <main class="container curator-page" id="main-content" aria-labelledby="growthTitle">
+  {% with curator_active='growth' %}{% include 'partials/_curator_nav.html' %}{% endwith %}
   <nav aria-label="Breadcrumb"><a href="{{ url_for('curator_dashboard') }}">Curator</a> / Growth</nav>
   <header class="curator-heading"><div><span class="section-eyebrow">Supervised knowledge operations</span><h1 id="growthTitle">Curator Growth</h1><p>The Curator may propose its growth. Only a human may approve, activate, enable, suspend, retire, or grant it.</p></div><a class="btn btn-outline-primary" href="{{ url_for('curator_dashboard') }}">Back to Curator</a></header>
   {% if status_message %}<div class="alert alert-{{ status_kind }}" role="status">{{ status_message }}</div>{% endif %}

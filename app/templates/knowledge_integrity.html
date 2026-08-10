@@ -2,11 +2,15 @@
 {% block title %}Knowledge Integrity | Gnojo{% endblock %}
 {% block content %}
 <main class="container curator-page">
+  {% with curator_active='integrity' %}{% include 'partials/_curator_nav.html' %}{% endwith %}
   <header class="curator-heading"><div><span class="section-eyebrow">Curator operations</span><h1>Knowledge Integrity</h1><p>One view of canonical identities, workflow relationships, publication provenance, and lifecycle health.</p></div><div class="d-flex flex-wrap gap-2"><a class="btn btn-success" href="{{ url_for('curator_fix_start') }}">Start Fix Wizard</a><a class="btn btn-outline-primary" href="{{ url_for('curator_dashboard') }}">Back to Curator</a></div></header>
   {% if status == 'reindexed' %}<div class="alert alert-success">Knowledge inventory rebuilt from the current canonical records.</div>{% elif status == 'normalized' %}<div class="alert alert-success">Canonical identity metadata normalized for {{ request.args.get('changed', '0') }} records and the index was rebuilt.</div>{% elif status == 'merged' %}<div class="alert alert-success">Duplicate records merged, references updated, and superseded copies archived.</div>{% endif %}
   <section class="curator-metrics">{% set detail_keys = ['broken_relationships','duplicate_groups','inventory_mismatches','missing_review_metadata','orphaned_articles'] %}{% for key, value in integrity.counts.items() %}{% if key in detail_keys %}<a class="curator-metric-link" href="#integrity-{{ key }}">{% endif %}<article><span>{{ key|replace('_',' ')|title }}</span><strong>{{ value }}</strong></article>{% if key in detail_keys %}</a>{% endif %}{% endfor %}</section>
   <section class="quality-section"><div class="quality-section__heading"><div><h2>Deterministic maintenance</h2><p>These actions do not rewrite instructional content. Identity normalization adds a canonical ID only when the existing valid article ID proves the value.</p></div><div class="d-flex gap-2"><form method="post" action="{{ url_for('knowledge_integrity_normalize_identities') }}" onsubmit="return confirm('Normalize proven canonical IDs and rebuild the generated index?');"><button class="btn btn-info">Normalize IDs and re-index</button></form><form method="post" action="{{ url_for('knowledge_integrity_reindex') }}"><button class="btn btn-outline-info">Rebuild index only</button></form></div></div></section>
-  {% for key, title in [('broken_relationships','Broken Relationships'),('duplicate_groups','Duplicate Identities'),('inventory_mismatches','Inventory Mismatches'),('missing_review_metadata','Missing Review Provenance'),('orphaned_articles','Orphaned Published Articles')] %}
+  {% set integrity_categories = [('broken_relationships','Broken Relationships'),('duplicate_groups','Duplicate Identities'),('inventory_mismatches','Inventory Mismatches'),('missing_review_metadata','Missing Review Provenance'),('orphaned_articles','Orphaned Published Articles')] %}
+  {% set health = namespace(zero=[]) %}{% for key, title in integrity_categories %}{% if not integrity[key] %}{% set health.zero = health.zero + [title] %}{% endif %}{% endfor %}
+  {% if health.zero %}<section class="quality-section integrity-healthy" aria-labelledby="integrityHealthyTitle"><div><span class="section-eyebrow">Healthy checks</span><h2 id="integrityHealthyTitle">{{ health.zero|length }} integrity categor{{ 'y is' if health.zero|length == 1 else 'ies are' }} clear</h2><p>These deterministic checks found no actionable records.</p></div><ul>{% for title in health.zero %}<li><i class="bi bi-check-circle-fill" aria-hidden="true"></i><span>{{ title }}</span><strong>0 findings</strong></li>{% endfor %}</ul></section>{% endif %}
+  {% for key, title in integrity_categories %}{% if integrity[key] %}
   <section class="quality-section" id="integrity-{{ key }}"><div class="quality-section__heading"><div><h2>{{ title }}</h2><p>{{ integrity.explanations[key] }}</p></div>{% if key == 'duplicate_groups' and integrity[key] %}<a class="btn btn-outline-warning" href="{{ url_for('knowledge_integrity_merge') }}">Open merge workspace</a>{% endif %}</div>
   {% if integrity[key] %}
     {% if key == 'broken_relationships' %}
@@ -36,7 +40,7 @@
       {% endfor %}
       </div>
     {% else %}<pre class="integrity-evidence">{{ integrity[key]|tojson(indent=2) }}</pre>{% endif %}
-  {% else %}<p class="text-success mb-0">No findings in this category.</p>{% endif %}</section>
-  {% endfor %}
+  {% endif %}</section>
+  {% endif %}{% endfor %}
 </main>
 {% endblock %}

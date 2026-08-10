@@ -1,0 +1,14 @@
+<nav class="curator-local-nav" aria-label="Curator workspace">
+  <span class="curator-local-nav__label">Curator workspace</span>
+  <div class="curator-local-nav__links">
+    {% for value, label, destination in [
+      ('overview', 'Overview', url_for('curator_dashboard')),
+      ('tasks', 'Knowledge Tasks', url_for('curator_dashboard') ~ '#knowledge-tasks'),
+      ('integrity', 'Integrity', url_for('knowledge_integrity_dashboard')),
+      ('maintenance', 'Maintenance', url_for('curator_fix_start')),
+      ('growth', 'Growth', url_for('curator_growth_dashboard'))
+    ] %}
+    <a class="{{ 'active' if curator_active == value else '' }}" href="{{ destination }}"{% if curator_active == value %} aria-current="page"{% endif %}>{{ label }}</a>
+    {% endfor %}
+  </div>
+</nav>

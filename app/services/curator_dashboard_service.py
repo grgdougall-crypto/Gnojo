@@ -11,6 +11,7 @@ from curator.governance import CuratorGovernancePolicy
 from curator.tasks import KnowledgeTaskService
 
 from app.services.curator_task_service import CuratorTaskService
+from app.services.curator_dashboard_presentation_service import CuratorDashboardPresentationService
 from app.services.knowledge_integrity_service import KnowledgeIntegrityService
 
 
@@ -55,11 +56,15 @@ class CuratorDashboardService:
         }
         tasks = sorted(tasks, key=keys.get(sort_by, keys["debt"]))
         task_service = CuratorTaskService(self.repository_root)
+        task_presentation = CuratorDashboardPresentationService.present(
+            tasks, group_tasks=task_service.grouped
+        )
         return {
             "has_audit": bool(latest),
             "latest": latest,
             "tasks": tasks,
             "task_groups": task_service.grouped(tasks),
+            "task_presentation": task_presentation,
             "curator_status": task_service.status(state),
             "evolution": task_service.evolution(state),
             "sort_by": sort_by,

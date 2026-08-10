@@ -25,7 +25,8 @@ from app.services.knowledge_source_research_service import (
 
 GENERATION_STATUSES = (
     "proposed", "preparing", "draft", "needs_evidence", "needs_revision",
-    "ready_for_review", "accepted_into_content_studio", "rejected", "superseded",
+    "refinement_in_progress", "ready_for_review", "accepted_into_content_studio",
+    "rejected", "superseded",
 )
 
 

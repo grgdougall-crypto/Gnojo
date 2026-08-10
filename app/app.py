@@ -122,6 +122,10 @@ from app.services.knowledge_draft_generation_service import (
     KnowledgeDraftGenerationError,
     KnowledgeDraftGenerationService,
 )
+from app.services.knowledge_draft_refinement_service import (
+    KnowledgeDraftRefinementError,
+    KnowledgeDraftRefinementService,
+)
 from curator.locking import AuditAlreadyRunningError
 from curator.governance import CuratorGovernanceError
 from curator.growth import CuratorGrowthError
@@ -922,6 +926,16 @@ def knowledge_draft_generation_detail(package_id):
         abort(404)
     return render_template("knowledge_draft_generation_detail.html", package=package,
                            draft_error=request.args.get("draft_error", ""))
+
+
+@app.post("/curator/growth/draft-generation/<package_id>/refine")
+def knowledge_draft_generation_refine(package_id):
+    try:
+        KnowledgeDraftRefinementService().refine(package_id)
+    except (KnowledgeDraftRefinementError, KnowledgeDraftGenerationError) as exception:
+        return redirect(url_for("knowledge_draft_generation_detail", package_id=package_id,
+                                draft_error=str(exception)))
+    return redirect(url_for("knowledge_draft_generation_detail", package_id=package_id))
 
 
 @app.post("/curator/growth/draft-generation/<package_id>/handoff")

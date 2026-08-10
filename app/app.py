@@ -118,6 +118,10 @@ from app.services.knowledge_source_research_service import (
     KnowledgeSourceResearchError,
     KnowledgeSourceResearchService,
 )
+from app.services.knowledge_draft_generation_service import (
+    KnowledgeDraftGenerationError,
+    KnowledgeDraftGenerationService,
+)
 from curator.locking import AuditAlreadyRunningError
 from curator.governance import CuratorGovernanceError
 from curator.growth import CuratorGrowthError
@@ -810,8 +814,12 @@ def knowledge_coverage_campaign_detail(campaign_id):
         research_packages = KnowledgeSourceResearchService().list_for_campaign(campaign_id)
     except KnowledgeSourceResearchError:
         research_packages = []
+    try:
+        draft_packages = KnowledgeDraftGenerationService().list_for_campaign(campaign_id)
+    except KnowledgeDraftGenerationError:
+        draft_packages = []
     return render_template("knowledge_coverage_campaign_detail.html", campaign=campaign,
-                           research_packages=research_packages)
+                           research_packages=research_packages, draft_packages=draft_packages)
 
 
 @app.post("/curator/growth/coverage-campaigns/<campaign_id>/analyze")
@@ -891,6 +899,52 @@ def knowledge_source_package_review(package_id):
         error = str(exception)
     return redirect(url_for("knowledge_source_research_detail", package_id=package_id,
                             research_error=error))
+
+
+@app.post("/curator/growth/coverage-campaigns/<campaign_id>/draft-generation")
+def knowledge_draft_generation_prepare(campaign_id):
+    try:
+        package = KnowledgeDraftGenerationService().prepare(
+            campaign_id, request.form.get("gap_id", ""), request.form.get("work_item_id", ""),
+            request.form.get("notes", ""),
+        )
+    except KnowledgeDraftGenerationError as exception:
+        return redirect(url_for("knowledge_coverage_campaign_detail", campaign_id=campaign_id,
+                                draft_error=str(exception)))
+    return redirect(url_for("knowledge_draft_generation_detail", package_id=package["package_id"]))
+
+
+@app.get("/curator/growth/draft-generation/<package_id>")
+def knowledge_draft_generation_detail(package_id):
+    try:
+        package = KnowledgeDraftGenerationService().get(package_id)
+    except KnowledgeDraftGenerationError:
+        abort(404)
+    return render_template("knowledge_draft_generation_detail.html", package=package,
+                           draft_error=request.args.get("draft_error", ""))
+
+
+@app.post("/curator/growth/draft-generation/<package_id>/handoff")
+def knowledge_draft_generation_handoff(package_id):
+    service = KnowledgeDraftGenerationService()
+    try:
+        package = service.accept_into_content_studio(package_id)
+    except KnowledgeDraftGenerationError as exception:
+        return redirect(url_for("knowledge_draft_generation_detail", package_id=package_id,
+                                draft_error=str(exception)))
+    if package.get("generation_status") == "accepted_into_content_studio":
+        return redirect(url_for("review_draft", article_id=package["content_studio_article_id"]))
+    return redirect(url_for("knowledge_draft_generation_detail", package_id=package_id))
+
+
+@app.post("/curator/growth/draft-generation/<package_id>/reject")
+def knowledge_draft_generation_reject(package_id):
+    try:
+        KnowledgeDraftGenerationService().reject(package_id, request.form.get("notes", ""))
+    except KnowledgeDraftGenerationError as exception:
+        return redirect(url_for("knowledge_draft_generation_detail", package_id=package_id,
+                                draft_error=str(exception)))
+    return redirect(url_for("knowledge_draft_generation_detail", package_id=package_id))
 
 
 @app.route("/curator/tasks/<task_id>")

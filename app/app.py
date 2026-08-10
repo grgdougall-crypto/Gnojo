@@ -118,6 +118,10 @@ from app.services.knowledge_source_research_service import (
     KnowledgeSourceResearchError,
     KnowledgeSourceResearchService,
 )
+from app.services.knowledge_evidence_extraction_service import (
+    KnowledgeEvidenceExtractionError,
+    KnowledgeEvidenceExtractionService,
+)
 from app.services.knowledge_draft_generation_service import (
     KnowledgeDraftGenerationError,
     KnowledgeDraftGenerationService,
@@ -853,7 +857,10 @@ def knowledge_source_research_detail(package_id):
         package = KnowledgeSourceResearchService().get(package_id)
     except KnowledgeSourceResearchError:
         abort(404)
+    extraction_packages = KnowledgeEvidenceExtractionService().list_for_research(package_id)
+    extraction_by_source = {item["source_candidate_id"]: item for item in extraction_packages}
     return render_template("knowledge_source_research_detail.html", package=package,
+                           extraction_by_source=extraction_by_source,
                            research_error=request.args.get("research_error", ""))
 
 
@@ -903,6 +910,65 @@ def knowledge_source_package_review(package_id):
         error = str(exception)
     return redirect(url_for("knowledge_source_research_detail", package_id=package_id,
                             research_error=error))
+
+
+@app.post("/curator/growth/source-research/<package_id>/candidates/<candidate_id>/extract")
+def knowledge_evidence_extraction_prepare(package_id, candidate_id):
+    try:
+        package = KnowledgeEvidenceExtractionService().prepare(package_id, candidate_id)
+    except KnowledgeEvidenceExtractionError as exception:
+        return redirect(url_for("knowledge_source_research_detail", package_id=package_id,
+                                research_error=str(exception)))
+    return redirect(url_for("knowledge_evidence_extraction_detail",
+                            extraction_id=package["extraction_id"]))
+
+
+@app.get("/curator/growth/evidence-extraction/<extraction_id>")
+def knowledge_evidence_extraction_detail(extraction_id):
+    try:
+        package = KnowledgeEvidenceExtractionService().get(extraction_id)
+    except KnowledgeEvidenceExtractionError:
+        abort(404)
+    return render_template("knowledge_evidence_extraction_detail.html", package=package,
+                           extraction_error=request.args.get("extraction_error", ""))
+
+
+@app.post("/curator/growth/evidence-extraction/<extraction_id>/run")
+def knowledge_evidence_extraction_run(extraction_id):
+    service = KnowledgeEvidenceExtractionService()
+    try:
+        service.extract(extraction_id)
+        error = ""
+    except KnowledgeEvidenceExtractionError as exception:
+        error = str(exception)
+    return redirect(url_for("knowledge_evidence_extraction_detail", extraction_id=extraction_id,
+                            extraction_error=error))
+
+
+@app.post("/curator/growth/evidence-extraction/<extraction_id>/refresh")
+def knowledge_evidence_extraction_refresh(extraction_id):
+    service = KnowledgeEvidenceExtractionService()
+    try:
+        service.refresh_status(extraction_id)
+        error = ""
+    except KnowledgeEvidenceExtractionError as exception:
+        error = str(exception)
+    return redirect(url_for("knowledge_evidence_extraction_detail", extraction_id=extraction_id,
+                            extraction_error=error))
+
+
+@app.post("/curator/growth/evidence-extraction/<extraction_id>/evidence/<evidence_id>")
+def knowledge_evidence_review(extraction_id, evidence_id):
+    try:
+        KnowledgeEvidenceExtractionService().review_evidence(
+            extraction_id, evidence_id, request.form.get("decision", ""),
+            request.form.get("notes", ""),
+        )
+        error = ""
+    except KnowledgeEvidenceExtractionError as exception:
+        error = str(exception)
+    return redirect(url_for("knowledge_evidence_extraction_detail", extraction_id=extraction_id,
+                            extraction_error=error))
 
 
 @app.post("/curator/growth/coverage-campaigns/<campaign_id>/draft-generation")

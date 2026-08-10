@@ -21,6 +21,9 @@ from app.services.knowledge_source_research_service import (
     KnowledgeSourceResearchError,
     KnowledgeSourceResearchService,
 )
+from app.services.knowledge_evidence_extraction_service import (
+    KnowledgeEvidenceExtractionService,
+)
 
 
 GENERATION_STATUSES = (
@@ -56,6 +59,10 @@ class KnowledgeDraftGenerationService:
         )
         self.repository = repository or KnowledgeRepository(self.repository_root / "knowledge_base")
         self.identity = ArticleIdentityResolver(self.repository)
+        self.extraction = KnowledgeEvidenceExtractionService(
+            self.repository_root, self.campaign_root, policy_path=policy_path,
+            taxonomy_path=taxonomy_path,
+        )
 
     def list_for_campaign(self, campaign_id: str) -> list[dict[str, Any]]:
         if not self.package_root.exists():
@@ -163,6 +170,9 @@ class KnowledgeDraftGenerationService:
                     if item.get("status") == "approved" and
                     item.get("target_coverage_area") == gap["area_id"]]
         sources, provenance = self._approved_sources(approved)
+        structured_evidence = self.extraction.approved_units_for(
+            [item["package_id"] for item in approved]
+        )
         package["research_package_ids"] = [item["package_id"] for item in approved]
         package["approved_sources_used"] = sources
         package["source_provenance"] = provenance
@@ -170,6 +180,8 @@ class KnowledgeDraftGenerationService:
             "campaign_fingerprint": campaign.get("coverage_snapshot", {}).get("fingerprint"),
             "gap_evidence": list(gap.get("evidence") or []),
             "research_package_digests": [self._fingerprint(item) for item in approved],
+            "approved_structured_evidence": structured_evidence,
+            "approved_structured_evidence_ids": [item["evidence_id"] for item in structured_evidence],
         }
         if not sources:
             package["generation_status"] = "needs_evidence"
@@ -183,7 +195,7 @@ class KnowledgeDraftGenerationService:
             package["updated_at"] = self._now()
             return
 
-        article = self._compose(package, campaign, area, sources)
+        article = self._compose(package, campaign, area, sources, structured_evidence)
         errors = ArticleValidator.validate(article)
         package["validation_results"] = ([{"level": "error", "message": error} for error in errors] or
                                          [{"level": "passed", "message": "Article schema validation passed."},
@@ -199,7 +211,8 @@ class KnowledgeDraftGenerationService:
                                    "actor": "Deterministic Draft Composer"})
 
     def _compose(self, package: dict[str, Any], campaign: dict[str, Any],
-                 area: dict[str, Any], sources: list[dict[str, Any]]) -> dict[str, Any]:
+                 area: dict[str, Any], sources: list[dict[str, Any]],
+                 structured_evidence: list[dict[str, Any]]) -> dict[str, Any]:
         article = create_article_template()
         source_titles = [item["title"] for item in sources]
         article.update({
@@ -211,8 +224,12 @@ class KnowledgeDraftGenerationService:
                          "in Content Studio before publication."),
             "tags": sorted({campaign["category"].casefold(), package["platform"].casefold(),
                             *[term.casefold() for term in area.get("terms", [])[:5]]}),
-            "checklist": [f"Review the approved guidance in {title}." for title in source_titles],
-            "common_indicators": [f"Coverage gap identified for {area['title']}."],
+            "checklist": ([item["normalized_claim"] for item in structured_evidence
+                           if item.get("evidence_type") == "procedure"] or
+                          [f"Review the approved guidance in {title}." for title in source_titles]),
+            "common_indicators": ([item["normalized_claim"] for item in structured_evidence
+                                   if item.get("evidence_type") == "symptoms"] or
+                                  [f"Coverage gap identified for {area['title']}."]),
             "commands": [], "related_topics": [area["title"], campaign["scope"]], "quiz": [],
             "sources": sources,
             "generation": {"provider": "Gnojo Knowledge Factory",
@@ -225,6 +242,7 @@ class KnowledgeDraftGenerationService:
                 "gap_id": package["gap_id"], "work_item_id": package["work_item_id"],
                 "research_package_ids": list(package["research_package_ids"]),
                 "source_candidate_ids": [item["source_candidate_id"] for item in package["source_provenance"]],
+                "evidence_ids": [item["evidence_id"] for item in structured_evidence],
             },
         })
         return article

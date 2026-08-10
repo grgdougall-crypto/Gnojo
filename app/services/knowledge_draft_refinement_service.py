@@ -123,6 +123,19 @@ class KnowledgeDraftRefinementService:
         records: list[dict[str, Any]] = []
         reusable: list[dict[str, Any]] = []
         approved_urls = {item.get("url") for item in package.get("approved_sources_used") or []}
+        for unit in self.generation.extraction.approved_units_for(
+                package.get("research_package_ids") or []):
+            records.append({
+                "evidence_id": unit["evidence_id"], "kind": "approved_extracted_evidence",
+                "approved": True,
+                "research_package_id": (unit.get("provenance") or {}).get("research_package_id"),
+                "source_candidate_id": (unit.get("provenance") or {}).get("source_candidate_id"),
+                "title": unit.get("source_title"), "url": unit.get("source_url"),
+                "content_digest": unit.get("fingerprint"),
+                "claims": [{"section": unit.get("evidence_type") or "procedure",
+                            "text": unit.get("normalized_claim", "")}],
+                "provenance": deepcopy(unit.get("provenance") or {}),
+            })
         for package_id in package.get("research_package_ids") or []:
             try:
                 research = self.generation.research.get(package_id)

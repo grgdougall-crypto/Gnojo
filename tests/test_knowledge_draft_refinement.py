@@ -110,6 +110,36 @@ class KnowledgeDraftRefinementTests(unittest.TestCase):
         self.assertIn("verification", refined["refinement"]["validation"]["required_incomplete"])
         self.assertNotIn("https://", " ".join(refined["draft_preview"]["checklist"]))
 
+    def test_human_approved_phase_five_evidence_satisfies_refinement_boundary(self):
+        self.approve_evidence(structured=False)
+        package = self.prepare()
+        extraction_root = self.campaign_root / "evidence_extraction"
+        extraction_root.mkdir(parents=True, exist_ok=True)
+        units = []
+        for index, (section, text) in enumerate((
+            ("procedure", "Open the approved VPN client and record its status."),
+            ("verification", "Confirm the client reports a connected state."),
+        )):
+            units.append({
+                "evidence_id": f"EVD-AAAAAAA{index:05d}", "evidence_type": section,
+                "normalized_claim": text, "review_state": "approved",
+                "source_title": "VPN technical guide",
+                "source_url": "https://learn.microsoft.com/windows/security/vpn/",
+                "publisher": "Microsoft", "fingerprint": f"digest-{index}",
+                "provenance": {"research_package_id": "KRP-AAAAAAAAAAAA",
+                               "source_candidate_id": "KSC-MICROSOFT"},
+            })
+        (extraction_root / "KEX-AAAAAAAAAAAA.json").write_text(json.dumps({
+            "schema_version": "1.0", "extraction_id": "KEX-AAAAAAAAAAAA",
+            "research_package_id": "KRP-AAAAAAAAAAAA", "status": "approved",
+            "created_at": "now", "evidence_units": units,
+        }), encoding="utf-8")
+        refined = self.service.refine(package["package_id"])
+        self.assertEqual(refined["generation_status"], "ready_for_review")
+        evidence = refined["refinement"]["evidence_records"]
+        self.assertTrue(any(item["kind"] == "approved_extracted_evidence" for item in evidence))
+        self.assertEqual(refined["draft_preview"]["checklist"], [units[0]["normalized_claim"]])
+
     def test_unapproved_research_is_excluded_after_phase_three(self):
         path = self.approve_evidence()
         package = self.prepare()

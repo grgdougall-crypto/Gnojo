@@ -133,6 +133,32 @@ class KnowledgeDraftGenerationTests(unittest.TestCase):
         self.assertEqual(factory["work_item_id"], self.work["work_item_id"])
         self.assertEqual(package["history"][-1]["actor"], "Deterministic Draft Composer")
 
+    def test_human_approved_phase_five_evidence_is_used_by_phase_three(self):
+        research = self.approve_source_evidence()
+        extraction_root = self.campaign_root / "evidence_extraction"
+        extraction_root.mkdir(parents=True, exist_ok=True)
+        evidence_id = "EVD-AAAAAAAAAAAA"
+        (extraction_root / "KEX-AAAAAAAAAAAA.json").write_text(json.dumps({
+            "schema_version": "1.0", "extraction_id": "KEX-AAAAAAAAAAAA",
+            "research_package_id": research["package_id"], "status": "partially_approved",
+            "created_at": "now", "evidence_units": [{
+                "evidence_id": evidence_id, "evidence_type": "procedure",
+                "normalized_claim": "Open the approved VPN client and record its status.",
+                "review_state": "approved", "source_title": "VPN technical guide",
+                "source_url": "https://learn.microsoft.com/windows/security/operating-system-security/network-security/vpn/",
+                "publisher": "Microsoft", "fingerprint": "evidence-digest",
+                "provenance": {"research_package_id": research["package_id"],
+                               "source_candidate_id": "KSC-MICROSOFT"},
+            }],
+        }), encoding="utf-8")
+        package = self.prepare()
+        self.assertEqual(package["draft_preview"]["checklist"],
+                         ["Open the approved VPN client and record its status."])
+        self.assertEqual(package["evidence_snapshot"]["approved_structured_evidence_ids"],
+                         [evidence_id])
+        self.assertEqual(package["draft_preview"]["knowledge_factory"]["evidence_ids"],
+                         [evidence_id])
+
     def test_canonical_identity_is_reused_instead_of_numbered_duplicate(self):
         existing = self.write_canonical_article()
         package = self.prepare()

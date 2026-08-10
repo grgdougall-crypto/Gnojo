@@ -110,6 +110,10 @@ from app.services.curator_session_reconciliation_service import CuratorSessionRe
 from app.services.curator_targeted_verification_service import CuratorTargetedVerificationService
 from app.services.curator_verification_presentation_service import CuratorVerificationPresentationService
 from app.services.curator_growth_service import CuratorGrowthService
+from app.services.knowledge_coverage_planner_service import (
+    KnowledgeCoveragePlannerError,
+    KnowledgeCoveragePlannerService,
+)
 from curator.locking import AuditAlreadyRunningError
 from curator.governance import CuratorGovernanceError
 from curator.growth import CuratorGrowthError
@@ -768,6 +772,46 @@ def curator_growth_control():
     except (CuratorGrowthError, CuratorMemoryError) as exception:
         status, error = "invalid", str(exception)
     return redirect(url_for("curator_growth_dashboard", status=status, error=error))
+
+
+@app.route("/curator/growth/coverage-campaigns", methods=["GET", "POST"])
+def knowledge_coverage_campaigns():
+    planner = KnowledgeCoveragePlannerService()
+    error = ""
+    if request.method == "POST":
+        try:
+            campaign = planner.create(
+                title=request.form.get("title", ""),
+                domain_id=request.form.get("domain", ""),
+                objective=request.form.get("objective", ""),
+                notes=request.form.get("notes", ""),
+            )
+            return redirect(url_for("knowledge_coverage_campaign_detail",
+                                    campaign_id=campaign["campaign_id"]))
+        except KnowledgeCoveragePlannerError as exception:
+            error = str(exception)
+    return render_template(
+        "knowledge_coverage_campaigns.html",
+        campaigns=planner.list_campaigns(), domains=planner.domains(), error=error,
+    )
+
+
+@app.get("/curator/growth/coverage-campaigns/<campaign_id>")
+def knowledge_coverage_campaign_detail(campaign_id):
+    try:
+        campaign = KnowledgeCoveragePlannerService().get(campaign_id)
+    except KnowledgeCoveragePlannerError:
+        abort(404)
+    return render_template("knowledge_coverage_campaign_detail.html", campaign=campaign)
+
+
+@app.post("/curator/growth/coverage-campaigns/<campaign_id>/analyze")
+def knowledge_coverage_campaign_analyze(campaign_id):
+    try:
+        KnowledgeCoveragePlannerService().analyze(campaign_id)
+    except KnowledgeCoveragePlannerError:
+        abort(404)
+    return redirect(url_for("knowledge_coverage_campaign_detail", campaign_id=campaign_id))
 
 
 @app.route("/curator/tasks/<task_id>")

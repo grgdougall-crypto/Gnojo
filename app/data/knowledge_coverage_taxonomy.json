@@ -1,0 +1,20 @@
+{
+  "schema_version": "1.0",
+  "domains": [
+    {
+      "id": "windows-connectivity",
+      "title": "Windows Connectivity",
+      "category": "Networking",
+      "platforms": ["Windows"],
+      "areas": [
+        {"id": "internet", "title": "Internet Access", "terms": ["internet", "connectivity", "router"]},
+        {"id": "wifi", "title": "Wi-Fi", "terms": ["wi-fi", "wifi", "wireless"]},
+        {"id": "ethernet", "title": "Ethernet", "terms": ["ethernet", "wired", "network cable"]},
+        {"id": "dns", "title": "DNS", "terms": ["dns", "nslookup", "name resolution"]},
+        {"id": "dhcp", "title": "DHCP", "terms": ["dhcp", "169.254", "automatic private ip"]},
+        {"id": "vpn", "title": "VPN", "terms": ["vpn", "virtual private network"]},
+        {"id": "higher-layer", "title": "Higher-Layer Connectivity", "terms": ["proxy", "firewall", "browser", "website", "application-specific", "higher-layer"]}
+      ]
+    }
+  ]
+}

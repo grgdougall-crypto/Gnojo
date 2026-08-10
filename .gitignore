@@ -42,6 +42,7 @@ app/device_profiles/
 app/troubleshooting_history/
 curation_runs/
 curation_memory/
+knowledge_campaigns/
 .curator-audit.lock
 
 # OS and editor artifacts

@@ -1,0 +1,36 @@
+{
+  "schema_version": "1.0",
+  "tiers": [
+    {
+      "tier": 1,
+      "label": "First-party product documentation",
+      "publishers": [
+        {"name": "Microsoft", "domains": ["learn.microsoft.com", "support.microsoft.com", "windows.com"]},
+        {"name": "Apple", "domains": ["support.apple.com", "developer.apple.com"]},
+        {"name": "Canonical", "domains": ["ubuntu.com", "help.ubuntu.com", "canonical.com"]},
+        {"name": "Red Hat", "domains": ["access.redhat.com", "docs.redhat.com"]},
+        {"name": "Cisco", "domains": ["cisco.com"]},
+        {"name": "Dell", "domains": ["dell.com"]},
+        {"name": "HP", "domains": ["support.hp.com"]},
+        {"name": "Lenovo", "domains": ["support.lenovo.com"]}
+      ]
+    },
+    {
+      "tier": 2,
+      "label": "Standards and official project documentation",
+      "publishers": [
+        {"name": "IETF", "domains": ["rfc-editor.org", "ietf.org"]},
+        {"name": "IEEE", "domains": ["ieee.org"]},
+        {"name": "Wi-Fi Alliance", "domains": ["wi-fi.org"]}
+      ]
+    }
+  ],
+  "research_targets": [
+    {
+      "platform": "Windows",
+      "vendor": "Microsoft",
+      "search_provider": "microsoft_learn",
+      "domains": ["learn.microsoft.com", "support.microsoft.com"]
+    }
+  ]
+}

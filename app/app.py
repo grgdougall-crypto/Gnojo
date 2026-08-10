@@ -114,6 +114,10 @@ from app.services.knowledge_coverage_planner_service import (
     KnowledgeCoveragePlannerError,
     KnowledgeCoveragePlannerService,
 )
+from app.services.knowledge_source_research_service import (
+    KnowledgeSourceResearchError,
+    KnowledgeSourceResearchService,
+)
 from curator.locking import AuditAlreadyRunningError
 from curator.governance import CuratorGovernanceError
 from curator.growth import CuratorGrowthError
@@ -802,7 +806,12 @@ def knowledge_coverage_campaign_detail(campaign_id):
         campaign = KnowledgeCoveragePlannerService().get(campaign_id)
     except KnowledgeCoveragePlannerError:
         abort(404)
-    return render_template("knowledge_coverage_campaign_detail.html", campaign=campaign)
+    try:
+        research_packages = KnowledgeSourceResearchService().list_for_campaign(campaign_id)
+    except KnowledgeSourceResearchError:
+        research_packages = []
+    return render_template("knowledge_coverage_campaign_detail.html", campaign=campaign,
+                           research_packages=research_packages)
 
 
 @app.post("/curator/growth/coverage-campaigns/<campaign_id>/analyze")
@@ -812,6 +821,76 @@ def knowledge_coverage_campaign_analyze(campaign_id):
     except KnowledgeCoveragePlannerError:
         abort(404)
     return redirect(url_for("knowledge_coverage_campaign_detail", campaign_id=campaign_id))
+
+
+@app.post("/curator/growth/coverage-campaigns/<campaign_id>/research")
+def knowledge_source_research_prepare(campaign_id):
+    try:
+        package = KnowledgeSourceResearchService().create(
+            campaign_id, request.form.get("gap_id", ""), request.form.get("work_item_id", ""),
+        )
+    except KnowledgeSourceResearchError as exception:
+        return redirect(url_for("knowledge_coverage_campaign_detail", campaign_id=campaign_id,
+                                research_error=str(exception)))
+    return redirect(url_for("knowledge_source_research_detail", package_id=package["package_id"]))
+
+
+@app.get("/curator/growth/source-research/<package_id>")
+def knowledge_source_research_detail(package_id):
+    try:
+        package = KnowledgeSourceResearchService().get(package_id)
+    except KnowledgeSourceResearchError:
+        abort(404)
+    return render_template("knowledge_source_research_detail.html", package=package,
+                           research_error=request.args.get("research_error", ""))
+
+
+@app.post("/curator/growth/source-research/<package_id>/run")
+def knowledge_source_research_run(package_id):
+    service = KnowledgeSourceResearchService()
+    try:
+        service.run(package_id, force_external=request.form.get("force_external") == "true")
+        error = ""
+    except KnowledgeSourceResearchError as exception:
+        error = str(exception)
+    return redirect(url_for("knowledge_source_research_detail", package_id=package_id,
+                            research_error=error))
+
+
+@app.post("/curator/growth/source-research/<package_id>/candidates/<candidate_id>")
+def knowledge_source_candidate_review(package_id, candidate_id):
+    try:
+        KnowledgeSourceResearchService().set_candidate_state(
+            package_id, candidate_id, request.form.get("state", ""), request.form.get("notes", ""),
+        )
+    except KnowledgeSourceResearchError as exception:
+        return redirect(url_for("knowledge_source_research_detail", package_id=package_id,
+                                research_error=str(exception)))
+    return redirect(url_for("knowledge_source_research_detail", package_id=package_id))
+
+
+@app.post("/curator/growth/source-research/<package_id>/candidates/<candidate_id>/refresh")
+def knowledge_source_candidate_refresh(package_id, candidate_id):
+    try:
+        KnowledgeSourceResearchService().refresh_candidate(package_id, candidate_id)
+        error = ""
+    except KnowledgeSourceResearchError as exception:
+        error = str(exception)
+    return redirect(url_for("knowledge_source_research_detail", package_id=package_id,
+                            research_error=error))
+
+
+@app.post("/curator/growth/source-research/<package_id>/review")
+def knowledge_source_package_review(package_id):
+    try:
+        KnowledgeSourceResearchService().review(
+            package_id, request.form.get("status", ""), request.form.get("notes", ""),
+        )
+        error = ""
+    except KnowledgeSourceResearchError as exception:
+        error = str(exception)
+    return redirect(url_for("knowledge_source_research_detail", package_id=package_id,
+                            research_error=error))
 
 
 @app.route("/curator/tasks/<task_id>")

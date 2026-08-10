@@ -150,6 +150,18 @@ class KnowledgeDraftGenerationService:
         self._save(package); self._sync_reference(package)
         return deepcopy(package)
 
+    def refresh_from_approved_claim_plan(self, package_id: str) -> dict[str, Any]:
+        """Human-initiated regeneration; only reviewed claim-plan claims are consumed."""
+        package = self.get(package_id)
+        if package.get("generation_status") in {"rejected", "superseded", "accepted_into_content_studio"}:
+            raise KnowledgeDraftGenerationError("This package lifecycle no longer permits regeneration.")
+        campaign, gap, _ = self._context(package["campaign_id"], package["gap_id"],
+                                         package["work_item_id"])
+        self._evaluate(package, campaign, gap, self._area(campaign, gap["area_id"]))
+        self._save(package)
+        self._sync_reference(package)
+        return deepcopy(package)
+
     def _evaluate(self, package: dict[str, Any], campaign: dict[str, Any],
                   gap: dict[str, Any], area: dict[str, Any]) -> None:
         identity_probe = {"id": package["canonical_identity"], "canonical_id": package["canonical_identity"],
@@ -195,7 +207,17 @@ class KnowledgeDraftGenerationService:
             package["updated_at"] = self._now()
             return
 
-        article = self._compose(package, campaign, area, sources, structured_evidence)
+        planned_claims = self._approved_planned_claims(package["package_id"])
+        package["evidence_snapshot"]["approved_claim_plan_claims"] = planned_claims
+        package["evidence_snapshot"]["approved_claim_ids"] = [item["claim_id"] for item in planned_claims]
+        if package.get("claim_plan_id") and not planned_claims:
+            package["generation_status"] = "needs_evidence"
+            package["confidence"] = "low"
+            package["draft_preview"] = None
+            package["warnings"] = ["The supervised claim plan has no approved, current claims available for drafting."]
+            package["updated_at"] = self._now()
+            return
+        article = self._compose(package, campaign, area, sources, structured_evidence, planned_claims)
         errors = ArticleValidator.validate(article)
         package["validation_results"] = ([{"level": "error", "message": error} for error in errors] or
                                          [{"level": "passed", "message": "Article schema validation passed."},
@@ -212,8 +234,15 @@ class KnowledgeDraftGenerationService:
 
     def _compose(self, package: dict[str, Any], campaign: dict[str, Any],
                  area: dict[str, Any], sources: list[dict[str, Any]],
-                 structured_evidence: list[dict[str, Any]]) -> dict[str, Any]:
+                 structured_evidence: list[dict[str, Any]],
+                 planned_claims: list[dict[str, Any]] | None = None) -> dict[str, Any]:
         article = create_article_template()
+        planned_claims = planned_claims or []
+        planned_by_section: dict[str, list[str]] = {}
+        for claim in planned_claims:
+            planned_by_section.setdefault(claim.get("section", "procedure"), []).append(
+                claim.get("normalized_claim", "")
+            )
         source_titles = [item["title"] for item in sources]
         article.update({
             "id": package["canonical_identity"], "canonical_id": package["canonical_identity"],
@@ -224,10 +253,12 @@ class KnowledgeDraftGenerationService:
                          "in Content Studio before publication."),
             "tags": sorted({campaign["category"].casefold(), package["platform"].casefold(),
                             *[term.casefold() for term in area.get("terms", [])[:5]]}),
-            "checklist": ([item["normalized_claim"] for item in structured_evidence
+            "checklist": (planned_by_section.get("procedure") or
+                          [item["normalized_claim"] for item in structured_evidence
                            if item.get("evidence_type") == "procedure"] or
                           [f"Review the approved guidance in {title}." for title in source_titles]),
-            "common_indicators": ([item["normalized_claim"] for item in structured_evidence
+            "common_indicators": (planned_by_section.get("symptoms") or
+                                  [item["normalized_claim"] for item in structured_evidence
                                    if item.get("evidence_type") == "symptoms"] or
                                   [f"Coverage gap identified for {area['title']}."]),
             "commands": [], "related_topics": [area["title"], campaign["scope"]], "quiz": [],
@@ -243,9 +274,16 @@ class KnowledgeDraftGenerationService:
                 "research_package_ids": list(package["research_package_ids"]),
                 "source_candidate_ids": [item["source_candidate_id"] for item in package["source_provenance"]],
                 "evidence_ids": [item["evidence_id"] for item in structured_evidence],
+                "claim_plan_id": package.get("claim_plan_id"),
+                "claim_ids": [item["claim_id"] for item in planned_claims],
             },
         })
         return article
+
+    def _approved_planned_claims(self, package_id: str) -> list[dict[str, Any]]:
+        # Local import avoids making claim planning a constructor dependency of Phase 3.
+        from app.services.knowledge_claim_planning_service import KnowledgeClaimPlanningService
+        return KnowledgeClaimPlanningService(self, self.campaign_root).approved_claims_for(package_id)
 
     @staticmethod
     def _approved_sources(packages: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:

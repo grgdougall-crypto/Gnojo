@@ -130,6 +130,10 @@ from app.services.knowledge_draft_refinement_service import (
     KnowledgeDraftRefinementError,
     KnowledgeDraftRefinementService,
 )
+from app.services.knowledge_claim_planning_service import (
+    KnowledgeClaimPlanningError,
+    KnowledgeClaimPlanningService,
+)
 from curator.locking import AuditAlreadyRunningError
 from curator.governance import CuratorGovernanceError
 from curator.growth import CuratorGrowthError
@@ -990,8 +994,97 @@ def knowledge_draft_generation_detail(package_id):
         package = KnowledgeDraftGenerationService().get(package_id)
     except KnowledgeDraftGenerationError:
         abort(404)
+    claim_planning = KnowledgeClaimPlanningService()
+    claim_plans = claim_planning.list_for_kdg(package_id)
     return render_template("knowledge_draft_generation_detail.html", package=package,
+                           claim_plans=claim_plans,
+                           claim_planning_eligible=claim_planning.is_eligible(package_id),
                            draft_error=request.args.get("draft_error", ""))
+
+
+@app.post("/curator/growth/draft-generation/<package_id>/claim-planning")
+def knowledge_claim_planning_prepare(package_id):
+    try:
+        plan = KnowledgeClaimPlanningService().prepare(package_id)
+    except KnowledgeClaimPlanningError as exception:
+        return redirect(url_for("knowledge_draft_generation_detail", package_id=package_id,
+                                draft_error=str(exception)))
+    return redirect(url_for("knowledge_claim_planning_detail", plan_id=plan["claim_plan_id"]))
+
+
+@app.get("/curator/growth/claim-planning/<plan_id>")
+def knowledge_claim_planning_detail(plan_id):
+    try:
+        plan = KnowledgeClaimPlanningService().get(plan_id)
+    except KnowledgeClaimPlanningError:
+        abort(404)
+    return render_template("knowledge_claim_planning_detail.html", plan=plan,
+                           planning_error=request.args.get("planning_error", ""))
+
+
+@app.post("/curator/growth/claim-planning/<plan_id>/run")
+def knowledge_claim_planning_run(plan_id):
+    try:
+        KnowledgeClaimPlanningService().plan(plan_id)
+        error = ""
+    except KnowledgeClaimPlanningError as exception:
+        error = str(exception)
+    return redirect(url_for("knowledge_claim_planning_detail", plan_id=plan_id,
+                            planning_error=error))
+
+
+@app.post("/curator/growth/claim-planning/<plan_id>/claims/<claim_id>")
+def knowledge_claim_review(plan_id, claim_id):
+    try:
+        KnowledgeClaimPlanningService().review_claim(
+            plan_id, claim_id, request.form.get("decision", ""), request.form.get("notes", "")
+        )
+        error = ""
+    except KnowledgeClaimPlanningError as exception:
+        error = str(exception)
+    return redirect(url_for("knowledge_claim_planning_detail", plan_id=plan_id,
+                            planning_error=error))
+
+
+@app.post("/curator/growth/claim-planning/<plan_id>/sections/<section_name>")
+def knowledge_claim_section_review(plan_id, section_name):
+    try:
+        KnowledgeClaimPlanningService().review_section(
+            plan_id, section_name, request.form.get("decision", ""), request.form.get("notes", "")
+        )
+        error = ""
+    except KnowledgeClaimPlanningError as exception:
+        error = str(exception)
+    return redirect(url_for("knowledge_claim_planning_detail", plan_id=plan_id,
+                            planning_error=error))
+
+
+@app.post("/curator/growth/claim-planning/<plan_id>/conflicts/<conflict_id>")
+def knowledge_claim_conflict_review(plan_id, conflict_id):
+    try:
+        KnowledgeClaimPlanningService().review_conflict(
+            plan_id, conflict_id, request.form.get("decision", ""), request.form.get("notes", "")
+        )
+        error = ""
+    except KnowledgeClaimPlanningError as exception:
+        error = str(exception)
+    return redirect(url_for("knowledge_claim_planning_detail", plan_id=plan_id,
+                            planning_error=error))
+
+
+@app.post("/curator/growth/claim-planning/<plan_id>/apply")
+def knowledge_claim_planning_apply(plan_id):
+    try:
+        plan = KnowledgeClaimPlanningService().get(plan_id)
+        if plan.get("status") != "ready_for_drafting":
+            raise KnowledgeClaimPlanningError(
+                "Resolve required gaps and review every planned claim before drafting."
+            )
+        KnowledgeDraftGenerationService().refresh_from_approved_claim_plan(plan["kdg_package_id"])
+    except (KnowledgeClaimPlanningError, KnowledgeDraftGenerationError) as exception:
+        return redirect(url_for("knowledge_claim_planning_detail", plan_id=plan_id,
+                                planning_error=str(exception)))
+    return redirect(url_for("knowledge_draft_generation_detail", package_id=plan["kdg_package_id"]))
 
 
 @app.post("/curator/growth/draft-generation/<package_id>/refine")

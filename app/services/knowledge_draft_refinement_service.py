@@ -123,6 +123,20 @@ class KnowledgeDraftRefinementService:
         records: list[dict[str, Any]] = []
         reusable: list[dict[str, Any]] = []
         approved_urls = {item.get("url") for item in package.get("approved_sources_used") or []}
+        from app.services.knowledge_claim_planning_service import KnowledgeClaimPlanningService
+        planned_claims = KnowledgeClaimPlanningService(
+            self.generation, self.generation.campaign_root
+        ).approved_claims_for(package["package_id"])
+        for claim in planned_claims:
+            records.append({
+                "evidence_id": claim["claim_id"], "kind": "approved_claim_plan",
+                "approved": True, "claim_plan_id": package.get("claim_plan_id"),
+                "title": "Human-approved evidence-to-claim plan",
+                "claims": [{"section": claim.get("section") or "procedure",
+                            "text": claim.get("normalized_claim", "")}],
+                "supporting_evidence_ids": list(claim.get("evidence_ids") or []),
+                "provenance": deepcopy(claim.get("provenance") or []),
+            })
         for unit in self.generation.extraction.approved_units_for(
                 package.get("research_package_ids") or []):
             records.append({

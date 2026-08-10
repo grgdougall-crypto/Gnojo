@@ -11,6 +11,7 @@ from curator.governance import CuratorGovernancePolicy
 from curator.tasks import KnowledgeTaskService
 
 from app.services.curator_task_service import CuratorTaskService
+from app.services.curator_task_inventory_service import CuratorTaskInventoryService
 from app.services.curator_dashboard_presentation_service import CuratorDashboardPresentationService
 from app.services.knowledge_integrity_service import KnowledgeIntegrityService
 
@@ -37,7 +38,7 @@ class CuratorDashboardService:
             "defects": sum(item.classification == "defect" for item in result.findings),
         }
 
-    def dashboard(self, *, sort_by: str = "debt") -> dict[str, Any]:
+    def dashboard(self, *, sort_by: str = "debt", filters: dict[str, str] | None = None) -> dict[str, Any]:
         state = CuratorMemoryStore(self.memory_root).load()
         latest = self._latest_report()
         tasks = list(state.get("tasks", {}).values())
@@ -55,6 +56,8 @@ class CuratorDashboardService:
             "debt": lambda item: (-float(item.get("knowledge_debt_score", 0)), item.get("task_id", "")),
         }
         tasks = sorted(tasks, key=keys.get(sort_by, keys["debt"]))
+        inventory = CuratorTaskInventoryService(self.repository_root).filter(tasks, filters or {})
+        tasks = inventory["tasks"]
         task_service = CuratorTaskService(self.repository_root)
         task_presentation = CuratorDashboardPresentationService.present(
             tasks, group_tasks=task_service.grouped
@@ -71,6 +74,7 @@ class CuratorDashboardService:
             "recent_audits": list(reversed(state.get("audits", [])[-10:])),
             "memory_updated_at": state.get("updated_at"),
             "integrity": KnowledgeIntegrityService(self.repository_root).report(),
+            "task_inventory": inventory,
         }
 
     def _latest_report(self) -> dict[str, Any]:

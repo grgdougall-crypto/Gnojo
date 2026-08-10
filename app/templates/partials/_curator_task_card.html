@@ -1,6 +1,6 @@
-<a class="curator-task curator-task--{{ task.classification|lower }}" href="{{ url_for('curator_task_detail', task_id=task.task_id) }}">
+<article class="curator-task curator-task--{{ task.classification|lower }}"><a class="curator-task__link" href="{{ url_for('curator_task_detail', task_id=task.task_id) }}">
   <div class="curator-task__meta"><span class="badge text-bg-secondary">{{ task.classification }}</span><span>{{ task.priority }}</span><span>{{ task.status|replace('_', ' ')|title }}</span><span>{{ task.execution_mode|replace('_', ' ')|title }}</span></div>
   <h4>{{ task.title }}</h4>
   <p>{{ task.recommended_action }}</p>
   <div class="curator-task__footer"><code>{{ task.task_id }}</code><span>{{ task.owner }}</span><span>Debt {{ task.knowledge_debt_score }}</span><span>Seen {{ task.times_observed }}&times;</span></div>
-</a>
+</a>{% if task.rule_family == 'workflow_reasoning' %}<form class="curator-disposition" method="post" action="{{ url_for('curator_task_review_disposition', task_id=task.task_id) }}"><input type="hidden" name="return_to" value="{{ request.full_path }}#knowledge-tasks"><label for="disposition-{{ task.task_id }}">Reasoning review</label><select id="disposition-{{ task.task_id }}" name="disposition" onchange="this.form.submit()">{% for value, label in dashboard.task_inventory.options.dispositions %}<option value="{{ value }}"{% if task.review_disposition == value %} selected{% endif %}>{{ label }}</option>{% endfor %}</select><noscript><button class="btn btn-sm btn-outline-primary" type="submit">Save</button></noscript></form>{% endif %}</article>

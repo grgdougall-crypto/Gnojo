@@ -52,6 +52,27 @@ class CuratorDashboardPageTests(unittest.TestCase):
                 }]}],
                 "remaining_groups": [],
             },
+            "task_inventory": {
+                "filters": {"q": "", "status": "", "classification": "", "workflow": "", "family": "", "rule": "", "disposition": ""},
+                "visible": 1, "total": 1, "active": False, "show_calibration": False,
+                "calibration": {},
+                "options": {
+                    "statuses": ["open", "resolved"],
+                    "classifications": ["Defect", "Risk", "Opportunity", "Recommendation"],
+                    "workflows": [("windows_slow", "Computer Running Slowly")],
+                    "rules": [
+                        ("CUR-WR-EARLY-CONVERGENCE", "Early Branch Convergence"),
+                        ("CUR-WR-SIGNAL-RETENTION", "Strong Signal Not Preserved"),
+                        ("CUR-WR-ACTION-VERIFICATION", "Action Without Verification"),
+                        ("CUR-WR-TERMINAL-EVIDENCE", "Terminal Claim Exceeds Evidence"),
+                        ("CUR-WR-PROGRESS", "Progress Inconsistency"),
+                    ],
+                    "dispositions": [
+                        ("NOT_REVIEWED", "Not Reviewed"), ("USEFUL", "Useful"),
+                        ("INTENTIONAL", "Intentional"), ("FALSE_POSITIVE", "False Positive"),
+                    ],
+                },
+            },
             "curator_status": {"current_state": "Idle", "last_audit": "2026-08-05T12:00:00+00:00", "audit_duration": 1.25, "curator_version": "2.0.0", "memory_size": 2, "active_tasks": 1, "resolved_tasks": 0, "debt_trend": "stable"},
             "evolution": [{"at": "2026-08-05T12:00:00+00:00", "event": "Audit completed", "detail": "4 findings."}],
             "sort_by": "debt",
@@ -84,6 +105,76 @@ class CuratorDashboardPageTests(unittest.TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response.headers["Location"], "/curator?status=completed")
         service.return_value.run_audit.assert_called_once_with()
+
+    @patch("app.app.CuratorTaskService")
+    def test_reasoning_disposition_route_records_calibration(self, service):
+        response = self.client.post(
+            "/curator/tasks/GKT-WR/review-disposition",
+            data={"disposition": "USEFUL", "return_to": "/curator?family=workflow_reasoning#knowledge-tasks"})
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("notice=disposition_updated", response.headers["Location"])
+        self.assertTrue(response.headers["Location"].endswith("#knowledge-tasks"))
+        service.return_value.update_review_disposition.assert_called_once_with("GKT-WR", "USEFUL")
+
+    @patch("app.app.CuratorDashboardService")
+    def test_status_query_remains_an_inventory_filter(self, service):
+        service.return_value.dashboard.return_value = self.dashboard
+        self.client.get("/curator?status=open")
+        self.assertEqual(service.return_value.dashboard.call_args.kwargs["filters"]["status"], "open")
+
+    @patch("app.app.CuratorDashboardService")
+    def test_inventory_dropdowns_render_actual_options(self, service):
+        service.return_value.dashboard.return_value = self.dashboard
+        html = self.client.get("/curator").get_data(as_text=True)
+        expected_options = (
+            'value="open"', 'value="Defect"',
+            'value="windows_slow">Computer Running Slowly</option>',
+            'value="workflow_reasoning">Workflow Reasoning</option>',
+            'value="CUR-WR-EARLY-CONVERGENCE">Early Branch Convergence</option>',
+            'value="CUR-WR-SIGNAL-RETENTION">Strong Signal Not Preserved</option>',
+            'value="CUR-WR-ACTION-VERIFICATION">Action Without Verification</option>',
+            'value="CUR-WR-TERMINAL-EVIDENCE">Terminal Claim Exceeds Evidence</option>',
+            'value="CUR-WR-PROGRESS">Progress Inconsistency</option>',
+            'value="NOT_REVIEWED">Not Reviewed</option>',
+            'value="USEFUL">Useful</option>',
+            'value="INTENTIONAL">Intentional</option>',
+            'value="FALSE_POSITIVE">False Positive</option>',
+        )
+        for option in expected_options:
+            self.assertIn(option, html)
+
+    @patch("app.app.CuratorDashboardService")
+    def test_inventory_dropdowns_preserve_selected_values(self, service):
+        selected = self.dashboard["task_inventory"]["filters"]
+        selected.update({
+            "workflow": "windows_slow",
+            "family": "workflow_reasoning",
+            "rule": "CUR-WR-SIGNAL-RETENTION",
+            "disposition": "NOT_REVIEWED",
+        })
+        service.return_value.dashboard.return_value = self.dashboard
+        html = self.client.get(
+            "/curator?workflow=windows_slow&family=workflow_reasoning"
+            "&rule=CUR-WR-SIGNAL-RETENTION&disposition=NOT_REVIEWED"
+        ).get_data(as_text=True)
+        self.assertIn('value="windows_slow" selected>Computer Running Slowly</option>', html)
+        self.assertIn('value="workflow_reasoning" selected>Workflow Reasoning</option>', html)
+        self.assertIn('value="CUR-WR-SIGNAL-RETENTION" selected>Strong Signal Not Preserved</option>', html)
+        self.assertIn('value="NOT_REVIEWED" selected>Not Reviewed</option>', html)
+
+    @patch("app.app.CuratorDashboardService")
+    def test_inventory_clear_link_resets_to_unfiltered_dashboard(self, service):
+        service.return_value.dashboard.return_value = self.dashboard
+        html = self.client.get("/curator?workflow=windows_slow").get_data(as_text=True)
+        self.assertIn('href="/curator#knowledge-tasks">Clear</a>', html)
+
+    @patch("app.app.CuratorDashboardService")
+    def test_inventory_dropdown_options_are_not_duplicated(self, service):
+        service.return_value.dashboard.return_value = self.dashboard
+        html = self.client.get("/curator").get_data(as_text=True)
+        self.assertEqual(html.count('value="windows_slow"'), 1)
+        for rule, _ in self.dashboard["task_inventory"]["options"]["rules"]:
+            self.assertEqual(html.count(f'value="{rule}"'), 1)
 
 
 class CuratorKnowledgeTaskTests(unittest.TestCase):

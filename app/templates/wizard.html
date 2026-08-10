@@ -6,6 +6,13 @@
 
 <div class="container py-5">
 
+    {% if continuation_context %}
+    <div class="alert alert-secondary py-2 mb-4" role="status">
+        <i class="bi bi-arrow-right-circle me-2" aria-hidden="true"></i>
+        Continuing from {{ continuation_context.origin_name }}
+    </div>
+    {% endif %}
+
     {% if active_device %}
     <div class="alert alert-primary d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
         <span><i class="bi bi-pc-display me-2"></i>Troubleshooting <strong>{{ active_device.name }}</strong> · {{ active_device.platform }} {{ active_device.os_version }} · {{ active_device.connection_type }}</span>
@@ -400,6 +407,15 @@
                     {{ node.message }}
                 </p>
 
+                {% if node.next_workflow %}
+                <form method="POST" class="mt-4">
+                    <button class="btn btn-primary" type="submit">
+                        Continue Troubleshooting
+                        <i class="bi bi-arrow-right ms-2" aria-hidden="true"></i>
+                    </button>
+                </form>
+                {% endif %}
+
                 {% if learning_mode %}
                 <div class="learning-completion mt-4">
                     <p class="text-uppercase small fw-bold mb-2">Learning recap</p>
@@ -409,7 +425,7 @@
                 </div>
                 {% endif %}
 
-                {% if history_record %}
+                {% if history_record and not node.next_workflow %}
                     {% if history_record.feedback %}
                     <div class="workflow-feedback workflow-feedback--complete" role="status">
                         <i class="bi bi-check-circle-fill" aria-hidden="true"></i>

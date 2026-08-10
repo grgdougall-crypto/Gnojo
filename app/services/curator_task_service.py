@@ -7,6 +7,7 @@ from typing import Any
 from urllib.parse import quote, urlencode
 
 from curator.memory import CuratorMemoryError, CuratorMemoryStore
+from curator.calibration import ReasoningCalibrationService
 
 from app.services.workflow_draft_service import WorkflowDraftService
 from app.services.curator_workflow_lifecycle_service import CuratorWorkflowLifecycleService
@@ -46,6 +47,9 @@ class CuratorTaskService:
         value["current_content"] = self._current_content(value)
         value["live_related_knowledge"] = self._live_related_knowledge(value)
         value["current_verification"] = deepcopy(value.get("current_verification") or {})
+        value["calibration_context"] = ReasoningCalibrationService().context(
+            value, state.get("tasks", {}).values()
+        )
         value["saved_work_note_available"] = bool(self._latest_work_note(task_id))
         from app.services.curator_targeted_verification_service import CuratorTargetedVerificationService
         value["affected_fingerprint"] = CuratorTargetedVerificationService(
@@ -83,6 +87,10 @@ class CuratorTaskService:
             event_name=action,
             metadata={"maintenance_session_id": session_id} if action == "resolve" and session_id else None,
         )
+
+    def update_review_disposition(self, task_id: str, disposition: str) -> dict[str, Any]:
+        """Record reasoning calibration without changing the task lifecycle or content."""
+        return self.store.update_review_disposition(task_id, disposition)
 
     def _latest_work_note(self, task_id: str) -> str:
         """Reuse an explicitly saved human work note for the immediately following resolution."""

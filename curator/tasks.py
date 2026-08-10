@@ -41,6 +41,7 @@ class KnowledgeTaskService:
                 created.append(task_id)
             else:
                 task["durable_identity"] = durable_identity
+                task.setdefault("review_disposition", "NOT_REVIEWED")
                 task.setdefault("execution_mode", self.execution_mode(task))
                 task["finding_id"] = finding.identifier
                 if task["status"] == "resolved":
@@ -149,6 +150,7 @@ class KnowledgeTaskService:
             "finding_id": finding.identifier,
             "durable_identity": self.durable_identity(finding),
             "status": "open",
+            "review_disposition": "NOT_REVIEWED",
             "owner": self._owner(finding),
             "priority": finding.severity.title(),
             "classification": finding.classification.title(),

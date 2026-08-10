@@ -1,0 +1,143 @@
+{
+    "workflow_id": "higher_layer_connectivity",
+    "name": "Higher-Layer Connectivity Diagnostics",
+    "description": "Identify browser, VPN, proxy, security-software, and application-specific connectivity conditions after core networking passes.",
+    "category": "Networking",
+    "platform": "Cross-platform",
+    "estimated_steps": 4,
+    "start_node": "identify_remaining_scope",
+    "nodes": {
+        "identify_remaining_scope": {
+            "type": "question",
+            "question": "What is still unable to connect?",
+            "help_text": "Core IP, gateway, and DNS checks have passed. Choose the closest remaining symptom so Gnojo can compare higher-layer behavior without repeating those checks.",
+            "answers": {
+                "browser": {
+                    "label": "A website or web browser",
+                    "next": "compare_browser_access"
+                },
+                "vpn_proxy": {
+                    "label": "A VPN or proxy connection",
+                    "next": "compare_vpn_proxy_access"
+                },
+                "application": {
+                    "label": "One application",
+                    "next": "compare_application_access"
+                },
+                "broad_or_unsure": {
+                    "label": "Several services, or I'm not sure",
+                    "next": "inspect_security_controls"
+                }
+            }
+        },
+        "compare_browser_access": {
+            "type": "instruction",
+            "title": "Compare Browser and Website Access",
+            "instruction": "Try the affected website in a private browsing window and in another available browser. Then try a second known working website. Record whether the failure follows one website, one browser, or all browser traffic.",
+            "help_text": "This comparison separates a site-specific or browser-specific condition from a broader higher-layer connection problem. Do not clear saved passwords, cookies, or browser data during this check.",
+            "next": "browser_result"
+        },
+        "browser_result": {
+            "type": "question",
+            "question": "Did the website work in another browser or private window?",
+            "answers": {
+                "yes": {
+                    "label": "Yes",
+                    "next": "browser_condition"
+                },
+                "no": {
+                    "label": "No",
+                    "next": "inspect_security_controls"
+                }
+            }
+        },
+        "compare_vpn_proxy_access": {
+            "type": "instruction",
+            "title": "Compare VPN or Proxy Access",
+            "instruction": "Record the configured VPN or proxy and its current status. If policy permits, disconnect the VPN without removing its profile and test an ordinary approved website. Do not change organization-managed proxy or VPN settings.",
+            "help_text": "This comparison checks whether ordinary web access works outside the affected VPN session while preserving managed configuration.",
+            "next": "vpn_proxy_result"
+        },
+        "vpn_proxy_result": {
+            "type": "question",
+            "question": "Does ordinary approved web access work when the affected VPN is disconnected?",
+            "answers": {
+                "yes": {
+                    "label": "Yes",
+                    "next": "vpn_proxy_condition"
+                },
+                "no": {
+                    "label": "No or the comparison is not permitted",
+                    "next": "inspect_security_controls"
+                }
+            }
+        },
+        "compare_application_access": {
+            "type": "instruction",
+            "title": "Compare Application Connectivity",
+            "instruction": "Keep the affected application open and test an approved website or another network-enabled application. Record whether only the original application fails and capture its exact error message.",
+            "help_text": "A successful comparison provides evidence that the remaining condition is specific to the application rather than the core network path.",
+            "next": "application_result"
+        },
+        "application_result": {
+            "type": "question",
+            "question": "Can another website or network-enabled application connect?",
+            "answers": {
+                "yes": {
+                    "label": "Yes",
+                    "next": "application_condition"
+                },
+                "no": {
+                    "label": "No",
+                    "next": "inspect_security_controls"
+                }
+            }
+        },
+        "inspect_security_controls": {
+            "type": "instruction",
+            "title": "Inspect Security and Filtering Evidence",
+            "instruction": "Review visible firewall, endpoint-security, VPN, proxy, and browser warning messages for the affected destination or application. Record any blocked connection, certificate, authentication, or policy event. Do not disable security software or change managed policies.",
+            "help_text": "This read-only review looks for evidence that a higher-layer security or filtering control is handling the connection after core networking has passed.",
+            "next": "security_result"
+        },
+        "security_result": {
+            "type": "question",
+            "question": "Did a security, filtering, certificate, or policy message identify the blocked connection?",
+            "answers": {
+                "yes": {
+                    "label": "Yes",
+                    "next": "security_condition"
+                },
+                "no": {
+                    "label": "No or I'm not sure",
+                    "next": "higher_layer_review"
+                }
+            }
+        },
+        "browser_condition": {
+            "type": "resolution",
+            "title": "Browser- or Website-Specific Condition",
+            "message": "Core networking works and the comparison succeeded outside the original browser context. Review the affected browser's extension, privacy, certificate, cache, and site-specific settings before changing network configuration."
+        },
+        "vpn_proxy_condition": {
+            "type": "resolution",
+            "title": "VPN or Proxy Condition Identified",
+            "message": "Ordinary web access works outside the affected VPN session. Preserve the current configuration and review VPN authentication, certificates, routes, proxy policy, and service status with the appropriate support owner."
+        },
+        "application_condition": {
+            "type": "resolution",
+            "title": "Application-Specific Connectivity Condition",
+            "message": "Other network-enabled software can connect, so the remaining condition is specific to the affected application. Review its account, service endpoint, certificate, proxy, and application-level network settings using the recorded error."
+        },
+        "security_condition": {
+            "type": "resolution",
+            "title": "Security or Filtering Condition Identified",
+            "message": "A firewall, endpoint-security, certificate, proxy, or policy message identified the affected connection. Record the event and have the appropriate administrator review the rule or policy rather than disabling protection."
+        },
+        "higher_layer_review": {
+            "type": "resolution",
+            "title": "Higher-Layer Connectivity Review Needed",
+            "message": "Core networking works, but the comparison did not isolate the remaining condition. Preserve the affected destination, application, time, and exact error so a technician can review authentication, certificates, filtering, service availability, and application-specific behavior."
+        }
+    }
+}

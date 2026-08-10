@@ -7,6 +7,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from curator.calibration import ReasoningCalibrationService
+
 
 MEMORY_SCHEMA_VERSION = "1.0"
 
@@ -177,5 +179,40 @@ class CuratorMemoryStore:
             history.append(event)
             state.setdefault("decisions", []).append({"task_id": task_id, **event})
         task["last_verified_fingerprint"] = value.get("affected_fingerprint")
+        self.save(state)
+        return deepcopy(task)
+
+    def update_review_disposition(
+        self, task_id: str, disposition: str, *, actor: str = "Human"
+    ) -> dict[str, Any]:
+        """Record calibration metadata without changing task lifecycle or content."""
+        allowed = {"NOT_REVIEWED", "USEFUL", "INTENTIONAL", "FALSE_POSITIVE"}
+        if disposition not in allowed:
+            raise CuratorMemoryError(f"Unsupported review disposition: {disposition}")
+        state = self.load()
+        task = state.get("tasks", {}).get(task_id)
+        if not task:
+            raise CuratorMemoryError(f"Knowledge Task '{task_id}' was not found.")
+        if not str(task.get("curator_rule") or "").startswith("CUR-WR-"):
+            raise CuratorMemoryError("Review disposition is only available for workflow-reasoning tasks.")
+        before = str(task.get("review_disposition") or "NOT_REVIEWED")
+        if before == disposition:
+            return deepcopy(task)
+        reviewed_at = datetime.now(timezone.utc).isoformat()
+        task["review_disposition"] = disposition
+        calibration = ReasoningCalibrationService().snapshot(
+            task, disposition, reviewed_at=reviewed_at
+        )
+        task["reasoning_calibration"] = calibration
+        event = {
+            "at": reviewed_at,
+            "actor": actor,
+            "event": "reasoning_review_disposition",
+            "before": before,
+            "after": disposition,
+            "calibration": deepcopy(calibration),
+        }
+        task.setdefault("history", []).append(event)
+        state.setdefault("decisions", []).append({"task_id": task_id, **event})
         self.save(state)
         return deepcopy(task)

@@ -5,6 +5,8 @@ import hashlib
 from copy import deepcopy
 from typing import Any
 
+from curator.calibration import ReasoningCalibrationService
+
 
 class CuratorLearningService:
     """Extract evidence-backed patterns; never changes trusted content."""
@@ -23,6 +25,8 @@ class CuratorLearningService:
                 "evidence_task_ids": sorted(task["task_id"] for task in recurring if task.get("finding_type") == finding_type),
                 "human_gate": True,
             })
+        calibration_service = ReasoningCalibrationService()
+        lessons.extend(calibration_service.recurring_lessons(tasks.values()))
         return {
             "lessons": lessons,
             "recurring_task_count": len(recurring),
@@ -30,6 +34,7 @@ class CuratorLearningService:
             "active_tasks_by_category": dict(categories.most_common()),
             "active_tasks_by_platform": dict(platforms.most_common()),
             "guardrail": "Patterns inform future review; they do not automatically alter trusted content or policy.",
+            "reasoning_calibration": calibration_service.summary(tasks.values()),
         }
 
     def persist_proposed_lessons(self, state: dict[str, Any], analysis: dict[str, Any],

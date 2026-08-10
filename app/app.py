@@ -275,6 +275,13 @@ AVAILABLE_WORKFLOWS = {
         "category": "Networking",
         "platform": "Cross-platform",
     },
+    "higher_layer_connectivity": {
+        "name": "Higher-Layer Connectivity Diagnostics",
+        "description": "Identify browser, VPN, proxy, security-software, and application-specific connectivity conditions.",
+        "icon": "bi-diagram-3",
+        "category": "Networking",
+        "platform": "Cross-platform",
+    },
     "windows_slow": {
         "name": "Computer Running Slowly",
         "description": "Diagnose Windows performance, memory, storage, startup, updates, and security issues.",
@@ -345,6 +352,18 @@ def load_runtime_workflow(engine, workflow_id, catalog=None, version=None):
         engine.load_workflow_data(snapshot["workflow"])
     else:
         engine.load_workflow(workflow_id)
+
+    # Preserve immutable historical publications while allowing a narrowly scoped
+    # runtime navigation enhancement for older active snapshots.
+    runtime_handoffs = {
+        ("network_diagnostics", "advanced_complete"): "higher_layer_connectivity",
+    }
+    for (source_workflow, node_id), destination_workflow in runtime_handoffs.items():
+        if workflow_id != source_workflow:
+            continue
+        node = engine.get_node(node_id)
+        if node is not None and node.type == "resolution" and not node.next_workflow:
+            node.next_workflow = destination_workflow
 
 
 def active_device_profile():
@@ -662,17 +681,25 @@ def content_quality():
 
 @app.route("/curator")
 def curator_dashboard():
-    status = request.args.get("status", "")
     messages = {
         "completed": ("success", "Curator audit completed. The dashboard now shows the latest operational findings."),
         "running": ("warning", "A Curator audit is already running. Return shortly to review the completed report."),
         "failed": ("danger", "The Curator audit could not be completed. Existing reports and trusted content were not changed."),
         "batch_completed": ("success", "The first Assisted Resolution batch was prepared. No drafts, links, or publications were changed."),
         "batch_failed": ("danger", "The Assisted Resolution batch could not be completed safely."),
+        "disposition_updated": ("success", "The reasoning review disposition was recorded as calibration metadata."),
+        "disposition_invalid": ("danger", "The reasoning review disposition could not be recorded."),
     }
-    kind, message = messages.get(status, ("info", ""))
+    notice = request.args.get("notice", "")
+    legacy_status = request.args.get("status", "")
+    kind, message = messages.get(notice or legacy_status, ("info", ""))
     try:
-        dashboard = CuratorDashboardService().dashboard(sort_by=request.args.get("sort", "debt"))
+        filters = {name: request.args.get(name, "") for name in
+                   ("status", "classification", "workflow", "family", "rule", "disposition", "q")}
+        if legacy_status in messages:
+            filters["status"] = ""
+        dashboard = CuratorDashboardService().dashboard(
+            sort_by=request.args.get("sort", "debt"), filters=filters)
     except CuratorMemoryError:
         dashboard = {"has_audit": False, "tasks": [], "recent_audits": []}
         kind, message = "danger", "Curator memory could not be read. Existing trusted content was not changed."
@@ -680,6 +707,25 @@ def curator_dashboard():
         "curator_dashboard.html", dashboard=dashboard, status_kind=kind, status_message=message,
         assisted_batch=CuratorBatchService().latest(),
     )
+
+
+@app.post("/curator/tasks/<task_id>/review-disposition")
+def curator_task_review_disposition(task_id):
+    status = "disposition_updated"
+    try:
+        CuratorTaskService().update_review_disposition(
+            task_id, request.form.get("disposition", ""))
+    except (CuratorMemoryError, ValueError):
+        status = "disposition_invalid"
+    return_to = request.form.get("return_to", "")
+    if not return_to.startswith("/curator") or return_to.startswith("//"):
+        return_to = url_for("curator_dashboard") + "#knowledge-tasks"
+    path, marker, fragment = return_to.partition("#")
+    separator = "&" if "?" in path else "?"
+    destination = f"{path}{separator}notice={status}"
+    if marker:
+        destination += f"#{fragment}"
+    return redirect(destination)
 
 
 @app.route("/curator/growth")
@@ -2699,6 +2745,9 @@ def wizard():
                 session.get("step", 1) - 1,
                 1,
             )
+            continuation = session.get("workflow_continuation")
+            if continuation and previous_workflow == continuation.get("origin_workflow"):
+                session.pop("workflow_continuation", None)
             track_history_progress(
                 previous_node_id,
                 action="back",
@@ -2715,7 +2764,10 @@ def wizard():
                 )
             )
 
-        if current_node.type == "transition":
+        is_workflow_handoff = current_node.type == "transition" or (
+            current_node.type == "resolution" and current_node.next_workflow
+        )
+        if is_workflow_handoff:
             next_workflow = current_node.next_workflow
 
             if next_workflow not in workflow_catalog:
@@ -2754,6 +2806,12 @@ def wizard():
             session["current_node"] = next_node.id
             session["workflow_version"] = next_version
             session["step"] = 0
+            if current_node.type == "resolution":
+                session["workflow_continuation"] = {
+                    "origin_workflow": workflow_name,
+                    "origin_name": workflow_catalog[workflow_name]["name"],
+                    "destination_workflow": next_workflow,
+                }
             track_history_progress(
                 next_node.id,
                 action="transition",
@@ -2912,6 +2970,7 @@ def wizard():
     session["step"] = 1
     session["node_history"] = []
     session["skipped_nodes"] = skipped
+    session.pop("workflow_continuation", None)
     if session.get("learning_mode"):
         session["learning_concepts"] = []
 
@@ -2951,7 +3010,8 @@ def render_wizard(engine, node, knowledge, workflow_catalog=None):
     current_step = max(current_step, 1)
 
     history_record = None
-    if node.type == "resolution":
+    is_continuation_result = node.type == "resolution" and bool(node.next_workflow)
+    if node.type == "resolution" and not is_continuation_result:
         session["workflow_complete"] = True
         current_step = estimated_steps
         progress_percent = 100
@@ -3008,6 +3068,11 @@ def render_wizard(engine, node, knowledge, workflow_catalog=None):
         session.get("node_history")
     ),
     history_record=history_record,
+    continuation_context=(
+        session.get("workflow_continuation")
+        if session.get("workflow_continuation", {}).get("destination_workflow") == workflow_name
+        else None
+    ),
 )
 
 

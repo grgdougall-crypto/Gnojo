@@ -114,10 +114,11 @@
       "message": "The computer can reach the local network, but DNS resolution failed. Record the configured DNS servers and query an organization-approved DNS server explicitly if one is available. Do not replace DNS settings without authorization."
     },
 
-    "advanced_complete": {
-      "type": "resolution",
-      "title": "Core Network Diagnostics Passed",
-      "message": "The computer has a valid IP configuration, can reach the default gateway, and can resolve DNS names. Continue with browser, proxy, VPN, firewall, or application-specific troubleshooting if the issue remains."
-    }
+        "advanced_complete": {
+            "type": "resolution",
+            "title": "Core Network Diagnostics Passed",
+            "message": "The computer has a valid IP configuration, can reach the default gateway, and can resolve DNS names. Continue with browser, proxy, VPN, firewall, or application-specific troubleshooting if the issue remains.",
+            "next_workflow": "higher_layer_connectivity"
+        }
   }
 }

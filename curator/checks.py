@@ -13,6 +13,7 @@ from app.services.curator_workflow_lifecycle_service import CuratorWorkflowLifec
 
 from .models import Finding, InventoryRecord
 from .runtime_rules import ActiveRuleRegistry
+from .workflow_reasoning import WorkflowReasoningAuditor
 
 
 SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
@@ -236,6 +237,30 @@ class CuratorChecks:
                     evidence=[str(node.get("instruction"))[:300]], rule="CUR-REL-ARTICLE-CANDIDATE",
                     action="Decide whether concise help text is sufficient or a reviewed article would add value.",
                     domain="content", future_fix=True,
+                ))
+        actionable = self.lifecycle.resolve(record.identifier)
+        is_actionable_copy = not actionable or actionable.source_path == record.source_path
+        if is_actionable_copy:
+            for observation in WorkflowReasoningAuditor().analyze(record.raw):
+                observation_record = (self._node_record(
+                    record, observation.node_id, nodes.get(observation.node_id, {}))
+                    if observation.node_id else record)
+                evidence = list(observation.evidence)
+                if observation.structural:
+                    evidence.append(f"Structural evidence: {observation.structural}")
+                findings.append(FindingFactory.create(
+                    finding_type=observation.finding_type,
+                    severity=observation.severity,
+                    confidence=observation.confidence,
+                    record=observation_record,
+                    title=observation.title,
+                    explanation=observation.explanation,
+                    evidence=evidence,
+                    rule=observation.rule,
+                    action=observation.action,
+                    domain="workflow",
+                    classification=observation.classification,
+                    future_fix=False,
                 ))
         return findings
 

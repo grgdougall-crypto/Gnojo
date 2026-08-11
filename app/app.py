@@ -138,6 +138,10 @@ from app.services.knowledge_draft_assembly_service import (
     KnowledgeDraftAssemblyError,
     KnowledgeDraftAssemblyService,
 )
+from app.services.knowledge_workflow_generation_service import (
+    KnowledgeWorkflowGenerationError,
+    KnowledgeWorkflowGenerationService,
+)
 from curator.locking import AuditAlreadyRunningError
 from curator.governance import CuratorGovernanceError
 from curator.growth import CuratorGrowthError
@@ -834,8 +838,80 @@ def knowledge_coverage_campaign_detail(campaign_id):
         draft_packages = KnowledgeDraftGenerationService().list_for_campaign(campaign_id)
     except KnowledgeDraftGenerationError:
         draft_packages = []
+    try:
+        workflow_packages = KnowledgeWorkflowGenerationService().list_for_campaign(campaign_id)
+    except KnowledgeWorkflowGenerationError:
+        workflow_packages = []
     return render_template("knowledge_coverage_campaign_detail.html", campaign=campaign,
-                           research_packages=research_packages, draft_packages=draft_packages)
+                           research_packages=research_packages, draft_packages=draft_packages,
+                           workflow_packages=workflow_packages)
+
+
+@app.post("/curator/growth/coverage-campaigns/<campaign_id>/workflow-generation")
+def knowledge_workflow_generation_prepare(campaign_id):
+    try:
+        package = KnowledgeWorkflowGenerationService().prepare(
+            campaign_id, request.form.get("work_item_id", ""), request.form.get("intent", "")
+        )
+    except KnowledgeWorkflowGenerationError as exception:
+        return redirect(url_for("knowledge_coverage_campaign_detail", campaign_id=campaign_id,
+                                workflow_error=str(exception)))
+    return redirect(url_for("knowledge_workflow_generation_detail", generation_id=package["generation_id"]))
+
+
+@app.get("/curator/growth/workflow-generation/<generation_id>")
+def knowledge_workflow_generation_detail(generation_id):
+    try:
+        package = KnowledgeWorkflowGenerationService().get(generation_id)
+    except KnowledgeWorkflowGenerationError:
+        abort(404)
+    return render_template("knowledge_workflow_generation_detail.html", package=package,
+                           workflow_error=request.args.get("workflow_error", ""))
+
+
+@app.post("/curator/growth/workflow-generation/<generation_id>/plan")
+def knowledge_workflow_generation_plan(generation_id):
+    try:
+        KnowledgeWorkflowGenerationService().plan(generation_id)
+        error = ""
+    except KnowledgeWorkflowGenerationError as exception:
+        error = str(exception)
+    return redirect(url_for("knowledge_workflow_generation_detail", generation_id=generation_id,
+                            workflow_error=error))
+
+
+@app.post("/curator/growth/workflow-generation/<generation_id>/draft")
+def knowledge_workflow_generation_draft(generation_id):
+    try:
+        KnowledgeWorkflowGenerationService().prepare_draft(generation_id)
+        error = ""
+    except KnowledgeWorkflowGenerationError as exception:
+        error = str(exception)
+    return redirect(url_for("knowledge_workflow_generation_detail", generation_id=generation_id,
+                            workflow_error=error))
+
+
+@app.post("/curator/growth/workflow-generation/<generation_id>/review")
+def knowledge_workflow_generation_review(generation_id):
+    try:
+        KnowledgeWorkflowGenerationService().review(
+            generation_id, request.form.get("decision", ""), request.form.get("notes", "")
+        )
+        error = ""
+    except KnowledgeWorkflowGenerationError as exception:
+        error = str(exception)
+    return redirect(url_for("knowledge_workflow_generation_detail", generation_id=generation_id,
+                            workflow_error=error))
+
+
+@app.post("/curator/growth/workflow-generation/<generation_id>/handoff")
+def knowledge_workflow_generation_handoff(generation_id):
+    try:
+        package = KnowledgeWorkflowGenerationService().handoff(generation_id)
+    except KnowledgeWorkflowGenerationError as exception:
+        return redirect(url_for("knowledge_workflow_generation_detail", generation_id=generation_id,
+                                workflow_error=str(exception)))
+    return redirect(url_for("workflow_editor", filename=package["content_studio_filename"]))
 
 
 @app.post("/curator/growth/coverage-campaigns/<campaign_id>/analyze")

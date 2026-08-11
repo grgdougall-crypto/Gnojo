@@ -27,7 +27,7 @@
 
   <section class="quality-section"><span class="section-eyebrow">Reuse before duplication</span><h2>Canonical Reuse</h2>{% for item in plan.canonical_reuse %}<article class="integrity-record"><strong>{{ item.title }}</strong><p class="mb-0">{{ item.article_id }} &middot; {{ item.decision|replace('_',' ')|title }}</p></article>{% else %}<p class="text-muted">No approved canonical section reuse was identified.</p>{% endfor %}</section>
 
-  <section class="quality-section"><span class="section-eyebrow">Drafting boundary</span><h2>Next Step</h2>{% if plan.status == 'ready_for_drafting' %}<form method="post" action="{{ url_for('knowledge_claim_planning_apply', plan_id=plan.claim_plan_id) }}"><button class="btn btn-success" type="submit">Apply Approved Plan to Draft</button></form>{% else %}<div class="alert alert-warning">Only a complete plan with human-approved claims can guide drafting.</div>{% endif %}</section>
+  <section class="quality-section"><span class="section-eyebrow">Drafting boundary</span><h2>Next Step</h2>{% if plan.status == 'ready_for_drafting' %}<form method="post" action="{{ url_for('knowledge_draft_assembly_create', plan_id=plan.claim_plan_id) }}"><button class="btn btn-success" type="submit">Assemble Draft</button></form>{% else %}<div class="alert alert-warning">Only a complete plan with human-approved claims can be assembled.</div>{% endif %}</section>
   <section class="quality-section"><span class="section-eyebrow">Traceable lifecycle</span><h2>History</h2><ol>{% for event in plan.history|reverse %}<li><strong>{{ event.event|replace('_',' ')|title }}</strong> &middot; {{ event.at }} &middot; {{ event.actor }}</li>{% endfor %}</ol></section>
 </main>
 {% endblock %}

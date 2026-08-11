@@ -134,6 +134,10 @@ from app.services.knowledge_claim_planning_service import (
     KnowledgeClaimPlanningError,
     KnowledgeClaimPlanningService,
 )
+from app.services.knowledge_draft_assembly_service import (
+    KnowledgeDraftAssemblyError,
+    KnowledgeDraftAssemblyService,
+)
 from curator.locking import AuditAlreadyRunningError
 from curator.governance import CuratorGovernanceError
 from curator.growth import CuratorGrowthError
@@ -996,8 +1000,10 @@ def knowledge_draft_generation_detail(package_id):
         abort(404)
     claim_planning = KnowledgeClaimPlanningService()
     claim_plans = claim_planning.list_for_kdg(package_id)
+    assemblies = KnowledgeDraftAssemblyService().list_for_kdg(package_id)
     return render_template("knowledge_draft_generation_detail.html", package=package,
                            claim_plans=claim_plans,
+                           assemblies=assemblies,
                            claim_planning_eligible=claim_planning.is_eligible(package_id),
                            draft_error=request.args.get("draft_error", ""))
 
@@ -1085,6 +1091,50 @@ def knowledge_claim_planning_apply(plan_id):
         return redirect(url_for("knowledge_claim_planning_detail", plan_id=plan_id,
                                 planning_error=str(exception)))
     return redirect(url_for("knowledge_draft_generation_detail", package_id=plan["kdg_package_id"]))
+
+
+@app.post("/curator/growth/claim-planning/<plan_id>/assemble")
+def knowledge_draft_assembly_create(plan_id):
+    try:
+        assembly = KnowledgeDraftAssemblyService().assemble(plan_id)
+    except KnowledgeDraftAssemblyError as exception:
+        return redirect(url_for("knowledge_claim_planning_detail", plan_id=plan_id,
+                                planning_error=str(exception)))
+    return redirect(url_for("knowledge_draft_assembly_detail",
+                            assembly_id=assembly["assembly_id"]))
+
+
+@app.get("/curator/growth/draft-assembly/<assembly_id>")
+def knowledge_draft_assembly_detail(assembly_id):
+    try:
+        assembly = KnowledgeDraftAssemblyService().get(assembly_id)
+    except KnowledgeDraftAssemblyError:
+        abort(404)
+    return render_template("knowledge_draft_assembly_detail.html", assembly=assembly,
+                           assembly_error=request.args.get("assembly_error", ""))
+
+
+@app.post("/curator/growth/draft-assembly/<assembly_id>/reassemble")
+def knowledge_draft_assembly_reassemble(assembly_id):
+    service = KnowledgeDraftAssemblyService()
+    try:
+        assembly = service.get(assembly_id)
+        service.assemble(assembly["claim_plan_id"])
+        error = ""
+    except KnowledgeDraftAssemblyError as exception:
+        error = str(exception)
+    return redirect(url_for("knowledge_draft_assembly_detail", assembly_id=assembly_id,
+                            assembly_error=error))
+
+
+@app.post("/curator/growth/draft-assembly/<assembly_id>/handoff")
+def knowledge_draft_assembly_handoff(assembly_id):
+    try:
+        assembly = KnowledgeDraftAssemblyService().handoff(assembly_id)
+    except KnowledgeDraftAssemblyError as exception:
+        return redirect(url_for("knowledge_draft_assembly_detail", assembly_id=assembly_id,
+                                assembly_error=str(exception)))
+    return redirect(url_for("review_draft", article_id=assembly["content_studio_article_id"]))
 
 
 @app.post("/curator/growth/draft-generation/<package_id>/refine")

@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}{{ assembly.article_title }} | Draft Assembly{% endblock %}
+{% block content %}
+<main class="container curator-page" id="main-content" aria-labelledby="assemblyTitle">
+  {% with curator_active='growth' %}{% include 'partials/_curator_nav.html' %}{% endwith %}
+  <nav aria-label="Breadcrumb"><a href="{{ url_for('knowledge_claim_planning_detail', plan_id=assembly.claim_plan_id) }}">Claim Plan</a> / {{ assembly.assembly_id }}</nav>
+  <header class="curator-heading"><div><span class="section-eyebrow">Supervised plan-to-draft assembly</span><h1 id="assemblyTitle">{{ assembly.article_title }}</h1><p>Review exactly how approved claims became a governed article draft.</p></div><span class="badge text-bg-info">{{ assembly.status|replace('_',' ')|title }}</span></header>
+  {% if assembly_error %}<div class="alert alert-danger">{{ assembly_error }}</div>{% endif %}
+  <div class="alert alert-warning">This assembly is not published knowledge. Content Studio review and publication remain explicit human decisions.</div>
+
+  <section class="curator-metrics" aria-label="Assembly summary">
+    <article><span>Assembly ID</span><strong>{{ assembly.assembly_id }}</strong></article>
+    <article><span>Claim plan</span><strong>{{ assembly.claim_plan_id }}</strong></article>
+    <article><span>Status</span><strong>{{ assembly.status|replace('_',' ')|title }}</strong></article>
+    <article><span>Completeness</span><strong>{{ assembly.completeness }}%</strong></article>
+  </section>
+
+  <section class="quality-section"><span class="section-eyebrow">Approved authority only</span><h2>Claim Coverage</h2><p><strong>{{ assembly.approved_claim_ids|length }}</strong> approved claims assembled; <strong>{{ assembly.excluded_claim_ids|default([])|length }}</strong> rejected, unapproved, or stale claims excluded; <strong>{{ assembly.supporting_evidence_ids|length }}</strong> EVD records support the draft.</p>{% for item in assembly.section_map %}<article class="integrity-record mb-2"><strong>{{ item.section|replace('_',' ')|title }}</strong><p class="mb-0">{{ item.claim_ids|length }} claims &middot; {{ item.evidence_ids|length }} evidence units{% if item.required %} &middot; Required{% endif %}</p></article>{% endfor %}</section>
+
+  {% set article = assembly.assembled_content %}
+  <section class="quality-section"><span class="section-eyebrow">Complete deterministic output</span><h2>Article Preview</h2><h3>{{ article.title }}</h3><p>{{ article.overview }}</p>
+    {% for section, content in article.assembly_sections.items() %}<article class="integrity-record mb-3"><h4>{{ section|replace('_',' ')|title }}</h4>{% if section == 'commands' %}{% for item in content %}<pre><code>{{ item }}</code></pre>{% endfor %}{% elif section in ['procedure','verification','prerequisites'] %}<ol>{% for item in content %}<li>{{ item }}</li>{% endfor %}</ol>{% else %}<ul>{% for item in content %}<li>{{ item }}</li>{% endfor %}</ul>{% endif %}</article>{% endfor %}
+    <h4>Sources</h4><ul>{% for source in article.sources %}<li><a href="{{ source.url }}" target="_blank" rel="noopener">{{ source.title }}</a></li>{% endfor %}</ul>
+  </section>
+
+  <section class="quality-section"><span class="section-eyebrow">Claim-level lineage</span><h2>Provenance</h2>{% for section in assembly.section_map %}<article class="integrity-record mb-2"><strong>{{ section.section|replace('_',' ')|title }}</strong><p>CLM: {{ section.claim_ids|join(', ') or 'Context only' }}</p><p class="mb-0">EVD: {{ section.evidence_ids|join(', ') or 'Context only' }}</p></article>{% endfor %}{% for reuse in assembly.canonical_reuse %}<div class="alert alert-info">Canonical reuse: {{ reuse.article_id }} &middot; {{ reuse.title }}</div>{% endfor %}</section>
+
+  <section class="quality-section"><span class="section-eyebrow">Governed checks</span><h2>Validation</h2>{% for item in assembly.validation_results %}<div class="alert {{ 'alert-success' if item.level == 'passed' else 'alert-danger' }}"><strong>{{ item.check|replace('_',' ')|title }}</strong>: {{ item.message }}</div>{% endfor %}{% for warning in assembly.warnings %}<div class="alert alert-warning">{{ warning }}</div>{% endfor %}</section>
+
+  <section class="quality-section"><span class="section-eyebrow">Explicit human boundary</span><h2>Actions</h2>{% if assembly.status == 'ready_for_review' %}<form class="d-inline" method="post" action="{{ url_for('knowledge_draft_assembly_handoff', assembly_id=assembly.assembly_id) }}"><button class="btn btn-success" type="submit">Send to Content Studio</button></form>{% elif assembly.status == 'stale' %}<form class="d-inline" method="post" action="{{ url_for('knowledge_draft_assembly_reassemble', assembly_id=assembly.assembly_id) }}"><button class="btn btn-info" type="submit">Reassemble Current Plan</button></form>{% else %}<div class="alert alert-warning">Resolve assembly blockers before Content Studio handoff.</div>{% endif %}{% if assembly.content_studio_article_id %}<a class="btn btn-primary" href="{{ url_for('review_draft', article_id=assembly.content_studio_article_id) }}">Open Content Studio Draft</a>{% endif %}</section>
+  <section class="quality-section"><span class="section-eyebrow">Traceable lifecycle</span><h2>History</h2><ol>{% for event in assembly.history|reverse %}<li><strong>{{ event.event|replace('_',' ')|title }}</strong> &middot; {{ event.at }} &middot; {{ event.actor }}</li>{% endfor %}</ol></section>
+</main>
+{% endblock %}

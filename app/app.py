@@ -858,9 +858,14 @@ def knowledge_campaign_orchestration_detail(campaign_id):
         orchestration = service.get_or_create(campaign_id)
     except (KnowledgeCampaignOrchestrationError, KnowledgeCoveragePlannerError):
         abort(404)
+    for item in orchestration.get("work_item_states", []):
+        destination = item.get("review_destination") or {}
+        if destination.get("resolved"):
+            item["review_link"] = url_for(destination["endpoint"], **destination.get("route_values", {}))
     return render_template("knowledge_campaign_orchestration_detail.html",
                            orchestration=orchestration,
-                           orchestration_error=request.args.get("orchestration_error", ""))
+                           orchestration_error=request.args.get("orchestration_error", ""),
+                           orchestration_notice=request.args.get("orchestration_notice", ""))
 
 
 @app.post("/curator/growth/orchestration/<orchestration_id>/mode")
@@ -883,11 +888,18 @@ def knowledge_campaign_orchestration_continue(orchestration_id):
     try:
         orchestration = service.continue_campaign(orchestration_id)
         campaign_id = orchestration["campaign_id"]
-        error = ""
+        outcomes = orchestration.get("execution", {}).get("outcomes", [])
+        failed = next((item for item in outcomes if item.get("status") != "completed"), None)
+        error = (failed or {}).get("message", "")
+        notice = "" if failed else (
+            "Campaign advanced one recommended work item." if outcomes
+            else "No machine-ready campaign action is currently available."
+        )
     except KnowledgeCampaignOrchestrationError as exception:
         error = str(exception)
+        notice = ""
     return redirect(url_for("knowledge_campaign_orchestration_detail", campaign_id=campaign_id,
-                            orchestration_error=error))
+                            orchestration_error=error, orchestration_notice=notice))
 
 
 @app.post("/curator/growth/orchestration/<orchestration_id>/items/<work_item_id>/advance")

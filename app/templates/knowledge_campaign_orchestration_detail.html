@@ -8,6 +8,7 @@
     <form method="post" action="{{ url_for('knowledge_campaign_orchestration_continue', orchestration_id=orchestration.orchestration_id) }}"><input type="hidden" name="campaign_id" value="{{ orchestration.campaign_id }}"><button class="btn btn-primary btn-lg" type="submit" {% if orchestration.mode != 'supervised' %}disabled{% endif %}>Continue Campaign</button></form>
   </header>
   {% if orchestration_error %}<div class="alert alert-danger">{{ orchestration_error }}</div>{% endif %}
+  {% if orchestration_notice %}<div class="alert alert-success">{{ orchestration_notice }}</div>{% endif %}
 
   <section class="curator-metrics" aria-label="Campaign readiness">
     <article><span>Status</span><strong>{{ orchestration.status|replace('_',' ')|title }}</strong></article>

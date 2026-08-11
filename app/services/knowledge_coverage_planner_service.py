@@ -202,18 +202,21 @@ class KnowledgeCoveragePlannerService:
         for item in reuse:
             area = {"area_id": item["areas"][0], "title": item["areas"][0].replace("-", " ").title()}
             gaps.append(self._gap(campaign_id, "reusable_pattern", area, "relationships_reuse",
-                                  evidence=item["evidence"]))
+                                  evidence=item["evidence"], discriminator=item["opportunity_id"],
+                                  reuse_opportunity_id=item["opportunity_id"],
+                                  target_asset=item.get("article_id") or item.get("workflow_id")))
         return sorted(gaps, key=lambda item: (item["area_id"], item["gap_type"], item["gap_id"]))
 
     def _gap(self, campaign_id: str, gap_type: str, area: dict[str, Any], facet: str,
-             evidence: list[str] | None = None) -> dict[str, Any]:
-        gap_id = self._stable_id("KCG", campaign_id, area["area_id"], gap_type)
+             evidence: list[str] | None = None, discriminator: str = "", **relationships) -> dict[str, Any]:
+        gap_id = self._stable_id("KCG", campaign_id, area["area_id"], gap_type, discriminator)
         return {
             "gap_id": gap_id, "gap_type": gap_type, "area_id": area["area_id"],
             "area_title": area["title"], "facet": facet,
             "summary": f"{area['title']} has {gap_type.replace('_', ' ')}.",
             "priority": "medium" if gap_type.startswith("missing_") else "low",
             "confidence": "high", "evidence": evidence or [f"Coverage facet '{facet}' is not present in the current inventory."],
+            **relationships,
         }
 
     def _work_item(self, campaign_id: str, gap: dict[str, Any]) -> dict[str, Any]:
@@ -221,7 +224,8 @@ class KnowledgeCoveragePlannerService:
             "work_item_id": self._stable_id("KCW", campaign_id, gap["gap_id"]),
             "campaign_id": campaign_id, "gap_id": gap["gap_id"],
             "work_type": GAP_WORK_TYPES[gap["gap_type"]], "area_id": gap["area_id"],
-            "target_asset": None, "priority": gap["priority"],
+            "target_asset": gap.get("target_asset"), "priority": gap["priority"],
+            "reuse_opportunity_id": gap.get("reuse_opportunity_id"),
             "confidence": gap["confidence"], "dependencies": [],
             "evidence": list(gap["evidence"]), "status": "proposed",
         }
@@ -240,7 +244,9 @@ class KnowledgeCoveragePlannerService:
                 continue
             article = next((item for item in records if item.content_type == "article" and item.identifier == article_id), None)
             text = self._search_text(article.raw) if article else article_id
-            areas = [area["id"] for area in domain["areas"] if self._term_match(text, area["terms"])] or [domain["areas"][0]["id"]]
+            areas = [area["id"] for area in domain["areas"] if self._term_match(text, area["terms"])]
+            if not areas:
+                continue
             opportunities.append({
                 "opportunity_id": self._stable_id("KCR", campaign_id, article_id),
                 "type": "shared_article", "article_id": article_id,

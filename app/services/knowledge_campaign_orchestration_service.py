@@ -15,6 +15,7 @@ from app.services.knowledge_draft_generation_service import KnowledgeDraftGenera
 from app.services.knowledge_evidence_extraction_service import KnowledgeEvidenceExtractionService
 from app.services.knowledge_source_research_service import KnowledgeSourceResearchService
 from app.services.knowledge_workflow_generation_service import KnowledgeWorkflowGenerationService
+from app.services.campaign_review_destination_service import CampaignReviewDestinationService
 
 
 class KnowledgeCampaignOrchestrationError(ValueError):
@@ -54,7 +55,7 @@ class KnowledgeCampaignOrchestrationService:
 
     def __init__(self, repository_root: Path | None = None, campaign_root: Path | None = None,
                  *, planner=None, research=None, evidence=None, generation=None,
-                 claims=None, assembly=None, workflows=None, max_transitions: int = 24,
+                 claims=None, assembly=None, workflows=None, review_destinations=None, max_transitions: int = 24,
                  max_work_items: int = 12, max_external_operations: int = 1):
         self.repository_root = (repository_root or Path(__file__).resolve().parents[2]).resolve()
         self.campaign_root = (campaign_root or self.repository_root / "knowledge_campaigns").resolve()
@@ -66,6 +67,7 @@ class KnowledgeCampaignOrchestrationService:
         self.claims = claims or KnowledgeClaimPlanningService(self.generation, self.campaign_root)
         self.assembly = assembly or KnowledgeDraftAssemblyService(self.generation, self.campaign_root)
         self.workflows = workflows or KnowledgeWorkflowGenerationService(self.repository_root, self.campaign_root)
+        self.review_destinations = review_destinations or CampaignReviewDestinationService(self.repository_root)
         self.limits = {
             "max_transitions": max(1, int(max_transitions)),
             "max_work_items": max(1, int(max_work_items)),
@@ -140,31 +142,20 @@ class KnowledgeCampaignOrchestrationService:
         if record.get("mode") != "supervised":
             raise KnowledgeCampaignOrchestrationError("Continue Campaign is available only in supervised mode.")
         outcomes, transitions, external = [], 0, 0
-        processed_actions: set[tuple[str, str]] = set()
-        processed_items: set[str] = set()
-        while transitions < self.limits["max_transitions"]:
-            record = self.refresh(orchestration_id)
-            queue = [item for item in record.get("actionable_queue", [])
-                     if (item["work_item_id"], item.get("next_action")) not in processed_actions]
-            candidate = next((item for item in queue if item["work_item_id"] in processed_items or
-                              len(processed_items) < self.limits["max_work_items"]), None)
-            if not candidate:
-                break
-            policy = ACTION_POLICY.get(candidate["next_action"], {})
-            if policy.get("authority") != "machine_safe":
-                break
-            if policy.get("external") and external >= self.limits["max_external_operations"]:
-                outcomes.append({"work_item_id": candidate["work_item_id"], "status": "limit_reached",
-                                 "action": candidate["next_action"], "message": "External operation limit reached."})
-                break
-            outcome = self._execute(record["campaign_id"], candidate["work_item_id"], candidate["next_action"])
-            outcomes.append(outcome)
-            processed_actions.add((candidate["work_item_id"], candidate["next_action"]))
-            processed_items.add(candidate["work_item_id"])
-            transitions += 1
-            external += int(bool(policy.get("external")))
-            if outcome["status"] == "failed":
-                continue
+        candidate = record.get("next_recommended_action")
+        if candidate and candidate.get("action_authority") == "machine_safe":
+            policy = ACTION_POLICY.get(candidate.get("next_action"), {})
+            if policy.get("authority") == "machine_safe":
+                if policy.get("external") and self.limits["max_external_operations"] < 1:
+                    outcomes.append({"work_item_id": candidate["work_item_id"], "status": "limit_reached",
+                                     "action": candidate["next_action"],
+                                     "message": "External operation limit reached."})
+                else:
+                    outcomes.append(self._execute(
+                        record["campaign_id"], candidate["work_item_id"], candidate["next_action"]
+                    ))
+                    transitions = 1
+                    external = int(bool(policy.get("external")))
         record = self.refresh(orchestration_id)
         if outcomes:
             record["last_execution_at"] = self._now()
@@ -202,12 +193,16 @@ class KnowledgeCampaignOrchestrationService:
                 "blocker": None, "dependencies": [], "stale": False}
         if campaign.get("status") == "draft" or not campaign.get("last_analyzed_at"):
             return self._action(base, "coverage_identified", "analyze_coverage")
-        reuse = next((item for item in campaign.get("reuse_opportunities") or []
-                      if work.get("area_id") in (item.get("areas") or [])), None)
+        reuse = self._reuse_for_work(campaign, work)
         if reuse and work.get("work_type") not in WORKFLOW_TYPES:
+            destination = self.review_destinations.resolve(reuse)
+            if not destination.get("resolved"):
+                return self._blocked(base, "reuse_target", "Reuse identity",
+                                     destination.get("reason", "The reuse target could not be resolved."),
+                                     "Reconcile the reuse opportunity with an existing governed resource.")
             base.update(stage="reuse_available", state="complete", next_action=None,
-                        package_id=reuse.get("article_id"), dependencies=[reuse.get("article_id")],
-                        review_link=f"/knowledge/articles/{reuse.get('article_id')}",
+                        package_id=destination["resource_id"], dependencies=[destination["resource_id"]],
+                        review_destination=destination,
                         reuse={"opportunity_id": reuse.get("opportunity_id"),
                                "article_id": reuse.get("article_id"),
                                "workflow_ids": list(reuse.get("workflow_ids") or [])})
@@ -216,10 +211,35 @@ class KnowledgeCampaignOrchestrationService:
             return self._resolve_workflow(campaign, work, base)
         return self._resolve_article(campaign, work, base)
 
+    @staticmethod
+    def _reuse_for_work(campaign, work):
+        candidates = list(campaign.get("reuse_opportunities") or [])
+        explicit = work.get("reuse_opportunity_id")
+        if explicit:
+            return next((item for item in candidates if item.get("opportunity_id") == explicit), None)
+        target = work.get("target_asset")
+        if target:
+            return next((item for item in candidates if target in {
+                item.get("article_id"), item.get("workflow_id"), item.get("target_asset")}), None)
+        evidence = set(work.get("evidence") or [])
+        evidence_matches = [item for item in candidates if evidence.intersection(item.get("evidence") or [])]
+        if len(evidence_matches) == 1:
+            return evidence_matches[0]
+        area_matches = [item for item in candidates if work.get("area_id") in (item.get("areas") or [])]
+        return area_matches[0] if len(area_matches) == 1 else None
+
     def _resolve_workflow(self, campaign, work, base):
         packages = [item for item in self.workflows.list_for_campaign(campaign["campaign_id"])
                     if item.get("work_item_id") == work["work_item_id"]]
         if not packages:
+            eligibility = self.workflows.eligibility(campaign["campaign_id"], work["work_item_id"])
+            if not eligibility.get("eligible"):
+                reasons = " ".join(str(item) for item in eligibility.get("reasons") or [])
+                return self._blocked(
+                    base, "workflow_eligibility", "Workflow generation",
+                    reasons or "Phase 8 workflow-generation prerequisites are not satisfied.",
+                    "Prepare and approve the required structured workflow claims before creating a workflow package.",
+                )
             return self._action(base, "workflow_planning_ready", "prepare_workflow_package")
         package = packages[0]
         base.update(package_id=package["generation_id"], dependencies=[package["generation_id"]],
@@ -352,6 +372,15 @@ class KnowledgeCampaignOrchestrationService:
                     "at": self._now()}
 
     def _projection(self, campaign, states):
+        unique = []
+        seen = set()
+        for item in states:
+            identity = (item.get("work_item_id"), (item.get("reuse") or {}).get("opportunity_id"),
+                        item.get("stage"), item.get("package_id"))
+            if identity not in seen:
+                seen.add(identity)
+                unique.append(item)
+        states = unique
         actionable = [item for item in states if item.get("action_authority") == "machine_safe"]
         if (campaign.get("status") == "draft" or not campaign.get("last_analyzed_at")) and not actionable:
             actionable.append({

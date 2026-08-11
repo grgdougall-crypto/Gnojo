@@ -142,6 +142,10 @@ from app.services.knowledge_workflow_generation_service import (
     KnowledgeWorkflowGenerationError,
     KnowledgeWorkflowGenerationService,
 )
+from app.services.knowledge_campaign_orchestration_service import (
+    KnowledgeCampaignOrchestrationError,
+    KnowledgeCampaignOrchestrationService,
+)
 from curator.locking import AuditAlreadyRunningError
 from curator.governance import CuratorGovernanceError
 from curator.growth import CuratorGrowthError
@@ -845,6 +849,59 @@ def knowledge_coverage_campaign_detail(campaign_id):
     return render_template("knowledge_coverage_campaign_detail.html", campaign=campaign,
                            research_packages=research_packages, draft_packages=draft_packages,
                            workflow_packages=workflow_packages)
+
+
+@app.get("/curator/growth/coverage-campaigns/<campaign_id>/orchestration")
+def knowledge_campaign_orchestration_detail(campaign_id):
+    service = KnowledgeCampaignOrchestrationService()
+    try:
+        orchestration = service.get_or_create(campaign_id)
+    except (KnowledgeCampaignOrchestrationError, KnowledgeCoveragePlannerError):
+        abort(404)
+    return render_template("knowledge_campaign_orchestration_detail.html",
+                           orchestration=orchestration,
+                           orchestration_error=request.args.get("orchestration_error", ""))
+
+
+@app.post("/curator/growth/orchestration/<orchestration_id>/mode")
+def knowledge_campaign_orchestration_mode(orchestration_id):
+    service = KnowledgeCampaignOrchestrationService()
+    try:
+        orchestration = service.set_mode(orchestration_id, request.form.get("mode", ""))
+    except KnowledgeCampaignOrchestrationError as exception:
+        return redirect(url_for("knowledge_campaign_orchestration_detail",
+                                campaign_id=request.form.get("campaign_id", ""),
+                                orchestration_error=str(exception)))
+    return redirect(url_for("knowledge_campaign_orchestration_detail",
+                            campaign_id=orchestration["campaign_id"]))
+
+
+@app.post("/curator/growth/orchestration/<orchestration_id>/continue")
+def knowledge_campaign_orchestration_continue(orchestration_id):
+    service = KnowledgeCampaignOrchestrationService()
+    campaign_id = request.form.get("campaign_id", "")
+    try:
+        orchestration = service.continue_campaign(orchestration_id)
+        campaign_id = orchestration["campaign_id"]
+        error = ""
+    except KnowledgeCampaignOrchestrationError as exception:
+        error = str(exception)
+    return redirect(url_for("knowledge_campaign_orchestration_detail", campaign_id=campaign_id,
+                            orchestration_error=error))
+
+
+@app.post("/curator/growth/orchestration/<orchestration_id>/items/<work_item_id>/advance")
+def knowledge_campaign_orchestration_advance(orchestration_id, work_item_id):
+    service = KnowledgeCampaignOrchestrationService()
+    campaign_id = request.form.get("campaign_id", "")
+    try:
+        orchestration = service.advance_item(orchestration_id, work_item_id)
+        campaign_id = orchestration["campaign_id"]
+        error = ""
+    except KnowledgeCampaignOrchestrationError as exception:
+        error = str(exception)
+    return redirect(url_for("knowledge_campaign_orchestration_detail", campaign_id=campaign_id,
+                            orchestration_error=error))
 
 
 @app.post("/curator/growth/coverage-campaigns/<campaign_id>/workflow-generation")

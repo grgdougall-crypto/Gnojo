@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Campaign Control Center | Gnojo{% endblock %}
+{% block content %}
+<main class="container curator-page" id="main-content" aria-labelledby="controlTitle">
+  {% with curator_active='growth' %}{% include 'partials/_curator_nav.html' %}{% endwith %}
+  <nav aria-label="Breadcrumb"><a href="{{ url_for('knowledge_coverage_campaign_detail', campaign_id=orchestration.campaign_id) }}">Coverage Campaign</a> / Control Center</nav>
+  <header class="curator-heading"><div><span class="section-eyebrow">Supervised Knowledge Factory</span><h1 id="controlTitle">Campaign Control Center</h1><p>{{ orchestration.campaign_objective }}</p></div>
+    <form method="post" action="{{ url_for('knowledge_campaign_orchestration_continue', orchestration_id=orchestration.orchestration_id) }}"><input type="hidden" name="campaign_id" value="{{ orchestration.campaign_id }}"><button class="btn btn-primary btn-lg" type="submit" {% if orchestration.mode != 'supervised' %}disabled{% endif %}>Continue Campaign</button></form>
+  </header>
+  {% if orchestration_error %}<div class="alert alert-danger">{{ orchestration_error }}</div>{% endif %}
+
+  <section class="curator-metrics" aria-label="Campaign readiness">
+    <article><span>Status</span><strong>{{ orchestration.status|replace('_',' ')|title }}</strong></article>
+    <article><span>Complete</span><strong>{{ orchestration.readiness_summary.completion_percent }}%</strong></article>
+    <article><span>Machine ready</span><strong>{{ orchestration.readiness_summary.machine_ready }}</strong></article>
+    <article><span>Human review</span><strong>{{ orchestration.readiness_summary.human_review }}</strong></article>
+    <article><span>Blocked</span><strong>{{ orchestration.readiness_summary.blocked }}</strong></article>
+  </section>
+
+  <section class="quality-section" aria-labelledby="statusTitle"><div class="quality-section__heading"><div><span class="section-eyebrow">Campaign status</span><h2 id="statusTitle">Operating Mode</h2></div>
+    <form class="d-flex gap-2" method="post" action="{{ url_for('knowledge_campaign_orchestration_mode', orchestration_id=orchestration.orchestration_id) }}"><input type="hidden" name="campaign_id" value="{{ orchestration.campaign_id }}"><select class="form-select" name="mode"><option value="supervised" {% if orchestration.mode == 'supervised' %}selected{% endif %}>Supervised</option><option value="manual" {% if orchestration.mode == 'manual' %}selected{% endif %}>Manual</option></select><button class="btn btn-outline-primary" type="submit">Set mode</button></form></div>
+    <p class="mb-0">{{ orchestration.orchestration_id }} · {{ orchestration.mode|title }} mode · User-triggered only</p>
+  </section>
+
+  <section class="quality-section" aria-labelledby="nextTitle"><span class="section-eyebrow">Next action</span><h2 id="nextTitle">Next Recommended Action</h2>
+    {% if orchestration.next_recommended_action %}<strong>{{ (orchestration.next_recommended_action.next_action or orchestration.next_recommended_action.action or orchestration.next_recommended_action.blocker_type)|replace('_',' ')|title }}</strong><p class="mb-0">{{ orchestration.next_recommended_action.title or orchestration.next_recommended_action.explanation or orchestration.next_recommended_action.why }}</p>{% else %}<p class="text-muted mb-0">No actionable work remains.</p>{% endif %}
+  </section>
+
+  <section class="quality-section" aria-labelledby="pipelineTitle"><span class="section-eyebrow">Pipeline summary</span><h2 id="pipelineTitle">Factory Stages</h2><div class="integrity-detail-grid">{% for stage, count in orchestration.pipeline_summary.items() %}<dt>{{ stage|replace('_',' ')|title }}</dt><dd>{{ count }}</dd>{% endfor %}</div></section>
+
+  <section class="quality-section" aria-labelledby="queueTitle"><div class="quality-section__heading"><div><span class="section-eyebrow">Work item queue</span><h2 id="queueTitle">Campaign Work</h2></div><span>{{ orchestration.work_item_states|length }} items</span></div>
+    {% for item in orchestration.work_item_states %}<article class="integrity-record mb-2"><div class="quality-section__heading"><div><span class="badge text-bg-info">{{ item.work_type|replace('_',' ')|title }}</span><h3>{{ item.title }}</h3><p class="text-muted mb-0">{{ item.stage|replace('_',' ')|title }} · {{ item.state|replace('_',' ')|title }}</p></div>
+      {% if item.action_authority == 'machine_safe' %}<form method="post" action="{{ url_for('knowledge_campaign_orchestration_advance', orchestration_id=orchestration.orchestration_id, work_item_id=item.work_item_id) }}"><input type="hidden" name="campaign_id" value="{{ orchestration.campaign_id }}"><button class="btn btn-outline-info" type="submit">Advance This Item</button></form>{% elif item.review_link %}<a class="btn btn-outline-warning" href="{{ item.review_link }}">Open Review Workspace</a>{% endif %}</div>
+      <p class="mb-0"><strong>Next:</strong> {{ item.next_action|default('No action', true)|replace('_',' ')|title }}{% if item.blocker %} · {{ item.blocker.explanation }}{% endif %}</p></article>{% else %}<p class="text-muted">Analyze coverage to create work items.</p>{% endfor %}
+  </section>
+
+  <section class="quality-section" aria-labelledby="reviewTitle"><span class="section-eyebrow">Human review queue</span><h2 id="reviewTitle">Pending Decisions</h2>{% for item in orchestration.human_review_queue %}<article class="integrity-record mb-2"><strong>{{ item.action|replace('_',' ')|title }} · {{ item.title }}</strong><p>{{ item.why }}</p>{% if item.review_link %}<a class="btn btn-outline-warning" href="{{ item.review_link }}">Review authoritative package</a>{% endif %}</article>{% else %}<p class="text-muted mb-0">No human decisions are currently queued.</p>{% endfor %}</section>
+  <section class="quality-section" aria-labelledby="blockerTitle"><span class="section-eyebrow">Blockers</span><h2 id="blockerTitle">Intervention Required</h2>{% for item in orchestration.blockers %}<article class="integrity-record mb-2"><strong>{{ item.originating_subsystem }} · {{ item.blocker_type|replace('_',' ')|title }}</strong><p>{{ item.explanation }}</p><p class="mb-0"><strong>Resolution:</strong> {{ item.recommended_resolution }}</p></article>{% else %}<p class="text-muted mb-0">No blockers are recorded.</p>{% endfor %}</section>
+  <section class="quality-section" aria-labelledby="staleTitle"><span class="section-eyebrow">Stale dependencies</span><h2 id="staleTitle">Upstream Changes</h2>{% for item in orchestration.stale_dependencies %}<article class="integrity-record mb-2"><strong>{{ item.changed }}</strong><p>{{ item.explanation }}</p><p class="mb-0">Downstream: {{ item.downstream_impact|join(' → ') }}</p></article>{% else %}<p class="text-muted mb-0">No stale dependency chains are recorded.</p>{% endfor %}</section>
+  <section class="quality-section" aria-labelledby="graphTitle"><span class="section-eyebrow">Traceability</span><h2 id="graphTitle">Dependency Graph</h2><ul>{% for edge in orchestration.dependency_graph.edges %}<li><code>{{ edge.from }}</code> → <code>{{ edge.to }}</code></li>{% else %}<li>No dependencies recorded.</li>{% endfor %}</ul></section>
+  <section class="quality-section" aria-labelledby="historyTitle"><span class="section-eyebrow">History</span><h2 id="historyTitle">Orchestration Runs</h2><ol>{% for event in orchestration.history|reverse %}<li><strong>{{ event.event|replace('_',' ')|title }}</strong> · {{ event.at }} · {{ event.actor }}</li>{% endfor %}</ol></section>
+</main>
+{% endblock %}

@@ -1,3 +1,6 @@
+from app.services.workflow_quality_validator import WorkflowQualityValidator
+
+
 class WorkflowValidationService:
     """
     Validate AI-generated Gnojo workflow drafts.
@@ -160,6 +163,7 @@ class WorkflowValidationService:
                 reachable_nodes
             ),
             "unreachable_nodes": unreachable_nodes,
+            "quality": WorkflowQualityValidator().validate(workflow),
         }
 
     def _validate_conditions(self, node_id, node, nodes, errors):

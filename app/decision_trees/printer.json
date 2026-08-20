@@ -5,6 +5,7 @@
   "category": "Desktop Support",
   "platform": "Cross-platform",
   "estimated_steps": 5,
+  "progress_mode": "branch_aware",
   "start_node": "check_power",
 
   "nodes": {
@@ -32,7 +33,26 @@
       "type": "instruction",
       "title": "Check the Printer Power",
       "instruction": "Confirm that the power cable is securely connected and press the printer's power button.",
-      "next": "check_power"
+      "next": "verify_power_state"
+    },
+
+    "verify_power_state": {
+      "type": "question",
+      "question": "After checking the power connection and button, does the printer show any sign of power?",
+      "answers": {
+        "yes": {
+          "label": "Yes",
+          "next": "check_connection"
+        },
+        "no": {
+          "label": "No",
+          "next": "power_attention_needed"
+        },
+        "unknown": {
+          "label": "I'm Still Not Sure",
+          "next": "power_attention_needed"
+        }
+      }
     },
 
     "turn_on_printer": {
@@ -65,7 +85,26 @@
       "type": "instruction",
       "title": "Identify the Printer Connection",
       "instruction": "Check whether a USB cable connects the printer directly to the computer. If no USB cable is present, the printer may use Wi-Fi or the local network.",
-      "next": "check_connection"
+      "next": "verify_connection_type"
+    },
+
+    "verify_connection_type": {
+      "type": "question",
+      "question": "Is a USB cable connected directly between the printer and this computer?",
+      "answers": {
+        "yes": {
+          "label": "Yes",
+          "next": "check_usb"
+        },
+        "no": {
+          "label": "No",
+          "next": "restart_printer"
+        },
+        "unknown": {
+          "label": "I'm Still Not Sure",
+          "next": "advanced_diagnostics"
+        }
+      }
     },
 
     "check_usb": {
@@ -120,20 +159,60 @@
       "type": "instruction",
       "title": "Inspect the Printer Status",
       "instruction": "Check the printer display and status lights for a paper, ink, toner, cover, or jam warning.",
-      "next": "check_printer_status"
+      "next": "verify_printer_warning"
+    },
+
+    "verify_printer_warning": {
+      "type": "question",
+      "question": "After inspecting the display and status lights, is a printer warning visible?",
+      "answers": {
+        "yes": {
+          "label": "Yes",
+          "next": "clear_printer_warning"
+        },
+        "no": {
+          "label": "No",
+          "next": "advanced_diagnostics"
+        },
+        "unknown": {
+          "label": "I'm Still Not Sure",
+          "next": "advanced_diagnostics"
+        }
+      }
     },
 
     "clear_printer_warning": {
       "type": "instruction",
       "title": "Clear the Printer Warning",
       "instruction": "Follow the printer manufacturer's displayed or documented instructions. Before reaching inside to remove a jam, turn the printer off and unplug it if the manufacturer directs you to do so; internal components can be hot or moving. Do not force paper or touch unfamiliar internal parts.",
-      "next": "verify_printing"
+      "next": "verify_after_warning"
+    },
+
+    "verify_after_warning": {
+      "type": "question",
+      "question": "Can you print after clearing the printer warning?",
+      "answers": {
+        "yes": {
+          "label": "Yes",
+          "next": "resolved"
+        },
+        "no": {
+          "label": "No",
+          "next": "advanced_diagnostics"
+        }
+      }
     },
 
     "resolved": {
       "type": "resolution",
       "title": "Printer Operation Restored",
       "message": "The printer appears to be working again."
+    },
+
+    "power_attention_needed": {
+      "type": "resolution",
+      "title": "Printer Power Requires Attention",
+      "message": "The printer still shows no sign of power after the basic power check. Verify the approved power source and cable, or arrange hardware support before continuing with connection troubleshooting."
     },
 
     "advanced_diagnostics": {

@@ -559,8 +559,14 @@ class KnowledgeSourceResearchService:
                      if item["work_item_id"] == work_item_id and item["gap_id"] == gap_id), None)
         if gap is None or work is None:
             raise KnowledgeSourceResearchError("Research must reference a current campaign gap and work item.")
-        if gap.get("gap_type") != "missing_source" or work.get("work_type") != "source_research":
-            raise KnowledgeSourceResearchError("Phase 2 research is limited to authoritative-source gaps.")
+        workflow_types = {"workflow", "workflow_branch", "verification_step",
+                          "escalation_path", "safety_review"}
+        source_gap = gap.get("gap_type") == "missing_source" and work.get("work_type") == "source_research"
+        workflow_gap = work.get("work_type") in workflow_types
+        if not (source_gap or workflow_gap):
+            raise KnowledgeSourceResearchError(
+                "Phase 2 research requires an authoritative-source gap or a workflow-oriented work item."
+            )
         return campaign, gap, work
 
     def _area(self, campaign: dict[str, Any], area_id: str) -> dict[str, Any]:

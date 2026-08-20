@@ -40,7 +40,19 @@ class KnowledgeWorkflowGenerationTests(unittest.TestCase):
             "workflow_id": "higher_layer", "name": "Higher Layer", "start_node": "done",
             "nodes": {"done": {"type": "resolution", "title": "Done", "message": "Reviewed."}},
         })
-        self._write_claim_plan(self._claims())
+        claims = self._claims()
+        self._write(self.campaign_root / "research/KSR-WORKFLOW01.json", {
+            "package_id": "KSR-WORKFLOW01", "campaign_id": self.campaign_id,
+            "work_item_id": self.work_id, "status": "approved",
+        })
+        self._write(self.campaign_root / "evidence_extraction/KEX-WORKFLOW01.json", {
+            "extraction_id": "KEX-WORKFLOW01", "research_package_id": "KSR-WORKFLOW01",
+            "status": "approved", "evidence_units": [
+                {"evidence_id": evidence_id, "review_state": "approved"}
+                for claim in claims for evidence_id in claim["evidence_ids"]
+            ],
+        })
+        self._write_claim_plan(claims)
         self.service = KnowledgeWorkflowGenerationService(
             self.root, self.campaign_root, self.root / "app/workflow_drafts"
         )
@@ -82,11 +94,26 @@ class KnowledgeWorkflowGenerationTests(unittest.TestCase):
         ]
 
     def _write_claim_plan(self, claims, status="ready_for_drafting"):
+        evidence_ids = sorted({
+            evidence_id for claim in claims if claim.get("review_state") == "approved"
+            for evidence_id in claim.get("evidence_ids", [])
+        })
         self._write(self.campaign_root / "claim_planning/KCPM-WORKFLOW01.json", {
             "schema_version": "1.0", "claim_plan_id": "KCPM-WORKFLOW01",
             "campaign_id": self.campaign_id, "work_item_id": self.work_id,
-            "status": status, "claims": claims,
+            "target_asset_type": "workflow", "status": status,
+            "approved_evidence_ids": evidence_ids,
+            "claims": claims,
         })
+        extraction_path = self.campaign_root / "evidence_extraction/KEX-WORKFLOW01.json"
+        if extraction_path.parent.exists():
+            self._write(extraction_path, {
+                "extraction_id": "KEX-WORKFLOW01", "research_package_id": "KSR-WORKFLOW01",
+                "status": "approved", "evidence_units": [
+                    {"evidence_id": evidence_id, "review_state": "approved"}
+                    for evidence_id in evidence_ids
+                ],
+            })
 
     def _planned(self):
         package = self.service.prepare(self.campaign_id, self.work_id)

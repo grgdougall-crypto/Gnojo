@@ -14,6 +14,8 @@ from app.services.knowledge_claim_planning_service import (
 from app.services.knowledge_coverage_planner_service import KnowledgeCoveragePlannerService
 from app.services.knowledge_draft_generation_service import KnowledgeDraftGenerationService
 from app.services.knowledge_draft_refinement_service import KnowledgeDraftRefinementService
+from app.services.knowledge_evidence_extraction_service import CANDIDACY_RULE_VERSION
+from app.services.knowledge_workflow_generation_service import KnowledgeWorkflowGenerationService
 
 
 class KnowledgeClaimPlanningTests(unittest.TestCase):
@@ -74,7 +76,7 @@ class KnowledgeClaimPlanningTests(unittest.TestCase):
                 "provenance": {"content_digest": "source-digest"}}],
         }), encoding="utf-8")
 
-    def _write_evidence(self, units=None, status="partially_approved"):
+    def _write_evidence(self, units=None, status=None):
         units = units or [
             self._unit("EVD-PROCEDURE01", "procedure", "Open Settings and select Network and Internet."),
             self._unit("EVD-VERIFY00001", "verification", "Verify the VPN status displays Connected."),
@@ -82,10 +84,31 @@ class KnowledgeClaimPlanningTests(unittest.TestCase):
         root = self.campaign_root / "evidence_extraction"
         root.mkdir(parents=True, exist_ok=True)
         path = root / "KEX-AAAAAAAAAAAA.json"
-        path.write_text(json.dumps({"schema_version": "1.0", "extraction_id": "KEX-AAAAAAAAAAAA",
+        for unit in units:
+            unit["candidacy"] = {
+                "machine_recommended_role": "candidate",
+                "machine_rationale": "Deterministic test fixture evidence.",
+                "rule_version": CANDIDACY_RULE_VERSION,
+                "recommendation_fingerprint": f"recommend-{unit['evidence_id']}",
+                "human_confirmed_role": "candidate",
+                "role_decided_at": "now",
+                "role_decided_by": "Human",
+            }
+        if status is None:
+            states = [unit.get("review_state", "proposed") for unit in units]
+            status = ("approved" if states and "proposed" not in states and "approved" in states
+                      else "partially_approved" if "approved" in states else "needs_review")
+        package = {"schema_version": "1.0", "extraction_id": "KEX-AAAAAAAAAAAA",
             "research_package_id": self.research_id, "status": status, "created_at": "now",
-            "evidence_units": units,
-        }), encoding="utf-8")
+            "evidence_units": units, "source_fingerprint": "source-digest", "revision": 1,
+            "campaign_id": self.work["campaign_id"], "gap_id": self.work["gap_id"],
+            "work_item_id": self.work["work_item_id"], "platform": "Windows",
+            "candidacy": {"schema_version": "1.0", "rule_version": CANDIDACY_RULE_VERSION,
+                           "candidate_set_status": "confirmed", "confirmed_at": "now",
+                           "confirmed_by": "Human", "confirmation_fingerprint": None}}
+        package["candidacy"]["confirmation_fingerprint"] = \
+            self.generation.extraction._candidate_set_fingerprint(package)
+        path.write_text(json.dumps(package), encoding="utf-8")
         return path
 
     def _unit(self, evidence_id, evidence_type, text, review_state="approved", **extra):
@@ -112,6 +135,38 @@ class KnowledgeClaimPlanningTests(unittest.TestCase):
             if section["claim_ids"]:
                 plan = self.service.review_section(plan["claim_plan_id"], section["section"], "approved")
         return plan
+
+    def _workflow_plan(self, *, evidence_status="approved", unit_states=None):
+        campaign_path = self.campaign_root / f"{self.work['campaign_id']}.json"
+        campaign = json.loads(campaign_path.read_text(encoding="utf-8"))
+        gap = {"gap_id": "KCG-WORKFLOW", "gap_type": "missing_safety",
+               "area_id": "vpn", "title": "VPN workflow safety"}
+        work = {"campaign_id": self.work["campaign_id"], "gap_id": gap["gap_id"],
+                "work_item_id": "KCW-WORKFLOW", "work_type": "safety_review",
+                "area_id": "vpn", "target_asset": "vpn_diagnostics", "status": "proposed",
+                "dependencies": [], "reason": "Add governed VPN diagnostic safety."}
+        campaign.setdefault("gaps", []).append(gap)
+        campaign.setdefault("work_items", []).append(work)
+        campaign_path.write_text(json.dumps(campaign), encoding="utf-8")
+
+        research = json.loads((self.campaign_root / "research" / f"{self.research_id}.json").read_text())
+        research.update({"work_item_id": work["work_item_id"], "gap_id": gap["gap_id"]})
+        (self.campaign_root / "research" / f"{self.research_id}.json").write_text(
+            json.dumps(research), encoding="utf-8")
+        states = unit_states or {}
+        units = [
+            self._unit("EVD-WF-PROCEDURE", "procedure", "Open the VPN status page and record its state.",
+                       states.get("procedure", "approved")),
+            self._unit("EVD-WF-SAFETY", "safety", "Do not disconnect an active remote support session.",
+                       states.get("safety", "approved")),
+            self._unit("EVD-WF-AUTH", "authorization_requirements", "Obtain authorization before changing VPN settings.",
+                       states.get("authorization", "approved")),
+            self._unit("EVD-WF-VERIFY", "verification", "Verify that the VPN status displays Connected.",
+                       states.get("verification", "approved")),
+        ]
+        self._write_evidence(units, evidence_status)
+        plan = self.service.prepare_workflow(self.work["campaign_id"], work["work_item_id"])
+        return self.service.plan(plan["claim_plan_id"]), work
 
     def test_human_initiation_and_approved_evidence_are_required(self):
         self.assertEqual(self.service.list_for_kdg(self.package["package_id"]), [])
@@ -310,6 +365,81 @@ class KnowledgeClaimPlanningTests(unittest.TestCase):
                 self.assertIn(b"Planned claims are not approved claims", page.data)
                 self.assertIn(b"Build Evidence Plan", page.data)
                 self.assertNotIn(b"Publish article", page.data)
+
+    def test_workflow_claim_plan_reuses_kcpm_and_exact_phase_eight_contract(self):
+        plan, _ = self._workflow_plan()
+        repeated = self.service.plan(plan["claim_plan_id"])
+        self.assertEqual(plan, repeated)
+        self.assertEqual(plan["target_asset_type"], "workflow")
+        self.assertRegex(plan["claim_plan_id"], r"^KCPM-[A-F0-9]{12}$")
+        self.assertEqual(len(plan["history"]), len(repeated["history"]))
+        self.assertEqual(len({claim["claim_id"] for claim in plan["claims"]}), len(plan["claims"]))
+        for claim in plan["claims"]:
+            self.assertTrue(claim["claim_id"].startswith("CLM-"))
+            self.assertTrue(claim["evidence_ids"])
+            self.assertEqual(claim["source_urls"], ["https://learn.microsoft.com/vpn"])
+            spec = claim["workflow_spec"]
+            self.assertIn(spec["type"], {"question", "instruction", "resolution", "transition"})
+            self.assertIsInstance(spec["fields"], dict)
+        self.assertFalse(any(claim["workflow_spec"]["type"] == "question" for claim in plan["claims"]))
+        terminal = [claim for claim in plan["claims"]
+                    if claim["workflow_spec"]["type"] == "resolution"]
+        self.assertEqual(terminal[0]["workflow_spec"]["fields"]["message"],
+                         "Verify that the VPN status displays Connected.")
+
+    def test_workflow_planning_requires_current_approved_evidence(self):
+        with self.assertRaisesRegex(KnowledgeClaimPlanningError, "Approved Phase 5 evidence"):
+            self._workflow_plan(unit_states={"procedure": "proposed", "safety": "proposed",
+                                             "authorization": "proposed", "verification": "proposed"})
+
+    def test_workflow_safety_authorization_and_verification_remain_supervised(self):
+        plan, work = self._workflow_plan()
+        by_type = {claim["claim_type"]: claim for claim in plan["claims"]}
+        self.assertIn("caution", by_type)
+        self.assertIn("authorization_requirement", by_type)
+        self.assertIn("verification", by_type)
+        self.assertTrue(all(claim["review_state"] == "proposed" for claim in plan["claims"]))
+        phase_eight = KnowledgeWorkflowGenerationService(
+            self.root, self.campaign_root, self.root / "app" / "workflow_drafts")
+        self.assertFalse(phase_eight.eligibility(self.work["campaign_id"], work["work_item_id"])["eligible"])
+        revision = self.service.review_claim(plan["claim_plan_id"], plan["claims"][0]["claim_id"],
+                                             "needs_revision")
+        self.assertNotEqual(revision["status"], "ready_for_drafting")
+        rejected = self.service.review_claim(plan["claim_plan_id"], plan["claims"][0]["claim_id"],
+                                             "rejected")
+        self.assertNotEqual(rejected["status"], "ready_for_drafting")
+        approved = self._approve_all(self.service.plan(plan["claim_plan_id"]))
+        self.assertEqual(approved["status"], "ready_for_drafting")
+        self.assertTrue(phase_eight.eligibility(
+            self.work["campaign_id"], work["work_item_id"])["eligible"])
+        self.assertEqual(list((self.campaign_root / "workflow_generation").glob("KWG-*.json")), [])
+
+    def test_stale_workflow_evidence_revokes_phase_eight_eligibility(self):
+        plan, work = self._workflow_plan()
+        self._approve_all(plan)
+        evidence_path = self.campaign_root / "evidence_extraction" / "KEX-AAAAAAAAAAAA.json"
+        value = json.loads(evidence_path.read_text(encoding="utf-8"))
+        value["status"] = "needs_refresh"
+        evidence_path.write_text(json.dumps(value), encoding="utf-8")
+        current = self.service.get(plan["claim_plan_id"])
+        self.assertEqual(current["status"], "needs_evidence")
+        phase_eight = KnowledgeWorkflowGenerationService(
+            self.root, self.campaign_root, self.root / "app" / "workflow_drafts")
+        self.assertFalse(phase_eight.eligibility(
+            self.work["campaign_id"], work["work_item_id"])["eligible"])
+
+    def test_workflow_claim_planning_has_a_human_initiated_campaign_route(self):
+        plan, work = self._workflow_plan()
+        flask_app.config.update(TESTING=True)
+        with patch("app.app.KnowledgeClaimPlanningService", return_value=self.service):
+            with flask_app.test_client() as client:
+                response = client.post(
+                    f"/curator/growth/coverage-campaigns/{self.work['campaign_id']}"
+                    f"/work-items/{work['work_item_id']}/workflow-claim-planning"
+                )
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(f"/curator/growth/claim-planning/{plan['claim_plan_id']}",
+                      response.headers["Location"])
 
 
 if __name__ == "__main__":

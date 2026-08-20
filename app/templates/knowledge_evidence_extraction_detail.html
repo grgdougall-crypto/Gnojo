@@ -1,25 +1,120 @@
-{% extends "base.html" %}
-{% block title %}Evidence Extraction | {{ package.source_title }}{% endblock %}
+﻿{% extends "base.html" %}
+{% block title %}Evidence Review | {{ package.source_title }}{% endblock %}
 {% block content %}
-<main class="container curator-page" id="main-content" aria-labelledby="extractionTitle">
+<main class="container curator-page evidence-review" id="main-content" aria-labelledby="extractionTitle">
   {% with curator_active='growth' %}{% include 'partials/_curator_nav.html' %}{% endwith %}
-  <nav aria-label="Breadcrumb"><a href="{{ url_for('knowledge_source_research_detail', package_id=package.research_package_id) }}">Source Research</a> / {{ package.extraction_id }}</nav>
-  <header class="curator-heading"><div><span class="section-eyebrow">Supervised evidence extraction</span><h1 id="extractionTitle">{{ package.source_title }}</h1><p>Review bounded evidence before it becomes available to drafting or refinement.</p></div><span class="badge text-bg-info">{{ package.status|replace('_',' ')|title }}</span></header>
+  <nav class="d-flex justify-content-between align-items-center gap-3 flex-wrap" aria-label="Breadcrumb">
+    <span><a href="{{ url_for('knowledge_source_research_detail', package_id=package.research_package_id) }}">Source Research</a> / Evidence Review</span>
+    <a class="btn btn-outline-primary" href="{{ url_for('knowledge_campaign_orchestration_detail', campaign_id=package.campaign_id) }}">â† Back to Campaign</a>
+  </nav>
+  <header class="curator-heading"><div><span class="section-eyebrow">Supervised evidence review</span><h1 id="extractionTitle">Evidence Review</h1><p>{{ package.source_title }}</p></div><span class="badge text-bg-info">{{ package.status|replace('_',' ')|title }}</span></header>
   {% if extraction_error %}<div class="alert alert-danger">{{ extraction_error }}</div>{% endif %}
+  {% if extraction_notice %}<div class="alert alert-success">{{ extraction_notice }}</div>{% endif %}
 
-  <section class="quality-section"><span class="section-eyebrow">Source</span><h2>Approved Authority</h2><dl class="integrity-detail-grid"><dt>Publisher</dt><dd>{{ package.publisher }}</dd><dt>Authority</dt><dd>Tier {{ package.authority_tier }}</dd><dt>Canonical URL</dt><dd><a href="{{ package.canonical_source_url }}" target="_blank" rel="noopener noreferrer">{{ package.canonical_source_url }}</a></dd><dt>Retrieval</dt><dd>{{ package.retrieval.result if package.retrieval else 'Not started' }}</dd><dt>Fingerprint</dt><dd><code>{{ package.source_fingerprint or 'Not captured' }}</code></dd><dt>Resolved URL</dt><dd>{{ package.retrieval.resolved_url if package.retrieval else 'Not resolved' }}</dd></dl></section>
-
-  <section class="quality-section"><div class="quality-section__heading"><div><span class="section-eyebrow">Extraction</span><h2>{{ package.extraction_id }}</h2></div><div class="d-flex gap-2"><form method="post" action="{{ url_for('knowledge_evidence_extraction_run', extraction_id=package.extraction_id) }}"><button class="btn btn-primary" type="submit">{{ 'Extract Evidence' if package.status == 'proposed' else 'Run Extraction Again' }}</button></form><form method="post" action="{{ url_for('knowledge_evidence_extraction_refresh', extraction_id=package.extraction_id) }}"><button class="btn btn-outline-primary" type="submit">Check Source Freshness</button></form></div></div><p>Campaign {{ package.campaign_id }} · Work item {{ package.work_item_id }} · Extracted {{ package.extracted_at or 'Not yet' }}</p></section>
-
-  {% set approved = package.evidence_units|selectattr('review_state', 'equalto', 'approved')|list|length %}
-  {% set rejected = package.evidence_units|selectattr('review_state', 'equalto', 'rejected')|list|length %}
-  {% set revision = package.evidence_units|selectattr('review_state', 'equalto', 'needs_revision')|list|length %}
-  <section class="curator-metrics" aria-label="Evidence summary"><article><span>Extracted</span><strong>{{ package.evidence_units|length }}</strong></article><article><span>Approved</span><strong>{{ approved }}</strong></article><article><span>Rejected</span><strong>{{ rejected }}</strong></article><article><span>Unresolved</span><strong>{{ package.evidence_units|length - approved - rejected }}</strong></article></section>
-
-  <section class="quality-section" aria-labelledby="evidenceTitle"><span class="section-eyebrow">Human evidence review</span><h2 id="evidenceTitle">Evidence Candidates</h2><p class="text-muted">Extraction is not approval. Only explicitly approved units cross the Phase 3/4 evidence boundary.</p>
-    {% for unit in package.evidence_units %}<article class="integrity-record mb-3"><div class="quality-section__heading"><div><span class="badge text-bg-secondary">{{ unit.evidence_type|replace('_',' ')|title }}</span><h3>{{ unit.normalized_claim }}</h3></div><span class="badge {{ 'text-bg-success' if unit.review_state == 'approved' else ('text-bg-danger' if unit.review_state == 'rejected' else 'text-bg-warning') }}">{{ unit.review_state|replace('_',' ')|title }}</span></div><blockquote>{{ unit.supporting_passage }}</blockquote><dl class="integrity-detail-grid"><dt>Evidence ID</dt><dd>{{ unit.evidence_id }}</dd><dt>Location</dt><dd>{{ unit.source_location.heading or ('Block ' ~ unit.source_location.block_index) }}</dd><dt>Applicability</dt><dd>{{ unit.platform_applicability }}</dd><dt>Confidence</dt><dd>{{ unit.confidence }}</dd><dt>Method</dt><dd>{{ unit.extraction_method }}</dd><dt>Provenance</dt><dd>{{ unit.provenance.source_candidate_id }}</dd></dl><form method="post" action="{{ url_for('knowledge_evidence_review', extraction_id=package.extraction_id, evidence_id=unit.evidence_id) }}"><label class="form-label" for="notes-{{ loop.index }}">Reviewer notes</label><input class="form-control mb-2" id="notes-{{ loop.index }}" name="notes" value="{{ unit.reviewer_notes }}"><div class="d-flex gap-2"><button class="btn btn-outline-success" name="decision" value="approved" type="submit">Approve</button><button class="btn btn-outline-danger" name="decision" value="rejected" type="submit">Reject</button><button class="btn btn-outline-warning" name="decision" value="needs_revision" type="submit">Needs Revision</button></div></form></article>{% else %}<p>No evidence has been extracted. Use Extract Evidence to start the bounded retrieval.</p>{% endfor %}
+  <section class="quality-section evidence-context" aria-labelledby="contextTitle">
+    <div class="quality-section__heading"><div><span class="section-eyebrow">Why this review exists</span><h2 id="contextTitle">{{ workspace.context.campaign_title }}</h2></div><span>{{ workspace.context.area|replace('_',' ')|title }}</span></div>
+    <p>{{ workspace.context.gap_summary }}</p>
+    <dl class="integrity-detail-grid"><dt>Area</dt><dd>{{ workspace.context.area|replace('_',' ')|title }}</dd><dt>Work item</dt><dd>{{ workspace.context.work_type|replace('_',' ')|title }}</dd><dt>Gap</dt><dd>{{ workspace.context.gap_type|replace('_',' ')|title }}</dd><dt>Approved source</dt><dd>{{ package.source_title }} Â· {{ package.publisher }}</dd><dt>Extraction method</dt><dd>{{ package.evidence_units[0].extraction_method if package.evidence_units else 'Not run' }}</dd><dt>Extracted</dt><dd>{{ package.extracted_at or 'Not yet' }}</dd></dl>
   </section>
 
-  <section class="quality-section"><span class="section-eyebrow">Traceability</span><h2>History</h2><ol>{% for event in package.history|reverse %}<li>{{ event.event|replace('_',' ')|title }} · {{ event.at }} · {{ event.actor }}</li>{% endfor %}</ol>{% if package.evidence_revisions %}<p>{{ package.evidence_revisions|length }} prior evidence revision(s) preserved.</p>{% endif %}</section>
+  <section class="quality-section" aria-labelledby="progressTitle">
+    <div class="quality-section__heading"><div><span class="section-eyebrow">Review progress</span><h2 id="progressTitle">{{ workspace.counts.reviewed }} of {{ workspace.counts.total }} reviewed</h2></div><strong>{{ workspace.counts.remaining }} remaining</strong></div>
+    <div class="progress mb-3" role="progressbar" aria-label="Evidence review progress" aria-valuenow="{{ workspace.counts.reviewed }}" aria-valuemin="0" aria-valuemax="{{ workspace.counts.total }}"><div class="progress-bar" style="width: {{ (workspace.counts.reviewed * 100 / workspace.counts.total)|round if workspace.counts.total else 0 }}%"></div></div>
+    <section class="curator-metrics" aria-label="Evidence decision totals"><article><span>Approved</span><strong>{{ workspace.counts.approved }}</strong></article><article><span>Rejected</span><strong>{{ workspace.counts.rejected }}</strong></article><article><span>Needs Revision</span><strong>{{ workspace.counts.needs_revision }}</strong></article><article><span>Undecided</span><strong>{{ workspace.counts.proposed }}</strong></article></section>
+    {% if workspace.next_undecided %}<a class="btn btn-info mt-3" href="{{ url_for('knowledge_evidence_extraction_detail', extraction_id=package.extraction_id, review_state=workspace.review_state, evidence_type=workspace.evidence_type, assistance=workspace.assistance, machine_recommendation=workspace.machine_recommendation, human_role=workspace.human_role) }}#evidence-{{ workspace.next_undecided }}">Next undecided â†’</a>{% endif %}
+  </section>
+
+  {% if workspace.complete %}
+  <section class="alert alert-success evidence-completion" aria-live="polite"><h2 class="h4">Evidence review complete</h2><p>Every active evidence unit has an individual human decision.</p>{% if continuation_available %}<form method="post" action="{{ url_for('knowledge_workflow_claim_planning_prepare', campaign_id=package.campaign_id, work_item_id=package.work_item_id) }}"><button class="btn btn-success" type="submit">Continue to Workflow Claim Planning â†’</button></form>{% else %}<p class="mb-0">No governed continuation is currently eligible. Return to the campaign to review the remaining requirements.</p>{% endif %}</section>
+  {% endif %}
+
+  {% if workspace.group_complete %}
+  <section class="alert alert-info evidence-group-completion" aria-live="polite">
+    <h2 class="h4">Filtered group complete</h2>
+    <p>No evidence remains in the current filtered view. This does not confirm the package candidate set or complete the overall evidence review.</p>
+    <div class="d-flex gap-2 flex-wrap">
+      <a class="btn btn-primary" href="{{ url_for('knowledge_evidence_extraction_detail', extraction_id=package.extraction_id, review_state='proposed', evidence_type='all', assistance='all') }}">View All Undecided</a>
+      <a class="btn btn-outline-secondary" href="{{ url_for('knowledge_evidence_extraction_detail', extraction_id=package.extraction_id) }}">Clear Filters</a>
+    </div>
+  </section>
+  {% endif %}
+
+  <section class="quality-section" aria-labelledby="candidacyTitle">
+    <div class="quality-section__heading"><div><span class="section-eyebrow">Supervised candidacy</span><h2 id="candidacyTitle">Confirm the Evidence Candidate Set</h2></div><strong>{{ workspace.unresolved_candidacy }} unresolved</strong></div>
+    <p>Machine recommendations are advisory. Assign each reviewable unit to Candidate Evidence or Reviewer Context. Deterministically suppressed source material remains traceable below and does not require a candidacy decision. Confirmation approves nothing.</p>
+    {% if workspace.all_bulk_context_eligible_count %}
+    <div class="alert alert-info mt-3 mb-3" aria-labelledby="allContextTitle">
+      <h3 class="h5" id="allContextTitle">Resolve clear machine-Context assignments</h3>
+      <p>{{ workspace.all_bulk_context_eligible_count }} unresolved, reviewable unit{% if workspace.all_bulk_context_eligible_count != 1 %}s are{% else %} is{% endif %} machine-recommended as Context across this extraction. Existing human roles and evidence decisions will not be changed.</p>
+      <form method="post" action="{{ url_for('knowledge_evidence_candidacy_bulk_context_all', extraction_id=package.extraction_id) }}" onsubmit="return confirm('Assign all {{ workspace.all_bulk_context_eligible_count }} unresolved machine-Context unit{% if workspace.all_bulk_context_eligible_count != 1 %}s{% endif %} as Reviewer Context?');">
+        <input type="hidden" name="expected_count" value="{{ workspace.all_bulk_context_eligible_count }}">
+        <button class="btn btn-info" type="submit">Assign all Machine Context as Reviewer Context ({{ workspace.all_bulk_context_eligible_count }})</button>
+      </form>
+    </div>
+    {% endif %}
+    {% if workspace.candidacy_ready_to_confirm %}
+      {% if workspace.candidate_set_empty %}
+      <div class="alert alert-warning mt-3" role="status">
+        <strong>Candidate set is empty.</strong>
+        All reviewable units are Reviewer Context. Confirming this outcome approves no evidence, promotes no Context units, and does not resolve the governed gap. Additional research will be required.
+      </div>
+      {% endif %}
+      <form method="post" action="{{ url_for('knowledge_evidence_candidacy_confirm', extraction_id=package.extraction_id) }}"{% if workspace.candidate_set_empty and not workspace.candidate_set_current %} onsubmit="return confirm('Confirm an empty Candidate Evidence set? This approves no evidence and the governed gap will remain unresolved.');"{% endif %}>
+        <button class="btn btn-primary" type="submit" {% if workspace.candidate_set_current %}disabled{% endif %}>{{ 'Empty Candidate Set Confirmed' if workspace.candidate_set_current and workspace.candidate_set_empty else ('Candidate Set Confirmed' if workspace.candidate_set_current else ('Confirm Empty Candidate Set' if workspace.candidate_set_empty else 'Confirm Candidate Set')) }}</button>
+      </form>
+    {% endif %}
+  </section>
+
+  <form class="curator-inventory-filters" method="get" aria-label="Evidence filters">
+    <label>Review state<select name="review_state"><option value="all" {% if workspace.review_state == 'all' %}selected{% endif %}>All</option>{% for state in ['proposed','approved','rejected','needs_revision'] %}<option value="{{ state }}" {% if workspace.review_state == state %}selected{% endif %}>{{ ('Undecided' if state == 'proposed' else state|replace('_',' ')|title) }}</option>{% endfor %}</select></label>
+    <label>Evidence type<select name="evidence_type"><option value="all">All types</option>{% for kind in workspace.evidence_types %}<option value="{{ kind }}" {% if workspace.evidence_type == kind %}selected{% endif %}>{{ kind|replace('_',' ')|title }}</option>{% endfor %}</select></label>
+    <label>Review assistance<select name="assistance"><option value="all">All assistance categories</option>{% for category in workspace.assistance_categories %}<option value="{{ category }}" {% if workspace.assistance == category %}selected{% endif %}>{{ category|replace('_',' ')|title }} ({{ workspace.assistance_counts[category] }})</option>{% endfor %}</select></label>
+    <label>Machine recommendation<select name="machine_recommendation"><option value="all" {% if workspace.machine_recommendation == 'all' %}selected{% endif %}>All recommendations</option>{% for role in workspace.machine_recommendations %}<option value="{{ role }}" {% if workspace.machine_recommendation == role %}selected{% endif %}>{{ role|replace('_',' ')|title }} ({{ workspace.machine_recommendation_counts[role] }})</option>{% endfor %}</select></label>
+    <label>Human role<select name="human_role"><option value="all">All roles</option>{% for role in workspace.human_roles %}<option value="{{ role }}" {% if workspace.human_role == role %}selected{% endif %}>{{ ('Candidate Evidence' if role == 'candidate' else ('Reviewer Context' if role == 'context' else 'Unresolved')) }} ({{ workspace.human_role_counts[role] }})</option>{% endfor %}</select></label><div class="d-flex align-items-end gap-2"><button class="btn btn-primary" type="submit">Apply filters</button><a class="btn btn-outline-secondary" href="{{ url_for('knowledge_evidence_extraction_detail', extraction_id=package.extraction_id) }}">Clear</a></div>
+  </form>
+
+  {% if workspace.filters_active %}
+  <div class="alert alert-secondary" aria-live="polite">
+    <strong>Active filters:</strong>
+    {{ workspace.units|length }} of {{ workspace.reviewable_count }} reviewable units shown.
+    Review state filters evidence approval status; Human role filters candidacy assignment.
+    <a class="ms-2" href="{{ url_for('knowledge_evidence_extraction_detail', extraction_id=package.extraction_id) }}">Clear filters</a>
+  </div>
+  {% endif %}
+
+  {% if workspace.bulk_context_eligible_count %}
+  <section class="alert alert-info" aria-labelledby="bulkContextTitle">
+    <h2 class="h5" id="bulkContextTitle">Supervised context assignment</h2>
+    <p>{{ workspace.bulk_context_eligible_count }} visible unresolved unit{% if workspace.bulk_context_eligible_count != 1 %}s are{% else %} is{% endif %} machine-recommended as Context. This action will not affect Candidate or Undetermined units and will not confirm the candidate set.</p>
+    <form method="post" action="{{ url_for('knowledge_evidence_candidacy_bulk_context', extraction_id=package.extraction_id) }}" onsubmit="return confirm('Assign {{ workspace.bulk_context_eligible_count }} visible machine-Context unit{% if workspace.bulk_context_eligible_count != 1 %}s{% endif %} as Reviewer Context?');">
+      <input type="hidden" name="expected_count" value="{{ workspace.bulk_context_eligible_count }}"><input type="hidden" name="review_state" value="{{ workspace.review_state }}"><input type="hidden" name="evidence_type" value="{{ workspace.evidence_type }}"><input type="hidden" name="assistance" value="{{ workspace.assistance }}"><input type="hidden" name="machine_recommendation" value="{{ workspace.machine_recommendation }}"><input type="hidden" name="human_role" value="{{ workspace.human_role }}">
+      <button class="btn btn-info" type="submit">Assign visible machine-Context units as Reviewer Context ({{ workspace.bulk_context_eligible_count }})</button>
+    </form>
+  </section>
+  {% endif %}
+
+  <section class="quality-section" aria-labelledby="evidenceTitle"><div class="quality-section__heading"><div><span class="section-eyebrow">Human decision required</span><h2 id="evidenceTitle">Evidence Requiring Review</h2></div><span>{{ workspace.units|length }} shown</span></div><p>Extraction confirms substantive source contentâ€”not relevance. Review each statement against: <strong>{{ workspace.context.gap_summary }}</strong></p>
+    {% for unit in workspace.units %}<article class="integrity-record evidence-card mb-3" id="evidence-{{ unit.evidence_id }}"><div class="quality-section__heading"><div class="d-flex gap-2 flex-wrap"><span class="badge text-bg-secondary">{{ unit.evidence_type|replace('_',' ')|title }}</span><span class="badge {{ 'text-bg-success' if unit.candidacy.machine_recommended_role == 'candidate' else ('text-bg-info' if unit.candidacy.machine_recommended_role == 'context' else 'text-bg-warning') }}">Machine {{ unit.candidacy.machine_recommended_role|replace('_',' ')|title }}</span><span class="evidence-location">{{ unit.source_location.heading or ('Block ' ~ unit.source_location.block_index) }}</span></div><span class="badge {{ 'text-bg-success' if unit.review_state == 'approved' else ('text-bg-danger' if unit.review_state == 'rejected' else ('text-bg-warning' if unit.review_state == 'needs_revision' else 'text-bg-secondary')) }}">{{ ('Undecided' if unit.review_state == 'proposed' else unit.review_state|replace('_',' ')|title) }}</span></div><h3>{{ unit.normalized_claim }}</h3><blockquote>{{ unit.supporting_passage }}</blockquote>
+      <aside class="evidence-assistance evidence-assistance--{{ unit.review_assistance.category }}" aria-label="Review assistance"><div class="d-flex justify-content-between align-items-center gap-2 flex-wrap"><span class="section-eyebrow">Review assistance</span><span class="assistance-badge">{{ unit.review_assistance.label }}</span></div><p><strong>Why:</strong> {{ unit.review_assistance.explanation }}</p><p class="mb-0"><strong>Potential role:</strong> {{ unit.review_assistance.potential_role }}</p></aside>
+      {% if unit.candidate_purpose %}<aside class="evidence-candidate-purpose" aria-label="Candidate Purpose"><span class="section-eyebrow">Candidate Purpose</span><h4>{{ unit.candidate_purpose.category }}</h4><p class="mb-0"><strong>Why this may matter:</strong> {{ unit.candidate_purpose.explanation }}</p></aside>{% endif %}
+      <section class="evidence-candidacy" aria-label="Evidence role"><div class="d-flex justify-content-between align-items-start gap-2 flex-wrap"><div><span class="section-eyebrow">Evidence role</span><p class="mb-1"><strong>Machine recommendation:</strong> {{ unit.candidacy.machine_recommended_role|replace('_',' ')|title }}</p><p class="mb-0 text-secondary">{{ unit.candidacy.machine_rationale }}</p></div><span class="status-chip">Human role: {{ ('Candidate Evidence' if unit.candidacy_role == 'candidate' else ('Reviewer Context' if unit.candidacy_role == 'context' else 'Unresolved')) }}</span></div><form class="mt-2 d-flex gap-2 flex-wrap" method="post" action="{{ url_for('knowledge_evidence_candidacy', extraction_id=package.extraction_id, evidence_id=unit.evidence_id) }}"><input type="hidden" name="review_state" value="{{ workspace.review_state }}"><input type="hidden" name="evidence_type" value="{{ workspace.evidence_type }}"><input type="hidden" name="assistance" value="{{ workspace.assistance }}"><input type="hidden" name="machine_recommendation" value="{{ workspace.machine_recommendation }}"><input type="hidden" name="human_role" value="{{ workspace.human_role }}"><button class="btn btn-outline-primary" name="role" value="candidate" type="submit">Candidate Evidence</button><button class="btn btn-outline-secondary" name="role" value="context" type="submit">Reviewer Context</button></form></section>
+      <details class="evidence-details"><summary>Traceability details</summary><dl class="integrity-detail-grid mt-3"><dt>Evidence ID</dt><dd>{{ unit.evidence_id }}</dd><dt>Source location</dt><dd>{{ unit.source_location.heading or ('Block ' ~ unit.source_location.block_index) }}</dd><dt>Applicability</dt><dd>{{ unit.platform_applicability }}</dd><dt>Confidence</dt><dd>{{ unit.confidence }}</dd><dt>Method</dt><dd>{{ unit.extraction_method }}</dd><dt>Provenance</dt><dd>{{ unit.provenance.source_candidate_id }}</dd></dl></details>
+      {% if unit.candidacy_role == 'candidate' and workspace.candidate_set_current %}<form class="mt-3" method="post" action="{{ url_for('knowledge_evidence_review', extraction_id=package.extraction_id, evidence_id=unit.evidence_id) }}"><input type="hidden" name="machine_recommendation" value="{{ workspace.machine_recommendation }}"><input type="hidden" name="human_role" value="{{ workspace.human_role }}"><input type="hidden" name="review_state" value="{{ workspace.review_state }}"><input type="hidden" name="evidence_type" value="{{ workspace.evidence_type }}"><input type="hidden" name="assistance" value="{{ workspace.assistance }}"><label class="form-label" for="notes-{{ unit.evidence_id }}">Reviewer notes</label><textarea class="form-control mb-2" id="notes-{{ unit.evidence_id }}" name="notes" rows="2">{{ unit.reviewer_notes }}</textarea><div class="d-flex gap-2 flex-wrap"><button class="btn btn-outline-success" name="decision" value="approved" type="submit">Approve</button><button class="btn btn-outline-danger" name="decision" value="rejected" type="submit">Reject</button><button class="btn btn-outline-warning" name="decision" value="needs_revision" type="submit">Needs Revision</button></div></form>{% elif unit.candidacy_role == 'context' %}<p class="mt-3 text-secondary">Reviewer Context remains visible and traceable but does not require an evidence decision.</p>{% else %}<p class="mt-3 text-secondary">Assign a human candidacy role and confirm the candidate set before evidence review.</p>{% endif %}</article>{% else %}<p>No evidence matches these filters.</p>{% endfor %}
+  </section>
+
+  {% if workspace.suppressed_count %}
+  <section class="quality-section" aria-labelledby="suppressedTitle">
+    <details>
+      <summary><strong id="suppressedTitle">Suppressed non-substantive source material ({{ workspace.suppressed_count }})</strong></summary>
+      <p class="mt-3">These units were preserved with full provenance but deterministically excluded from candidacy decisions because their structure or content identifies navigation, metadata, or other non-substantive extraction material.</p>
+      {% for unit in workspace.suppressed_units %}<article class="integrity-record mb-2"><div class="d-flex justify-content-between gap-2 flex-wrap"><span class="badge text-bg-secondary">Suppressed · Non-substantive</span><code>{{ unit.evidence_id }}</code></div><p class="mt-2 mb-1">{{ unit.supporting_passage }}</p><dl class="integrity-detail-grid"><dt>Reason</dt><dd>{{ unit.content_disposition.reason }}</dd><dt>Rule</dt><dd>{{ unit.content_disposition.rule_version }}</dd><dt>Source location</dt><dd>{{ unit.source_location.heading or ('Block ' ~ unit.source_location.block_index) }}</dd><dt>Provenance</dt><dd>{{ unit.provenance.source_candidate_id }}</dd></dl></article>{% endfor %}
+    </details>
+  </section>
+  {% endif %}
+
+  <section class="quality-section"><div class="quality-section__heading"><div><span class="section-eyebrow">Source controls</span><h2>Extraction and Traceability</h2></div><div class="d-flex gap-2 flex-wrap">{% if package.status == 'proposed' %}<form method="post" action="{{ url_for('knowledge_evidence_extraction_run', extraction_id=package.extraction_id) }}"><button class="btn btn-primary" type="submit">Extract Evidence</button></form>{% endif %}<form method="post" action="{{ url_for('knowledge_evidence_extraction_refresh', extraction_id=package.extraction_id) }}"><button class="btn btn-outline-primary" type="submit">Check Source Freshness</button></form></div></div>
+    <details><summary>Approved source and extraction history</summary><dl class="integrity-detail-grid mt-3"><dt>Canonical URL</dt><dd><a href="{{ package.canonical_source_url }}" target="_blank" rel="noopener noreferrer">{{ package.canonical_source_url }}</a></dd><dt>Authority</dt><dd>Tier {{ package.authority_tier }}</dd><dt>Retrieval</dt><dd>{{ package.retrieval.result if package.retrieval else 'Not started' }}</dd><dt>Fingerprint</dt><dd><code>{{ package.source_fingerprint or 'Not captured' }}</code></dd></dl><ol>{% for event in package.history|reverse %}<li>{{ event.event|replace('_',' ')|title }} Â· {{ event.at }} Â· {{ event.actor }}</li>{% endfor %}</ol>{% if package.evidence_revisions %}<p>{{ package.evidence_revisions|length }} prior evidence revision(s) preserved.</p>{% endif %}</details>
+    {% if reextraction.available %}<div class="alert alert-warning mt-3 mb-0"><p>Updated deterministic extraction rules or source content are available. Re-extraction preserves the previous revision and resets active evidence to human review.</p><form method="post" action="{{ url_for('knowledge_evidence_reextract', extraction_id=package.extraction_id) }}"><button class="btn btn-warning" type="submit">Run Extraction Again</button></form></div>{% endif %}
+  </section>
 </main>
 {% endblock %}

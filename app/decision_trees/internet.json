@@ -32,7 +32,33 @@
       "type": "instruction",
       "title": "Test Another Device",
       "instruction": "Try connecting another phone, computer, or tablet to the same network.",
-      "next": "check_scope"
+      "next": "confirm_scope_after_test"
+    },
+
+    "confirm_scope_after_test": {
+      "type": "question",
+      "question": "Can any other devices connect to the internet?",
+      "help_text": "Use the result from testing another device. If the result still cannot be determined, choose I'm Not Sure to end this repeated check safely.",
+      "answers": {
+        "yes": {
+          "label": "Yes",
+          "next": "check_connection"
+        },
+        "no": {
+          "label": "No",
+          "next": "restart_network_equipment"
+        },
+        "unknown": {
+          "label": "I'm Not Sure",
+          "next": "scope_unresolved"
+        }
+      }
+    },
+
+    "scope_unresolved": {
+      "type": "resolution",
+      "title": "Network Scope Could Not Be Confirmed",
+      "message": "Another-device testing did not provide a clear result. Record which device and network were tested, any visible connection status or error, and ask an authorized support contact to review the network scope before making further changes."
     },
 
     "check_connection": {

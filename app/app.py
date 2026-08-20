@@ -98,6 +98,14 @@ from app.services.troubleshooting_history_service import (
     TroubleshootingHistoryService,
 )
 from app.services.content_quality_service import ContentQualityService
+from app.services.curator_content_quality_bridge_service import (
+    CuratorContentQualityBridgeError,
+    CuratorContentQualityBridgeService,
+)
+from app.services.curator_confusing_step_improvement_service import (
+    CuratorConfusingStepImprovementError,
+    CuratorConfusingStepImprovementService,
+)
 from app.services.curator_dashboard_service import CuratorDashboardService
 from app.services.curator_task_review_presentation_service import CuratorTaskReviewPresentationService
 from app.services.curator_task_service import CuratorTaskService
@@ -146,6 +154,7 @@ from app.services.knowledge_campaign_orchestration_service import (
     KnowledgeCampaignOrchestrationError,
     KnowledgeCampaignOrchestrationService,
 )
+from app.services.campaign_blocker_destination_service import CampaignBlockerDestinationService
 from curator.locking import AuditAlreadyRunningError
 from curator.governance import CuratorGovernanceError
 from curator.growth import CuratorGrowthError
@@ -711,8 +720,51 @@ def content_quality():
         if item.get("workflow_id") and not item.get("is_damaged")
     }
     records = TroubleshootingHistoryService().list(500)
-    report = ContentQualityService().build(workflow_data, records, drafts)
+    versions = {workflow_id: catalog[workflow_id].get("version") for workflow_id in workflow_data}
+    report = ContentQualityService().build(
+        workflow_data, records, drafts, workflow_versions=versions
+    )
+    CuratorContentQualityBridgeService().mark_tracked(report)
     return render_template("content_quality.html", report=report)
+
+
+@app.post("/content-quality/confusing-step/curator")
+def send_confusing_step_to_curator():
+    workflow_id = request.form.get("workflow_id", "")
+    node_id = request.form.get("node_id", "")
+    catalog = available_workflows()
+    if workflow_id not in catalog:
+        abort(404)
+    engine = DecisionEngine()
+    try:
+        load_runtime_workflow(engine, workflow_id, catalog, catalog[workflow_id].get("version"))
+    except (FileNotFoundError, WorkflowPublicationError, ValueError):
+        abort(404)
+    drafts = {
+        item["workflow_id"]: item["filename"]
+        for item in WorkflowDraftService().list_drafts()
+        if item.get("workflow_id") and not item.get("is_damaged")
+    }
+    report = ContentQualityService().build(
+        {workflow_id: engine.workflow}, TroubleshootingHistoryService().list(500), drafts,
+        workflow_versions={workflow_id: catalog[workflow_id].get("version")},
+    )
+    finding = next(
+        (
+            item for item in report["action_queue"]
+            if item.get("kind") == "confusing_step"
+            and item.get("workflow_id") == workflow_id
+            and item.get("node_id") == node_id
+        ),
+        None,
+    )
+    if finding is None:
+        abort(404)
+    try:
+        task = CuratorContentQualityBridgeService().send(finding)
+    except (CuratorContentQualityBridgeError, CuratorGovernanceError):
+        abort(400)
+    return redirect(url_for("content_quality", curator_task=task["task_id"]))
 
 
 @app.route("/curator")
@@ -846,9 +898,34 @@ def knowledge_coverage_campaign_detail(campaign_id):
         workflow_packages = KnowledgeWorkflowGenerationService().list_for_campaign(campaign_id)
     except KnowledgeWorkflowGenerationError:
         workflow_packages = []
+    blocker_destinations = {}
+    blocker_resolver = CampaignBlockerDestinationService()
+    workflow_service = KnowledgeWorkflowGenerationService()
+    for item in campaign.get("work_items", []):
+        if item.get("work_type") not in workflow_service.WORK_TYPES:
+            continue
+        try:
+            eligibility = workflow_service.eligibility(campaign_id, item["work_item_id"])
+        except KnowledgeWorkflowGenerationError:
+            # Some isolated/test campaign repositories intentionally do not
+            # configure the Phase 8 store. Preserve the legacy candidate
+            # action when no authoritative eligibility projection is
+            # available rather than inventing blocker state in the view.
+            continue
+        if eligibility.get("eligible"):
+            continue
+        destination = blocker_resolver.resolve(
+            campaign, item,
+            {"blocker_type": "workflow_eligibility",
+             "explanation": " ".join(eligibility.get("reasons") or [])},
+        )
+        if destination.get("resolved"):
+            destination["url"] = url_for(destination["endpoint"], **destination["route_values"])
+        blocker_destinations[item["work_item_id"]] = destination
     return render_template("knowledge_coverage_campaign_detail.html", campaign=campaign,
                            research_packages=research_packages, draft_packages=draft_packages,
-                           workflow_packages=workflow_packages)
+                           workflow_packages=workflow_packages,
+                           blocker_destinations=blocker_destinations)
 
 
 @app.get("/curator/growth/coverage-campaigns/<campaign_id>/orchestration")
@@ -858,10 +935,25 @@ def knowledge_campaign_orchestration_detail(campaign_id):
         orchestration = service.get_or_create(campaign_id)
     except (KnowledgeCampaignOrchestrationError, KnowledgeCoveragePlannerError):
         abort(404)
+    blocker_resolver = CampaignBlockerDestinationService()
+    try:
+        campaign = KnowledgeCoveragePlannerService().get(campaign_id)
+    except KnowledgeCoveragePlannerError:
+        # Synthetic/test orchestration projections may not have a persisted
+        # campaign.  Related blocker navigation is optional display context;
+        # the orchestration page itself remains authoritative and usable.
+        campaign = {"campaign_id": campaign_id, "work_items": []}
+    work_by_id = {item["work_item_id"]: item for item in campaign.get("work_items", [])}
     for item in orchestration.get("work_item_states", []):
         destination = item.get("review_destination") or {}
         if destination.get("resolved"):
             item["review_link"] = url_for(destination["endpoint"], **destination.get("route_values", {}))
+        blocker_destination = blocker_resolver.resolve(
+            campaign, work_by_id.get(item.get("work_item_id"), {}), item.get("blocker"))
+        item["blocker_destination"] = blocker_destination
+        if blocker_destination.get("resolved"):
+            item["blocker_link"] = url_for(blocker_destination["endpoint"],
+                                            **blocker_destination.get("route_values", {}))
     return render_template("knowledge_campaign_orchestration_detail.html",
                            orchestration=orchestration,
                            orchestration_error=request.args.get("orchestration_error", ""),
@@ -889,7 +981,9 @@ def knowledge_campaign_orchestration_continue(orchestration_id):
         orchestration = service.continue_campaign(orchestration_id)
         campaign_id = orchestration["campaign_id"]
         outcomes = orchestration.get("execution", {}).get("outcomes", [])
-        failed = next((item for item in outcomes if item.get("status") != "completed"), None)
+        failed = next((item for item in outcomes if item.get("status") not in {
+            "completed", "package_reused"
+        }), None)
         error = (failed or {}).get("message", "")
         notice = "" if failed else (
             "Campaign advanced one recommended work item." if outcomes
@@ -909,11 +1003,26 @@ def knowledge_campaign_orchestration_advance(orchestration_id, work_item_id):
     try:
         orchestration = service.advance_item(orchestration_id, work_item_id)
         campaign_id = orchestration["campaign_id"]
-        error = ""
+        outcomes = orchestration.get("execution", {}).get("outcomes", [])
+        outcome = outcomes[0] if outcomes else {}
+        if outcome.get("status") not in {"completed", "package_reused"}:
+            error = outcome.get("message") or "The campaign item could not be advanced."
+            notice = ""
+        elif outcome.get("action") == "prepare_evidence":
+            disposition = outcome.get("package_disposition", "created")
+            notice = (
+                f"Evidence package {outcome.get('extraction_id') or 'unknown'} {disposition} "
+                f"for source {outcome.get('source_candidate_id') or 'unknown'}."
+            )
+            error = ""
+        else:
+            notice = "Campaign work item advanced one step."
+            error = ""
     except KnowledgeCampaignOrchestrationError as exception:
         error = str(exception)
+        notice = ""
     return redirect(url_for("knowledge_campaign_orchestration_detail", campaign_id=campaign_id,
-                            orchestration_error=error))
+                            orchestration_error=error, orchestration_notice=notice))
 
 
 @app.post("/curator/growth/coverage-campaigns/<campaign_id>/workflow-generation")
@@ -1079,23 +1188,64 @@ def knowledge_evidence_extraction_prepare(package_id, candidate_id):
 @app.get("/curator/growth/evidence-extraction/<extraction_id>")
 def knowledge_evidence_extraction_detail(extraction_id):
     try:
-        package = KnowledgeEvidenceExtractionService().get(extraction_id)
+        service = KnowledgeEvidenceExtractionService()
+        workspace = service.review_workspace(
+            extraction_id, review_state=request.args.get("review_state", "all"),
+            evidence_type=request.args.get("evidence_type", "all"),
+            assistance=request.args.get("assistance", "all"),
+            machine_recommendation=request.args.get("machine_recommendation", "all"),
+            human_role=request.args.get("human_role", "all"),
+        )
+        package = workspace["package"]
+        reextraction = service.reextraction_state(package)
     except KnowledgeEvidenceExtractionError:
         abort(404)
+    continuation_available = bool(
+        workspace["complete"] and
+        KnowledgeClaimPlanningService().workflow_is_eligible(
+            str(package.get("campaign_id") or ""), str(package.get("work_item_id") or "")
+        )
+    )
     return render_template("knowledge_evidence_extraction_detail.html", package=package,
-                           extraction_error=request.args.get("extraction_error", ""))
+                           workspace=workspace,
+                           reextraction=reextraction,
+                           continuation_available=continuation_available,
+                           extraction_error=request.args.get("extraction_error", ""),
+                           extraction_notice=request.args.get("extraction_notice", ""))
 
 
 @app.post("/curator/growth/evidence-extraction/<extraction_id>/run")
 def knowledge_evidence_extraction_run(extraction_id):
     service = KnowledgeEvidenceExtractionService()
     try:
-        service.extract(extraction_id)
-        error = ""
+        package = service.get(extraction_id)
+        if package.get("status") != "proposed":
+            error = ("Initial extraction has already run. Use the governed re-extraction "
+                     "action when an updated extractor or stale source makes it available.")
+        else:
+            service.extract(extraction_id)
+            error = ""
     except KnowledgeEvidenceExtractionError as exception:
         error = str(exception)
     return redirect(url_for("knowledge_evidence_extraction_detail", extraction_id=extraction_id,
                             extraction_error=error))
+
+
+@app.post("/curator/growth/evidence-extraction/<extraction_id>/reextract")
+def knowledge_evidence_reextract(extraction_id):
+    service = KnowledgeEvidenceExtractionService()
+    try:
+        before = service.reextraction_state(extraction_id)
+        service.reextract(extraction_id)
+        error = ""
+        notice = ("Evidence was re-extracted with the current deterministic rules. "
+                  "All active evidence requires human review."
+                  if before["available"] else
+                  "This package already uses the current extraction rules; no changes were made.")
+    except KnowledgeEvidenceExtractionError as exception:
+        error, notice = str(exception), ""
+    return redirect(url_for("knowledge_evidence_extraction_detail", extraction_id=extraction_id,
+                            extraction_error=error, extraction_notice=notice))
 
 
 @app.post("/curator/growth/evidence-extraction/<extraction_id>/refresh")
@@ -1112,16 +1262,141 @@ def knowledge_evidence_extraction_refresh(extraction_id):
 
 @app.post("/curator/growth/evidence-extraction/<extraction_id>/evidence/<evidence_id>")
 def knowledge_evidence_review(extraction_id, evidence_id):
+    service = KnowledgeEvidenceExtractionService()
+    requested_filters = {
+        "review_state": request.form.get("review_state", "all"),
+        "evidence_type": request.form.get("evidence_type", "all"),
+        "assistance": request.form.get("assistance", "all"),
+        "machine_recommendation": request.form.get("machine_recommendation", "all"),
+        "human_role": request.form.get("human_role", "all"),
+    }
     try:
-        KnowledgeEvidenceExtractionService().review_evidence(
+        service.review_evidence(
             extraction_id, evidence_id, request.form.get("decision", ""),
             request.form.get("notes", ""),
         )
         error = ""
     except KnowledgeEvidenceExtractionError as exception:
         error = str(exception)
+    try:
+        workspace = service.review_workspace(extraction_id, **requested_filters)
+        preserved_filters = {
+            "review_state": workspace["review_state"],
+            "evidence_type": workspace["evidence_type"],
+            "assistance": workspace["assistance"],
+            "machine_recommendation": workspace["machine_recommendation"],
+            "human_role": workspace["human_role"],
+        }
+        next_undecided = workspace["next_undecided"]
+    except KnowledgeEvidenceExtractionError:
+        preserved_filters = {"review_state": "all", "evidence_type": "all",
+                             "assistance": "all", "machine_recommendation": "all",
+                             "human_role": "all"}
+        next_undecided = None
+    target = url_for(
+        "knowledge_evidence_extraction_detail", extraction_id=extraction_id,
+        extraction_error=error, **preserved_filters,
+    )
+    if next_undecided:
+        target += f"#evidence-{next_undecided}"
+    return redirect(target)
+
+
+@app.post("/curator/growth/evidence-extraction/<extraction_id>/evidence/<evidence_id>/candidacy")
+def knowledge_evidence_candidacy(extraction_id, evidence_id):
+    service = KnowledgeEvidenceExtractionService()
+    requested_filters = {
+        "review_state": request.form.get("review_state", "all"),
+        "evidence_type": request.form.get("evidence_type", "all"),
+        "assistance": request.form.get("assistance", "all"),
+        "machine_recommendation": request.form.get("machine_recommendation", "all"),
+        "human_role": request.form.get("human_role", "all"),
+    }
+    try:
+        service.set_candidacy_role(extraction_id, evidence_id, request.form.get("role", ""))
+        error = ""
+    except KnowledgeEvidenceExtractionError as exception:
+        error = str(exception)
+    try:
+        workspace = service.review_workspace(extraction_id, **requested_filters)
+        preserved_filters = {
+            "review_state": workspace["review_state"],
+            "evidence_type": workspace["evidence_type"],
+            "assistance": workspace["assistance"],
+            "machine_recommendation": workspace["machine_recommendation"],
+            "human_role": workspace["human_role"],
+        }
+        next_matching = workspace["next_matching"]
+    except KnowledgeEvidenceExtractionError:
+        preserved_filters = {"review_state": "all", "evidence_type": "all",
+                             "assistance": "all", "machine_recommendation": "all",
+                             "human_role": "all"}
+        next_matching = None
+    target = url_for("knowledge_evidence_extraction_detail", extraction_id=extraction_id,
+                     extraction_error=error, **preserved_filters)
+    if next_matching:
+        target += f"#evidence-{next_matching}"
+    return redirect(target)
+
+
+@app.post("/curator/growth/evidence-extraction/<extraction_id>/candidacy/confirm")
+def knowledge_evidence_candidacy_confirm(extraction_id):
+    try:
+        KnowledgeEvidenceExtractionService().confirm_candidate_set(extraction_id)
+        error = ""
+    except KnowledgeEvidenceExtractionError as exception:
+        error = str(exception)
     return redirect(url_for("knowledge_evidence_extraction_detail", extraction_id=extraction_id,
                             extraction_error=error))
+
+
+@app.post("/curator/growth/evidence-extraction/<extraction_id>/candidacy/bulk-context")
+def knowledge_evidence_candidacy_bulk_context(extraction_id):
+    service = KnowledgeEvidenceExtractionService()
+    requested_filters = {
+        "review_state": request.form.get("review_state", "all"),
+        "evidence_type": request.form.get("evidence_type", "all"),
+        "assistance": request.form.get("assistance", "all"),
+        "machine_recommendation": request.form.get("machine_recommendation", "all"),
+        "human_role": request.form.get("human_role", "all"),
+    }
+    try:
+        expected_count = int(request.form.get("expected_count", ""))
+        service.bulk_assign_visible_machine_context(
+            extraction_id, expected_count=expected_count, **requested_filters,
+        )
+        error = ""
+        notice = (
+            f"Assigned {expected_count} visible machine-Context unit"
+            f"{'s' if expected_count != 1 else ''} as Reviewer Context."
+        )
+    except (KnowledgeEvidenceExtractionError, TypeError, ValueError) as exception:
+        error, notice = str(exception), ""
+    return redirect(url_for(
+        "knowledge_evidence_extraction_detail", extraction_id=extraction_id,
+        extraction_error=error, extraction_notice=notice, **requested_filters,
+    ))
+
+
+@app.post("/curator/growth/evidence-extraction/<extraction_id>/candidacy/bulk-context-all")
+def knowledge_evidence_candidacy_bulk_context_all(extraction_id):
+    service = KnowledgeEvidenceExtractionService()
+    try:
+        expected_count = int(request.form.get("expected_count", ""))
+        service.bulk_assign_all_machine_context(
+            extraction_id, expected_count=expected_count,
+        )
+        error = ""
+        notice = (
+            f"Assigned {expected_count} machine-Context unit"
+            f"{'s' if expected_count != 1 else ''} as Reviewer Context."
+        )
+    except (KnowledgeEvidenceExtractionError, TypeError, ValueError) as exception:
+        error, notice = str(exception), ""
+    return redirect(url_for(
+        "knowledge_evidence_extraction_detail", extraction_id=extraction_id,
+        extraction_error=error, extraction_notice=notice,
+    ))
 
 
 @app.post("/curator/growth/coverage-campaigns/<campaign_id>/draft-generation")
@@ -1160,6 +1435,17 @@ def knowledge_claim_planning_prepare(package_id):
     except KnowledgeClaimPlanningError as exception:
         return redirect(url_for("knowledge_draft_generation_detail", package_id=package_id,
                                 draft_error=str(exception)))
+    return redirect(url_for("knowledge_claim_planning_detail", plan_id=plan["claim_plan_id"]))
+
+
+@app.post("/curator/growth/coverage-campaigns/<campaign_id>/work-items/<work_item_id>/workflow-claim-planning")
+def knowledge_workflow_claim_planning_prepare(campaign_id, work_item_id):
+    """Human-initiated entry into the existing supervised Phase 6 workspace."""
+    try:
+        plan = KnowledgeClaimPlanningService().prepare_workflow(campaign_id, work_item_id)
+    except KnowledgeClaimPlanningError as exception:
+        return redirect(url_for("knowledge_coverage_campaign_detail",
+                                campaign_id=campaign_id, claim_error=str(exception)))
     return redirect(url_for("knowledge_claim_planning_detail", plan_id=plan["claim_plan_id"]))
 
 
@@ -1340,6 +1626,11 @@ def curator_task_detail(task_id):
         "prepared": ("success", "Assisted Resolution Package prepared for human review."),
         "draft_created": ("success", "Article draft created. No workflow relationship was changed."),
         "verified": ("success", "Current affected content was checked. Review the verification result before deciding whether to resolve."),
+        "proposal_prepared": ("success", "Help-text proposal prepared without changing the workflow."),
+        "proposal_updated": ("success", "Proposed help text updated."),
+        "proposal_approved": ("success", "The human approval was recorded. The workflow remains unchanged."),
+        "publication_recorded": ("success", "The approved change was associated with its published workflow version."),
+        "outcome_measured": ("success", "Runtime outcome evidence was measured."),
     }
     kind, message = messages.get(request.args.get("status", ""), ("info", ""))
     return render_template(
@@ -1347,6 +1638,7 @@ def curator_task_detail(task_id):
         owners=CuratorTaskService.OWNERS, priorities=CuratorTaskService.PRIORITIES,
         status_kind=kind, status_message=message,
         resolution_package=CuratorResolutionService().get(task_id),
+        confusing_step_proposal=CuratorConfusingStepImprovementService().get(task_id),
         verification_presentation=CuratorVerificationPresentationService.present(
             task.get("current_verification") if isinstance(task, dict) else task.current_verification
         ),
@@ -1354,6 +1646,53 @@ def curator_task_detail(task_id):
         session_task_actionable=session_task_actionable,
         return_to=return_to, curator_session=session_id, category=category,
     )
+
+
+@app.post("/curator/tasks/<task_id>/confusing-step-improvement")
+def curator_confusing_step_improvement(task_id):
+    action = request.form.get("action", "")
+    service = CuratorConfusingStepImprovementService()
+    status, error = "proposal_updated", ""
+    try:
+        if action == "prepare":
+            service.prepare(task_id)
+            status = "proposal_prepared"
+        elif action == "edit":
+            service.edit(task_id, request.form.get("proposed_help_text", ""))
+        elif action == "approve":
+            service.edit(task_id, request.form.get("proposed_help_text", ""))
+            service.approve(
+                task_id,
+                reviewer=request.form.get("reviewer", ""),
+                note=request.form.get("approval_note", ""),
+            )
+            status = "proposal_approved"
+        elif action == "record_published":
+            service.record_published_version(task_id)
+            status = "publication_recorded"
+        elif action == "measure":
+            service.measure(task_id)
+            status = "outcome_measured"
+        else:
+            raise CuratorConfusingStepImprovementError("Unsupported improvement action.")
+    except (CuratorConfusingStepImprovementError, WorkflowPublicationError) as exception:
+        status, error = "invalid", str(exception)
+    return redirect(url_for("curator_task_detail", task_id=task_id, status=status, error=error))
+
+
+@app.get("/curator/tasks/<task_id>/confusing-step-improvement/handoff")
+def curator_confusing_step_improvement_handoff(task_id):
+    try:
+        target = CuratorConfusingStepImprovementService().handoff(task_id)
+    except CuratorConfusingStepImprovementError as exception:
+        return redirect(url_for(
+            "curator_task_detail", task_id=task_id, status="invalid", error=str(exception)
+        ))
+    return_to = url_for("curator_task_detail", task_id=task_id, _external=False)
+    return redirect(url_for(
+        "workflow_editor", filename=target["filename"], node=target["node_id"],
+        curator_task=task_id, curator_return=return_to,
+    ))
 
 
 @app.post("/curator/tasks/<task_id>/verify")
@@ -3287,7 +3626,7 @@ def wizard():
             session["current_node"] = previous_node_id
             session["workflow_version"] = previous_version
             session["step"] = max(
-                session.get("step", 1) - 1,
+                int(previous_location.get("step", session.get("step", 1) - 1)),
                 1,
             )
             continuation = session.get("workflow_continuation")
@@ -3343,6 +3682,7 @@ def wizard():
                     "workflow": workflow_name,
                     "node_id": current_node.id,
                     "version": session.get("workflow_version"),
+                    "step": session.get("step", 1),
                 }
             )
 
@@ -3397,6 +3737,7 @@ def wizard():
                     "workflow": workflow_name,
                     "node_id": current_node.id,
                     "version": session.get("workflow_version"),
+                    "step": session.get("step", 1),
                 }
             )
         

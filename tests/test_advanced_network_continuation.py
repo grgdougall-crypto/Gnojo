@@ -132,6 +132,47 @@ class AdvancedNetworkContinuationTests(unittest.TestCase):
             self.assertEqual(session["workflow"], "network_diagnostics")
             self.assertEqual(session["current_node"], "inspect_ip_configuration")
 
+    def test_previous_restores_internet_step_metadata_across_handoff(self):
+        internet_version = available_workflows()["internet"].get("version")
+        with self.client.session_transaction() as session:
+            session["workflow"] = "internet"
+            session["workflow_version"] = internet_version
+            session["current_node"] = "verify_resolution"
+            session["step"] = 5
+            session["node_history"] = []
+            session["workflow_complete"] = False
+
+        handoff = self.client.post(
+            "/wizard", data={"answer": "no"}, follow_redirects=True
+        )
+        self.assertIn("Continue to Advanced Network Diagnostics", handoff.get_data(as_text=True))
+        self.assertIn("Step 5 of 5", handoff.get_data(as_text=True))
+        self.assertIn('aria-valuenow="100"', handoff.get_data(as_text=True))
+
+        advanced = self.client.post("/wizard", follow_redirects=True)
+        self.assertIn("Advanced Network Diagnostics", advanced.get_data(as_text=True))
+        self.assertIn("Step 1 of 5", advanced.get_data(as_text=True))
+
+        restored_handoff = self.client.post(
+            "/wizard", data={"navigation_action": "previous"}, follow_redirects=True
+        )
+        handoff_html = restored_handoff.get_data(as_text=True)
+        self.assertIn("Continue to Advanced Network Diagnostics", handoff_html)
+        self.assertIn("Step 5 of 5", handoff_html)
+        self.assertIn('aria-valuenow="100"', handoff_html)
+
+        restored_question = self.client.post(
+            "/wizard", data={"navigation_action": "previous"}, follow_redirects=True
+        )
+        question_html = restored_question.get_data(as_text=True)
+        self.assertIn("Can this computer connect to the internet now?", question_html)
+        self.assertIn("Step 5 of 5", question_html)
+        self.assertIn('aria-valuenow="100"', question_html)
+        with self.client.session_transaction() as session:
+            self.assertEqual(session["workflow"], "internet")
+            self.assertEqual(session["current_node"], "verify_resolution")
+            self.assertEqual(session["step"], 5)
+
     def test_new_phase_is_valid_and_navigation_does_not_mutate_curator_or_workflow_data(self):
         project_root = Path(__file__).resolve().parents[1]
         protected_paths = [

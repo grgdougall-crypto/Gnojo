@@ -1,9 +1,12 @@
 from collections import Counter, defaultdict
+from datetime import datetime, timezone
 
 
 class ContentQualityService:
-    def build(self, workflows, history_records, draft_filenames=None):
+    def build(self, workflows, history_records, draft_filenames=None, workflow_versions=None):
         draft_filenames = draft_filenames or {}
+        workflow_versions = workflow_versions or {}
+        measured_at = datetime.now(timezone.utc).isoformat()
         histories = defaultdict(list)
         for record in history_records:
             workflow_id = record.get("workflow_id")
@@ -24,7 +27,19 @@ class ContentQualityService:
             guided = [node for node in nodes.values() if isinstance(node, dict) and node.get("type") in {"question", "instruction"}]
             knowledge_count = sum(bool(node.get("knowledge_article")) for node in instructional)
             help_count = sum(bool(node.get("help_text")) for node in guided)
-            confusing = Counter(item.get("confusing_step") for item in feedback if item.get("confusing_step"))
+            workflow_version = workflow_versions.get(workflow_id, workflow.get("version"))
+            version_records = (
+                [item for item in records if item.get("workflow_version") == workflow_version]
+                if workflow_version is not None else records
+            )
+            version_feedback = [
+                item["feedback"] for item in version_records
+                if isinstance(item.get("feedback"), dict)
+            ]
+            confusing = Counter(
+                item.get("confusing_step") for item in version_feedback
+                if item.get("confusing_step")
+            )
             sessions = len(records)
             solved_rate = round((solved / len(feedback)) * 100) if feedback else None
             clarity_average = round(sum(clarity) / len(clarity), 1) if clarity else None
@@ -37,6 +52,7 @@ class ContentQualityService:
                 "name": workflow.get("name") or workflow_id.replace("_", " ").title(),
                 "category": workflow.get("category") or "Uncategorized",
                 "platform": workflow.get("platform") or "Cross-platform",
+                "workflow_version": workflow_version,
                 "node_count": len(nodes),
                 "sessions": sessions,
                 "completed": len(completed),
@@ -66,6 +82,21 @@ class ContentQualityService:
                 add_issue("abandonment", "High session abandonment", f"{abandonment_rate}% of {sessions} sessions ended before a resolution.", "high")
             for node_id, count in confusing.most_common(3):
                 add_issue("confusing_step", "Frequently confusing step", f"This step was reported as confusing {count} time{'s' if count != 1 else ''}.", "high" if count >= 3 else "medium", node_id)
+                action_queue[-1].update({
+                    "quality_rule": "CQ-FREQUENTLY-CONFUSING-STEP",
+                    "report_count": count,
+                    "sample_count": len(version_feedback),
+                    "aggregate_clarity": (
+                        round(sum(item["clarity"] for item in version_feedback
+                                  if isinstance(item.get("clarity"), int)) /
+                              len([item for item in version_feedback
+                                   if isinstance(item.get("clarity"), int)]), 1)
+                        if any(isinstance(item.get("clarity"), int) for item in version_feedback)
+                        else None
+                    ),
+                    "workflow_version": row["workflow_version"],
+                    "measured_at": measured_at,
+                })
             if instructional and knowledge_coverage < 25:
                 add_issue("knowledge", "Knowledge coverage is thin", f"Only {knowledge_coverage}% of instructional steps link to supporting articles.", "medium")
             if guided and learning_coverage < 50:

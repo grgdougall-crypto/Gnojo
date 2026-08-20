@@ -35,6 +35,8 @@ ACTION_POLICY = {
     "prepare_article_package": {"authority": "machine_safe", "external": False},
     "prepare_claim_plan": {"authority": "machine_safe", "external": False},
     "plan_claims": {"authority": "machine_safe", "external": False},
+    "prepare_workflow_claim_plan": {"authority": "machine_safe", "external": False},
+    "plan_workflow_claims": {"authority": "machine_safe", "external": False},
     "assemble_article": {"authority": "machine_safe", "external": False},
     "prepare_workflow_package": {"authority": "machine_safe", "external": False},
     "plan_workflow": {"authority": "machine_safe", "external": False},
@@ -178,7 +180,12 @@ class KnowledgeCampaignOrchestrationService:
         outcome = self._execute(record["campaign_id"], work_item_id, item["next_action"])
         record = self.refresh(orchestration_id)
         record["last_execution_at"] = self._now()
-        self._event(record, "work_item_advanced", "Human", work_item_id=work_item_id, outcome=outcome)
+        event_name = {
+            "completed": "work_item_advanced",
+            "package_reused": "package_reused",
+            "failed": "work_item_advance_failed",
+        }.get(outcome.get("status"), "work_item_advance_attempted")
+        self._event(record, event_name, "Human", work_item_id=work_item_id, outcome=outcome)
         self._save(record)
         result = self.refresh(orchestration_id)
         result["execution"] = {"outcomes": [outcome], "transitions": 1, "limits": deepcopy(self.limits)}
@@ -234,12 +241,7 @@ class KnowledgeCampaignOrchestrationService:
         if not packages:
             eligibility = self.workflows.eligibility(campaign["campaign_id"], work["work_item_id"])
             if not eligibility.get("eligible"):
-                reasons = " ".join(str(item) for item in eligibility.get("reasons") or [])
-                return self._blocked(
-                    base, "workflow_eligibility", "Workflow generation",
-                    reasons or "Phase 8 workflow-generation prerequisites are not satisfied.",
-                    "Prepare and approve the required structured workflow claims before creating a workflow package.",
-                )
+                return self._resolve_workflow_claims(campaign, work, base, eligibility)
             return self._action(base, "workflow_planning_ready", "prepare_workflow_package")
         package = packages[0]
         base.update(package_id=package["generation_id"], dependencies=[package["generation_id"]],
@@ -257,6 +259,75 @@ class KnowledgeCampaignOrchestrationService:
         if status in {"needs_revision", "rejected"}:
             return self._blocked(base, "workflow_validation", "Workflow generation", "Workflow draft requires revision.", "Review the workflow package.")
         return self._blocked(base, "workflow_state", "Workflow generation", f"Workflow package is in '{status}'.", "Review the authoritative package.")
+
+    def _resolve_workflow_claims(self, campaign, work, base, eligibility):
+        research = [item for item in self.research.list_for_campaign(campaign["campaign_id"])
+                    if item.get("work_item_id") == work["work_item_id"]]
+        if not research:
+            return self._action(base, "research_needed", "prepare_research")
+        rp = research[0]
+        base.update(package_id=rp["package_id"], dependencies=[rp["package_id"]],
+                    review_link=f"/curator/growth/source-research/{rp['package_id']}")
+        if rp.get("status") in {"pending", "researching"}:
+            return self._action(base, "research_needed", "run_source_research")
+        if rp.get("status") == "ready_for_review":
+            return self._gate(base, "source_approval_required", "approve_source")
+        if rp.get("status") != "approved":
+            return self._blocked(base, "source_state", "Source research",
+                                 f"Research is {rp.get('status')}.", "Review or refresh the research package.",
+                                 stale=rp.get("status") == "needs_refresh")
+        selected = list(rp.get("selected_sources") or [])
+        extractions = self.evidence.list_for_research(rp["package_id"])
+        self._add_evidence_progress(base, selected, extractions)
+        missing = next((source for source in selected if not any(
+            item.get("source_candidate_id") == source for item in extractions)), None)
+        if missing:
+            base["source_candidate_id"] = missing
+            return self._action(base, "evidence_extraction_ready", "prepare_evidence")
+        proposed = next((item for item in extractions if item.get("status") == "proposed"), None)
+        if proposed:
+            base.update(package_id=proposed["extraction_id"],
+                        dependencies=base["dependencies"] + [proposed["extraction_id"]],
+                        review_link=f"/curator/growth/evidence-extraction/{proposed['extraction_id']}")
+            return self._action(base, "evidence_extraction_ready", "extract_evidence")
+        pending = next((item for item in extractions if item.get("status") in {
+            "retrieving", "needs_review", "partially_approved", "extracted"
+        }), None)
+        if pending:
+            base.update(package_id=pending["extraction_id"],
+                        dependencies=base["dependencies"] + [pending["extraction_id"]],
+                        review_link=f"/curator/growth/evidence-extraction/{pending['extraction_id']}")
+            return self._gate(base, "evidence_review_required", "review_evidence")
+        insufficient = next((item for item in extractions
+                             if item.get("status") == "insufficient_evidence"), None)
+        approved = any(item.get("status") == "approved" for item in extractions)
+        if insufficient and not approved:
+            base.update(package_id=insufficient["extraction_id"],
+                        dependencies=base["dependencies"] + [insufficient["extraction_id"]],
+                        review_link=f"/curator/growth/evidence-extraction/{insufficient['extraction_id']}")
+            result = self._blocked(
+                base, "insufficient_evidence", "Evidence research",
+                "Human review confirmed that the extracted source contains no Candidate Evidence.",
+                "Select or approve another authoritative source, or initiate governed follow-up research."
+            )
+            result["stage"] = "insufficient_evidence"
+            return result
+        plans = self.claims.list_for_work(campaign["campaign_id"], work["work_item_id"])
+        if not plans:
+            return self._action(base, "workflow_claim_planning_ready", "prepare_workflow_claim_plan")
+        plan = plans[0]
+        base.update(package_id=plan["claim_plan_id"],
+                    dependencies=base["dependencies"] + [plan["claim_plan_id"]],
+                    review_link=f"/curator/growth/claim-planning/{plan['claim_plan_id']}")
+        if plan.get("status") == "proposed":
+            return self._action(base, "workflow_claim_planning_ready", "plan_workflow_claims")
+        if plan.get("status") in {"needs_review", "partially_approved"}:
+            return self._gate(base, "workflow_claim_review_required", "review_claims")
+        reasons = " ".join(str(item) for item in eligibility.get("reasons") or [])
+        return self._blocked(base, "workflow_eligibility", "Workflow generation",
+                             reasons or f"Workflow claim plan is {plan.get('status')}.",
+                             "Resolve evidence, conflicts, or claim review in the workflow-claim workspace.",
+                             stale=plan.get("status") == "needs_evidence")
 
     def _resolve_article(self, campaign, work, base):
         research = [item for item in self.research.list_for_campaign(campaign["campaign_id"])
@@ -276,6 +347,7 @@ class KnowledgeCampaignOrchestrationService:
             return self._blocked(base, "source_state", "Source research", "Research has not reached an approved state.", "Review the research package.")
         selected = list(rp.get("selected_sources") or [])
         extractions = self.evidence.list_for_research(rp["package_id"])
+        self._add_evidence_progress(base, selected, extractions)
         missing = next((source for source in selected if not any(item.get("source_candidate_id") == source for item in extractions)), None)
         if missing:
             base["source_candidate_id"] = missing
@@ -294,6 +366,20 @@ class KnowledgeCampaignOrchestrationService:
             base.update(package_id=pending["extraction_id"], dependencies=base["dependencies"] + [pending["extraction_id"]],
                         review_link=f"/curator/growth/evidence-extraction/{pending['extraction_id']}")
             return self._gate(base, "evidence_review_required", "review_evidence")
+        insufficient = next((item for item in extractions
+                             if item.get("status") == "insufficient_evidence"), None)
+        approved = any(item.get("status") == "approved" for item in extractions)
+        if insufficient and not approved:
+            base.update(package_id=insufficient["extraction_id"],
+                        dependencies=base["dependencies"] + [insufficient["extraction_id"]],
+                        review_link=f"/curator/growth/evidence-extraction/{insufficient['extraction_id']}")
+            result = self._blocked(
+                base, "insufficient_evidence", "Evidence research",
+                "Human review confirmed that the extracted source contains no Candidate Evidence.",
+                "Select or approve another authoritative source, or initiate governed follow-up research."
+            )
+            result["stage"] = "insufficient_evidence"
+            return result
         drafts = [item for item in self.generation.list_for_campaign(campaign["campaign_id"])
                   if item.get("work_item_id") == work["work_item_id"]]
         if not drafts:
@@ -340,9 +426,31 @@ class KnowledgeCampaignOrchestrationService:
                 self.research.run(package["package_id"])
             elif action == "prepare_evidence":
                 package = next(item for item in self.research.list_for_campaign(campaign_id) if item["work_item_id"] == work_item_id)
-                missing = next(source for source in package["selected_sources"] if not any(
-                    item.get("source_candidate_id") == source for item in self.evidence.list_for_research(package["package_id"])))
-                self.evidence.prepare(package["package_id"], missing)
+                existing = self.evidence.list_for_research(package["package_id"])
+                missing = next((source for source in package["selected_sources"] if not any(
+                    item.get("source_candidate_id") == source for item in existing)), None)
+                if missing is None:
+                    prepared = next((item for source in reversed(package["selected_sources"])
+                                     for item in existing
+                                     if item.get("source_candidate_id") == source), None)
+                    return {
+                        "work_item_id": work_item_id,
+                        "action": action,
+                        "status": "package_reused",
+                        "source_candidate_id": (prepared or {}).get("source_candidate_id"),
+                        "extraction_id": (prepared or {}).get("extraction_id"),
+                        "package_disposition": "reused",
+                    }
+                prepared = self.evidence.prepare(package["package_id"], missing)
+                reused = any(item.get("extraction_id") == prepared.get("extraction_id") for item in existing)
+                return {
+                    "work_item_id": work_item_id,
+                    "action": action,
+                    "status": "package_reused" if reused else "completed",
+                    "source_candidate_id": missing,
+                    "extraction_id": prepared.get("extraction_id"),
+                    "package_disposition": "reused" if reused else "created",
+                }
             elif action == "extract_evidence":
                 rp = next(item for item in self.research.list_for_campaign(campaign_id) if item["work_item_id"] == work_item_id)
                 package = next(item for item in self.evidence.list_for_research(rp["package_id"]) if item.get("status") == "proposed")
@@ -354,6 +462,11 @@ class KnowledgeCampaignOrchestrationService:
             elif action == "plan_claims":
                 package = next(item for item in self.generation.list_for_campaign(campaign_id) if item["work_item_id"] == work_item_id)
                 self.claims.plan(self.claims.list_for_kdg(package["package_id"])[0]["claim_plan_id"])
+            elif action == "prepare_workflow_claim_plan":
+                self.claims.prepare_workflow(campaign_id, work_item_id)
+            elif action == "plan_workflow_claims":
+                plan = self.claims.list_for_work(campaign_id, work_item_id)[0]
+                self.claims.plan(plan["claim_plan_id"])
             elif action == "assemble_article":
                 package = next(item for item in self.generation.list_for_campaign(campaign_id) if item["work_item_id"] == work_item_id)
                 self.assembly.assemble(self.claims.list_for_kdg(package["package_id"])[0]["claim_plan_id"])
@@ -370,6 +483,31 @@ class KnowledgeCampaignOrchestrationService:
             return {"work_item_id": work_item_id, "action": action, "status": "failed",
                     "error_type": type(error).__name__, "message": str(error), "retry_eligible": False,
                     "at": self._now()}
+
+    @staticmethod
+    def _add_evidence_progress(base, selected_sources, extractions):
+        """Add read-only per-source preparation detail to a work-item projection."""
+        packages_by_source = {}
+        for package in extractions:
+            source_id = package.get("source_candidate_id")
+            extraction_id = package.get("extraction_id")
+            if source_id in selected_sources and extraction_id and source_id not in packages_by_source:
+                packages_by_source[source_id] = {
+                    "source_candidate_id": source_id,
+                    "extraction_id": extraction_id,
+                    "status": package.get("status", "unknown"),
+                    "review_link": f"/curator/growth/evidence-extraction/{extraction_id}",
+                }
+        base["evidence_progress"] = {
+            "prepared_sources": len(packages_by_source),
+            "total_sources": len(selected_sources),
+            "remaining_sources": max(0, len(selected_sources) - len(packages_by_source)),
+        }
+        base["evidence_packages"] = [
+            packages_by_source[source_id]
+            for source_id in selected_sources
+            if source_id in packages_by_source
+        ]
 
     def _projection(self, campaign, states):
         unique = []
@@ -398,6 +536,7 @@ class KnowledgeCampaignOrchestrationService:
         counts = {key: sum(1 for item in states if item.get("stage") == key) for key in {
             "coverage_identified", "research_needed", "source_approval_required", "evidence_extraction_ready",
             "evidence_review_required", "claim_planning_ready", "claim_review_required", "article_assembly_ready",
+            "workflow_claim_planning_ready", "workflow_claim_review_required",
             "workflow_planning_ready", "workflow_draft_ready", "draft_review_required", "content_studio_ready", "blocked", "stale"}}
         total = len(states)
         status = "completed" if total and len(completed) == total and not blockers and not stale else (

@@ -323,7 +323,12 @@ class KnowledgeWorkflowGenerationService:
             plan = self._read(path)
             if plan.get("campaign_id") != campaign_id or plan.get("work_item_id") != work_item_id:
                 continue
+            if plan.get("target_asset_type") != "workflow":
+                continue
             if plan.get("status") != "ready_for_drafting":
+                continue
+            current_ids = self._current_evidence_ids(campaign_id, work_item_id)
+            if not set(plan.get("approved_evidence_ids") or []).issubset(current_ids):
                 continue
             for claim in plan.get("claims") or []:
                 if claim.get("review_state") == "approved" and not claim.get("stale"):
@@ -331,6 +336,28 @@ class KnowledgeWorkflowGenerationService:
                     value["claim_plan_id"] = plan.get("claim_plan_id")
                     claims.append(value)
         return claims
+
+    def _current_evidence_ids(self, campaign_id, work_item_id):
+        research_ids = set()
+        for path in sorted((self.campaign_root / "research").glob("*.json")):
+            value = self._read(path)
+            if (value.get("campaign_id") == campaign_id
+                    and value.get("work_item_id") == work_item_id
+                    and value.get("status") == "approved"):
+                research_ids.add(value.get("package_id"))
+        evidence_ids = set()
+        evidence_root = self.campaign_root / "evidence_extraction"
+        for path in sorted(evidence_root.glob("KEX-*.json")):
+            package = self._read(path)
+            if package.get("research_package_id") not in research_ids:
+                continue
+            if package.get("status") not in {"approved", "partially_approved"}:
+                continue
+            evidence_ids.update(
+                unit.get("evidence_id") for unit in package.get("evidence_units") or []
+                if unit.get("review_state") == "approved" and unit.get("evidence_id")
+            )
+        return evidence_ids
 
     def _campaign_work(self, campaign_id, work_item_id):
         path = self.campaign_root / f"{campaign_id}.json"

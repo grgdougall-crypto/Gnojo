@@ -1182,6 +1182,20 @@ dialog { max-height: calc(100dvh - 1rem); max-width: calc(100vw - 1rem); }
 .quality-section__heading { align-items: flex-start; display: flex; gap: 1rem; justify-content: space-between; margin-bottom: 1rem; }
 .quality-section__heading h2 { font-size: 1.3rem; margin: .25rem 0 0; }
 .quality-section__heading > span { color: var(--sp-muted); font-size: .8rem; }
+.evidence-review .evidence-card { scroll-margin-top: 6rem; }
+.evidence-review .evidence-card h3 { font-size: 1.05rem; margin: .75rem 0; }
+.evidence-review .evidence-card blockquote { border-left: 3px solid var(--sp-border); color: var(--sp-muted); margin: 0; padding-left: 1rem; }
+.evidence-review .evidence-location { color: var(--sp-muted); font-size: .85rem; }
+.evidence-review .evidence-details { border-top: 1px solid var(--sp-border); margin-top: 1rem; padding-top: .75rem; }
+.evidence-review .evidence-details summary { color: var(--sp-link); cursor: pointer; font-weight: 700; }
+.evidence-review .evidence-assistance { background: color-mix(in srgb, var(--sp-panel) 82%, var(--sp-primary) 18%); border-left: 3px solid var(--sp-primary); border-radius: .55rem; margin-top: 1rem; padding: .8rem 1rem; }
+.evidence-review .evidence-assistance p { color: var(--sp-muted); margin: .45rem 0; }
+.evidence-review .assistance-badge { border: 1px solid var(--sp-primary); border-radius: 999px; color: var(--sp-link); font-size: .78rem; font-weight: 700; padding: .2rem .55rem; }
+.evidence-review .evidence-assistance--review_attention { border-left-color: var(--sp-warning); }
+.evidence-review .evidence-assistance--human_interpretation { border-left-color: var(--sp-muted); }
+.evidence-review .evidence-candidate-purpose { border: 1px solid var(--sp-border); border-radius: .55rem; margin-top: .65rem; padding: .7rem 1rem; }
+.evidence-review .evidence-candidate-purpose h4 { font-size: 1rem; margin: .2rem 0 .35rem; }
+.evidence-review .evidence-candidate-purpose p { color: var(--sp-muted); font-size: .92rem; }
 .quality-queue { display: grid; gap: .75rem; }
 .quality-issue { align-items: center; background: var(--sp-page); border: 1px solid var(--sp-border); border-left-width: 4px; border-radius: .75rem; display: grid; gap: 1rem; grid-template-columns: 5rem 1fr auto; padding: 1rem; }
 .quality-issue--high { border-left-color: var(--bs-danger); }

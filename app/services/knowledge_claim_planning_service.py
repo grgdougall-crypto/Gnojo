@@ -68,6 +68,15 @@ class KnowledgeClaimPlanningService:
         return sorted((value for value in values if value.get("kdg_package_id") == package_id),
                       key=lambda value: value.get("created_at", ""), reverse=True)
 
+    def list_for_work(self, campaign_id: str, work_item_id: str) -> list[dict[str, Any]]:
+        if not self.package_root.exists():
+            return []
+        values = [self._read(path) for path in self.package_root.glob("KCPM-*.json")]
+        return sorted((value for value in values
+                       if value.get("campaign_id") == campaign_id
+                       and value.get("work_item_id") == work_item_id),
+                      key=lambda value: value.get("created_at", ""), reverse=True)
+
     def get(self, plan_id: str) -> dict[str, Any]:
         path = self._path(plan_id)
         if not path.exists():
@@ -102,9 +111,36 @@ class KnowledgeClaimPlanningService:
         self.generation._save(package)
         return deepcopy(plan)
 
+    def prepare_workflow(self, campaign_id: str, work_item_id: str) -> dict[str, Any]:
+        package, evidence = self._eligible_workflow(campaign_id, work_item_id)
+        plan_id = self._stable_id("KCPM", campaign_id, work_item_id, "workflow")
+        if self._path(plan_id).exists():
+            return self.get(plan_id)
+        now = self.generation._now()
+        plan = {
+            "schema_version": "1.0", "claim_plan_id": plan_id,
+            "kdg_package_id": None, "campaign_id": campaign_id,
+            "gap_id": package["gap_id"], "work_item_id": work_item_id,
+            "kex_package_ids": self._extraction_ids(evidence),
+            "approved_evidence_ids": sorted(unit["evidence_id"] for unit in evidence),
+            "target_asset_type": "workflow", "workflow_identity": package["workflow_identity"],
+            "workflow_name": package["workflow_name"], "article_title": package["workflow_name"],
+            "status": "proposed",
+            "sections": [], "claims": [], "conflicts": [], "evidence_gaps": [],
+            "canonical_reuse": [], "validation": {}, "reviewer_notes": "",
+            "input_fingerprint": None, "created_at": now, "updated_at": now,
+            "history": [{"event": "workflow_claim_plan_prepared", "at": now, "actor": "Human"}],
+            "revisions": [],
+        }
+        self._save(plan)
+        return deepcopy(plan)
+
     def plan(self, plan_id: str) -> dict[str, Any]:
         plan = self.get(plan_id)
-        package, evidence = self._eligible(plan["kdg_package_id"])
+        if plan.get("target_asset_type") == "workflow":
+            package, evidence = self._eligible_workflow(plan["campaign_id"], plan["work_item_id"])
+        else:
+            package, evidence = self._eligible(plan["kdg_package_id"])
         fingerprint = self._fingerprint([
             {key: unit.get(key) for key in ("evidence_id", "evidence_type", "normalized_claim",
                                              "fingerprint", "review_state")}
@@ -120,6 +156,8 @@ class KnowledgeClaimPlanningService:
                                       "superseded_at": now})
         prior = {claim["claim_id"]: claim for claim in plan.get("claims") or []}
         claims = self._claims(package, evidence, prior)
+        if plan.get("target_asset_type") == "workflow":
+            claims = self._workflow_specs(package, claims)
         prior_conflicts = {item["conflict_id"]: item for item in plan.get("conflicts") or []}
         conflicts = self._conflicts(claims)
         for conflict in conflicts:
@@ -130,6 +168,8 @@ class KnowledgeClaimPlanningService:
         reuse = self._canonical_reuse(package)
         prior_sections = {item["section"]: item for item in plan.get("sections") or []}
         sections, gaps = self._sections(package, claims, conflicts, reuse, prior_sections)
+        if plan.get("target_asset_type") == "workflow":
+            gaps.extend(self._workflow_spec_gaps(package, claims))
         plan.update({
             "status": self._status(claims, conflicts, gaps, sections), "sections": sections,
             "claims": claims, "conflicts": conflicts, "evidence_gaps": gaps,
@@ -233,15 +273,28 @@ class KnowledgeClaimPlanningService:
         except KnowledgeClaimPlanningError:
             return False
 
+    def workflow_is_eligible(self, campaign_id: str, work_item_id: str) -> bool:
+        """Read-only eligibility check for the supervised workflow claim-planning gate."""
+        try:
+            self._eligible_workflow(campaign_id, work_item_id)
+            return True
+        except KnowledgeClaimPlanningError:
+            return False
+
     def _with_current_evidence_state(self, plan: dict[str, Any]) -> dict[str, Any]:
         """Decorate a stored plan with live Phase 5 evidence state without mutating it."""
         value = deepcopy(plan)
         try:
-            package = self.generation.get(value["kdg_package_id"])
-            current_ids = {unit["evidence_id"] for unit in self.generation.extraction.approved_units_for(
-                package.get("research_package_ids") or []
-            )}
-        except (KnowledgeDraftGenerationError, KeyError):
+            if value.get("target_asset_type") == "workflow":
+                _, evidence = self._eligible_workflow(value["campaign_id"], value["work_item_id"],
+                                                      allow_conflicts=True)
+                current_ids = {unit["evidence_id"] for unit in evidence}
+            else:
+                package = self.generation.get(value["kdg_package_id"])
+                current_ids = {unit["evidence_id"] for unit in self.generation.extraction.approved_units_for(
+                    package.get("research_package_ids") or []
+                )}
+        except (KnowledgeDraftGenerationError, KnowledgeClaimPlanningError, KeyError):
             current_ids = set()
         stale_ids = set()
         for claim in value.get("claims") or []:
@@ -257,6 +310,40 @@ class KnowledgeClaimPlanningService:
         if stale_ids and value.get("status") not in {"rejected", "superseded"}:
             value["status"] = "needs_evidence"
         return value
+
+    def _eligible_workflow(self, campaign_id: str, work_item_id: str, *, allow_conflicts=False):
+        try:
+            campaign = self.generation.planner.get(campaign_id)
+        except Exception as error:
+            raise KnowledgeClaimPlanningError(str(error)) from error
+        work = next((item for item in campaign.get("work_items") or []
+                     if item.get("work_item_id") == work_item_id), None)
+        if not work or work.get("work_type") not in {
+            "workflow", "workflow_branch", "verification_step", "escalation_path", "safety_review"
+        }:
+            raise KnowledgeClaimPlanningError("Workflow claim planning requires a current workflow-oriented work item.")
+        if work.get("status") in {"rejected", "superseded", "archived", "complete"}:
+            raise KnowledgeClaimPlanningError("This work-item lifecycle no longer permits workflow claim planning.")
+        research = [item for item in self.generation.research.list_for_campaign(campaign_id)
+                    if item.get("work_item_id") == work_item_id and item.get("status") == "approved"]
+        research_ids = [item["package_id"] for item in research]
+        evidence = self.generation.extraction.approved_units_for(research_ids)
+        if not evidence:
+            raise KnowledgeClaimPlanningError("Approved Phase 5 evidence is required before workflow claim planning.")
+        package = {
+            "package_id": self._stable_id("WKCTX", campaign_id, work_item_id),
+            "campaign_id": campaign_id, "gap_id": work.get("gap_id"),
+            "work_item_id": work_item_id, "requested_asset_type": "workflow",
+            "workflow_identity": str(work.get("target_asset") or work.get("area_id") or work_item_id),
+            "workflow_name": str(work.get("target_asset") or work.get("area_id") or "Governed Workflow").replace("_", " ").title(),
+            "category": campaign.get("category", "Troubleshooting"),
+            "platform": (campaign.get("platforms") or ["Cross-platform"])[0],
+            "gap_type": next((gap.get("gap_type") for gap in campaign.get("gaps") or []
+                              if gap.get("gap_id") == work.get("gap_id")), None),
+            "work_type": work.get("work_type"), "proposed_purpose": work.get("reason") or work.get("title"),
+            "existing_assets_considered": [],
+        }
+        return package, evidence
 
     def _eligible(self, package_id: str):
         try:
@@ -305,27 +392,93 @@ class KnowledgeClaimPlanningService:
                 "limitations": [], "review_state": old.get("review_state", "proposed"),
                 "reviewer_notes": old.get("reviewer_notes", ""),
                 "reviewed_at": old.get("reviewed_at"), "stale": False,
+                "source_urls": self._unique(unit.get("source_url") for unit in units),
             })
         return claims
+
+    def _workflow_specs(self, package, claims):
+        """Attach Phase 8's existing node specification to evidence-bound claims."""
+        order = {name: index for index, name in enumerate((
+            "prerequisites", "platform_applicability", "safety", "procedure", "commands",
+            "alternate_outcomes", "escalation", "verification", "expected_result",
+        ))}
+        claims = sorted(claims, key=lambda item: (order.get(item["section"], 50), item["claim_id"]))
+        terminal_indexes = [index for index, claim in enumerate(claims)
+                            if claim["section"] in {"verification", "expected_result"}]
+        terminal_index = terminal_indexes[-1] if terminal_indexes else None
+        node_ids = [self._workflow_node_id(claim, index == terminal_index)
+                    for index, claim in enumerate(claims)]
+        for index, claim in enumerate(claims):
+            terminal = index == terminal_index
+            if terminal:
+                fields = {"title": "Verified Result", "message": claim["normalized_claim"]}
+                node_type = "resolution"
+            else:
+                fields = {"title": self._workflow_title(claim),
+                          "instruction": claim["normalized_claim"]}
+                if index + 1 < len(node_ids):
+                    fields["next"] = node_ids[index + 1]
+                node_type = "instruction"
+            spec = {"node_id": node_ids[index], "type": node_type, "operation": "add",
+                    "fields": fields}
+            if index == 0:
+                spec.update({"start_node": node_ids[0], "workflow_name": package["workflow_name"],
+                             "category": package["category"], "platform": package["platform"]})
+            claim["workflow_spec"] = spec
+        return claims
+
+    def _workflow_spec_gaps(self, package, claims):
+        """Validate the deterministic subset of Phase 8's existing claim contract."""
+        gaps, seen = [], set()
+        for claim in claims:
+            spec = claim.get("workflow_spec") or {}
+            node_id = str(spec.get("node_id") or "").strip()
+            valid = (node_id and node_id not in seen
+                     and spec.get("type") in {"question", "instruction", "resolution", "transition"}
+                     and isinstance(spec.get("fields"), dict))
+            if not valid:
+                gaps.append({"gap_id": self._stable_id("GAP", package["package_id"], claim["claim_id"], "workflow_spec"),
+                             "section": claim["section"], "required": True,
+                             "reason": "The evidence-bound claim could not produce a valid Phase 8 workflow specification."})
+            seen.add(node_id)
+        if claims and not any((claim.get("workflow_spec") or {}).get("type") == "resolution"
+                              for claim in claims):
+            gaps.append({"gap_id": self._stable_id("GAP", package["package_id"], "terminal_result"),
+                         "section": "verification", "required": True,
+                         "reason": "Approved verification or expected-result evidence is required for a terminal result."})
+        return gaps
+
+    def _workflow_node_id(self, claim, terminal):
+        prefix = "r" if terminal else "i"
+        return f"{prefix}_{claim['claim_id'].split('-', 1)[-1].casefold()}"
+
+    @staticmethod
+    def _workflow_title(claim):
+        labels = {"caution": "Review Safety Requirement", "authorization_requirement": "Confirm Authorization",
+                  "verification": "Verify the Result", "expected_result": "Observe the Expected Result",
+                  "command": "Run the Supported Command", "escalation": "Escalate with Evidence",
+                  "prerequisite": "Confirm the Prerequisite", "applicability": "Confirm Applicability"}
+        return labels.get(claim.get("claim_type"), "Perform the Supported Action")
 
     def _sections(self, package, claims, conflicts, reuse, prior=None):
         prior = prior or {}
         by_section = {name: [claim for claim in claims if claim["section"] == name]
                       for name in self.SECTION_ORDER}
         # Campaign planning is identity context, not a technical claim.
+        required_sections = self._required_sections(package)
         purpose_supported = bool(package.get("proposed_purpose"))
         source_supported = bool(claims)
         sections, gaps = [], []
         for name in self.SECTION_ORDER:
             section_claims = by_section[name]
-            applicable = name in self.REQUIRED or bool(section_claims) or name in {
+            applicable = name in required_sections or bool(section_claims) or name in {
                 "symptoms", "platform_applicability"
             }
             supported = bool(section_claims) or (name == "purpose" and purpose_supported) or (
                 name == "sources" and source_supported)
             section_conflicts = [item["conflict_id"] for item in conflicts if item["section"] == name]
             section_reuse = [item for item in reuse if name in item.get("sections", [])]
-            missing = applicable and name in self.REQUIRED and not supported
+            missing = applicable and name in required_sections and not supported
             if missing:
                 gap_id = self._stable_id("GAP", package["package_id"], name)
                 gaps.append({"gap_id": gap_id, "section": name, "required": True,
@@ -335,7 +488,7 @@ class KnowledgeClaimPlanningService:
                                    "not_applicable" if not applicable else
                                    "needs_evidence" if missing else "proposed")
             sections.append({"section": name, "applicable": applicable,
-                             "required": name in self.REQUIRED,
+                             "required": name in required_sections,
                              "claim_ids": [item["claim_id"] for item in section_claims],
                              "evidence_ids": self._unique(eid for item in section_claims for eid in item["evidence_ids"]),
                              "missing_evidence": missing, "conflict_ids": section_conflicts,
@@ -344,6 +497,19 @@ class KnowledgeClaimPlanningService:
                              "reviewer_notes": old.get("reviewer_notes", ""),
                              "reviewed_at": old.get("reviewed_at")})
         return sections, gaps
+
+    def _required_sections(self, package):
+        if package.get("requested_asset_type") != "workflow":
+            return self.REQUIRED
+        required = {"procedure", "verification", "sources"}
+        if package.get("work_type") == "safety_review" or package.get("gap_type") == "missing_safety":
+            required.add("safety")
+        return required
+
+    @staticmethod
+    def _extraction_ids(evidence):
+        return sorted({(unit.get("provenance") or {}).get("extraction_id")
+                       for unit in evidence if (unit.get("provenance") or {}).get("extraction_id")})
 
     def _conflicts(self, claims):
         conflicts = []

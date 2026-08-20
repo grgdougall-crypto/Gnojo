@@ -44,7 +44,13 @@ class Research(Store):
 
 class Evidence(Store):
     def prepare(self, research_id, source_id):
-        value = {"extraction_id": "KEX-1", "source_candidate_id": source_id, "status": "proposed"}
+        existing = next((item for item in self.items
+                         if item.get("source_candidate_id") == source_id), None)
+        if existing:
+            self.calls.append(("prepare", source_id))
+            return deepcopy(existing)
+        value = {"extraction_id": f"KEX-{len(self.items) + 1}",
+                 "source_candidate_id": source_id, "status": "proposed"}
         self.items.append(value); self.calls.append(("prepare", source_id)); return value
     def extract(self, extraction_id):
         self.items[0]["status"] = "needs_review"; self.calls.append(("extract", extraction_id))
@@ -61,6 +67,10 @@ class Claims(Store):
         value = {"claim_plan_id": "KCPM-1", "status": "proposed"}
         self.items.append(value); self.calls.append(("prepare", package_id)); return value
     def plan(self, plan_id): self.items[0]["status"] = "needs_review"; self.calls.append(("plan", plan_id))
+    def prepare_workflow(self, campaign_id, work_item_id):
+        value = {"claim_plan_id": "KCPM-WORKFLOW-1", "work_item_id": work_item_id,
+                 "target_asset_type": "workflow", "status": "proposed"}
+        self.items.append(value); self.calls.append(("prepare_workflow", work_item_id)); return value
 
 
 class Assembly(Store):
@@ -161,6 +171,79 @@ class KnowledgeCampaignOrchestrationTests(unittest.TestCase):
         self.assertEqual(claims.calls, [("prepare", "KDG-1"), ("plan", "KCPM-1")])
         self.assertEqual(result["work_item_states"][0]["next_action"], "review_claims")
 
+    def test_empty_confirmed_candidate_set_blocks_claim_planning_as_insufficient_evidence(self):
+        service, _, research, evidence, generation, claims, *_ = self.factory
+        research.items = [{"package_id": "KRP-1", "work_item_id": "KCW-1",
+                           "status": "approved", "selected_sources": ["SRC-1"]}]
+        evidence.items = [{"extraction_id": "KEX-EMPTY", "source_candidate_id": "SRC-1",
+                           "status": "insufficient_evidence"}]
+        record = service.get_or_create("KCAMP-TEST")
+
+        result = service.refresh(record["orchestration_id"])
+        state = result["work_item_states"][0]
+        self.assertEqual(state["stage"], "insufficient_evidence")
+        self.assertEqual(state["state"], "blocked")
+        self.assertIsNone(state["next_action"])
+        self.assertEqual(state["review_link"],
+                         "/curator/growth/evidence-extraction/KEX-EMPTY")
+        self.assertIn("no Candidate Evidence", state["blocker"]["explanation"])
+        self.assertEqual(generation.items, [])
+        self.assertEqual(claims.items, [])
+
+    def test_two_source_evidence_preparation_reports_progress_and_packages(self):
+        service, _, research, evidence, *_ = self.factory
+        research.items = [{"package_id": "KRP-1", "work_item_id": "KCW-1", "status": "approved",
+                           "selected_sources": ["SRC-ETHERNET", "SRC-NETADAPTER"]}]
+        record = service.get_or_create("KCAMP-TEST")
+
+        first = service.advance_item(record["orchestration_id"], "KCW-1")
+        first_outcome = first["execution"]["outcomes"][0]
+        first_item = first["work_item_states"][0]
+        self.assertEqual(first_outcome["source_candidate_id"], "SRC-ETHERNET")
+        self.assertEqual(first_outcome["extraction_id"], "KEX-1")
+        self.assertEqual(first_outcome["package_disposition"], "created")
+        self.assertEqual(first_item["evidence_progress"], {
+            "prepared_sources": 1, "total_sources": 2, "remaining_sources": 1,
+        })
+        self.assertEqual(first_item["next_action"], "prepare_evidence")
+        self.assertEqual(first_item["evidence_packages"][0]["review_link"],
+                         "/curator/growth/evidence-extraction/KEX-1")
+
+        second = service.advance_item(record["orchestration_id"], "KCW-1")
+        second_outcome = second["execution"]["outcomes"][0]
+        second_item = second["work_item_states"][0]
+        self.assertEqual(second_outcome["source_candidate_id"], "SRC-NETADAPTER")
+        self.assertEqual(second_outcome["extraction_id"], "KEX-2")
+        self.assertEqual(second_item["evidence_progress"]["prepared_sources"], 2)
+        self.assertEqual(second_item["next_action"], "extract_evidence")
+        self.assertEqual([item["extraction_id"] for item in second_item["evidence_packages"]],
+                         ["KEX-1", "KEX-2"])
+        self.assertEqual(evidence.calls, [("prepare", "SRC-ETHERNET"),
+                                          ("prepare", "SRC-NETADAPTER")])
+
+    def test_item_advance_failure_is_recorded_as_failure_not_success(self):
+        service, _, research, *_ = self.factory
+        research.create = Mock(side_effect=RuntimeError("Extraction service unavailable."))
+        record = service.get_or_create("KCAMP-TEST")
+        result = service.advance_item(record["orchestration_id"], "KCW-1")
+        self.assertEqual(result["execution"]["outcomes"][0]["status"], "failed")
+        persisted = service.get(record["orchestration_id"])
+        self.assertEqual(persisted["history"][-1]["event"], "work_item_advance_failed")
+
+    def test_idempotent_prepare_is_explicitly_recorded_as_package_reused(self):
+        service, _, research, *_ = self.factory
+        research.items = [{"package_id": "KRP-1", "work_item_id": "KCW-1", "status": "approved",
+                           "selected_sources": ["SRC-ETHERNET"]}]
+        record = service.get_or_create("KCAMP-TEST")
+        reused = {"work_item_id": "KCW-1", "action": "prepare_evidence",
+                  "status": "package_reused", "source_candidate_id": "SRC-ETHERNET",
+                  "extraction_id": "KEX-1", "package_disposition": "reused"}
+        with patch.object(service, "_execute", return_value=reused):
+            result = service.advance_item(record["orchestration_id"], "KCW-1")
+        self.assertEqual(result["execution"]["outcomes"][0]["status"], "package_reused")
+        persisted = service.get(record["orchestration_id"])
+        self.assertEqual(persisted["history"][-1]["event"], "package_reused")
+
     def test_article_assembly_stops_at_review(self):
         service, _, research, evidence, generation, claims, assembly, _ = self.factory
         research.items = [{"package_id": "KRP-1", "work_item_id": "KCW-1", "status": "approved",
@@ -185,7 +268,7 @@ class KnowledgeCampaignOrchestrationTests(unittest.TestCase):
         self.assertEqual(workflows.calls, [("prepare", "KCW-1")])
         self.assertEqual(result["work_item_states"][0]["next_action"], "plan_workflow")
 
-    def test_workflow_item_is_not_machine_ready_when_phase_eight_rejects_eligibility(self):
+    def test_workflow_item_starts_supervised_evidence_chain_when_phase_eight_is_not_eligible(self):
         campaign = campaign_fixture()
         campaign["work_items"][0]["work_type"] = "workflow"
         workflows = Workflows()
@@ -197,10 +280,9 @@ class KnowledgeCampaignOrchestrationTests(unittest.TestCase):
             research=Research(), evidence=Evidence(), generation=Generation(), claims=Claims(),
             assembly=Assembly(), workflows=workflows)
         record = service.get_or_create("KCAMP-TEST")
-        self.assertEqual(record["readiness_summary"]["machine_ready"], 0)
-        self.assertEqual(record["readiness_summary"]["blocked"], 1)
-        self.assertEqual(record["work_item_states"][0]["blocker"]["blocker_type"], "workflow_eligibility")
-        self.assertIn("Approved current workflow claims", record["blockers"][0]["explanation"])
+        self.assertEqual(record["readiness_summary"]["machine_ready"], 1)
+        self.assertEqual(record["readiness_summary"]["blocked"], 0)
+        self.assertEqual(record["work_item_states"][0]["next_action"], "prepare_research")
 
     def test_continue_advances_only_the_displayed_machine_ready_workflow_item(self):
         campaign = campaign_fixture()
@@ -236,6 +318,8 @@ class KnowledgeCampaignOrchestrationTests(unittest.TestCase):
         campaign_root = self.root / "integration-campaigns"
         campaign_root.mkdir(parents=True)
         (campaign_root / "claim_planning").mkdir()
+        (campaign_root / "research").mkdir()
+        (campaign_root / "evidence_extraction").mkdir()
         (self.root / "app" / "decision_trees").mkdir(parents=True)
         (self.root / "app" / "workflow_drafts").mkdir(parents=True)
         (campaign_root / "KCAMP-TEST.json").write_text(json.dumps(campaign), encoding="utf-8")
@@ -250,7 +334,16 @@ class KnowledgeCampaignOrchestrationTests(unittest.TestCase):
         }
         (campaign_root / "claim_planning" / "KCPM-DNS.json").write_text(json.dumps({
             "claim_plan_id": "KCPM-DNS", "campaign_id": "KCAMP-TEST", "work_item_id": "KCW-1",
-            "status": "ready_for_drafting", "claims": [claim],
+            "target_asset_type": "workflow", "status": "ready_for_drafting",
+            "approved_evidence_ids": ["EVD-DNS"], "claims": [claim],
+        }), encoding="utf-8")
+        (campaign_root / "research" / "KSR-DNS.json").write_text(json.dumps({
+            "package_id": "KSR-DNS", "campaign_id": "KCAMP-TEST", "work_item_id": "KCW-1",
+            "status": "approved",
+        }), encoding="utf-8")
+        (campaign_root / "evidence_extraction" / "KEX-DNS.json").write_text(json.dumps({
+            "extraction_id": "KEX-DNS", "research_package_id": "KSR-DNS", "status": "approved",
+            "evidence_units": [{"evidence_id": "EVD-DNS", "review_state": "approved"}],
         }), encoding="utf-8")
         workflows = KnowledgeWorkflowGenerationService(
             self.root, campaign_root, self.root / "app" / "workflow_drafts"
@@ -321,6 +414,71 @@ class KnowledgeCampaignOrchestrationTests(unittest.TestCase):
             )
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Eligibility changed.", response.data)
+
+    def test_item_advance_route_surfaces_created_evidence_package_and_progress(self):
+        projection = {
+            "orchestration_id": "KORCH-TEST", "campaign_id": "KCAMP-TEST",
+            "campaign_objective": "Build coverage", "status": "active", "mode": "supervised",
+            "readiness_summary": {"completion_percent": 25, "machine_ready": 1,
+                                  "human_review": 0, "blocked": 0},
+            "pipeline_summary": {"evidence_extraction_ready": 1},
+            "next_recommended_action": None,
+            "work_item_states": [{
+                "work_item_id": "KCW-1", "work_type": "knowledge_article", "title": "Ethernet",
+                "stage": "evidence_extraction_ready", "state": "machine_ready",
+                "next_action": "prepare_evidence", "action_authority": "machine_safe",
+                "blocker": None, "blocker_destination": None,
+                "evidence_progress": {"prepared_sources": 1, "total_sources": 2,
+                                      "remaining_sources": 1},
+                "evidence_packages": [{"source_candidate_id": "SRC-ETHERNET",
+                                       "extraction_id": "KEX-1", "status": "proposed",
+                                       "review_link": "/curator/growth/evidence-extraction/KEX-1"}],
+            }],
+            "human_review_queue": [], "blockers": [], "stale_dependencies": [],
+            "dependency_graph": {"edges": []}, "history": [],
+            "execution": {"outcomes": [{"work_item_id": "KCW-1", "action": "prepare_evidence",
+                                           "status": "completed", "source_candidate_id": "SRC-ETHERNET",
+                                           "extraction_id": "KEX-1", "package_disposition": "created"}]},
+        }
+        service = Mock()
+        service.advance_item.return_value = deepcopy(projection)
+        service.get_or_create.return_value = deepcopy(projection)
+        flask_app.config.update(TESTING=True)
+        with patch("app.app.KnowledgeCampaignOrchestrationService", return_value=service):
+            response = flask_app.test_client().post(
+                "/curator/growth/orchestration/KORCH-TEST/items/KCW-1/advance",
+                data={"campaign_id": "KCAMP-TEST"}, follow_redirects=True,
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Evidence package KEX-1 created for source SRC-ETHERNET.", response.data)
+        self.assertIn(b"1 of 2 sources prepared", response.data)
+        self.assertIn(b"KEX-1", response.data)
+
+    def test_item_advance_route_surfaces_execution_failure(self):
+        outcome = {"work_item_id": "KCW-1", "action": "prepare_evidence", "status": "failed",
+                   "message": "Source retrieval failed."}
+        service = Mock()
+        service.advance_item.return_value = {
+            "campaign_id": "KCAMP-TEST", "execution": {"outcomes": [outcome]},
+        }
+        detail = {
+            "orchestration_id": "KORCH-TEST", "campaign_id": "KCAMP-TEST",
+            "campaign_objective": "Build coverage", "status": "active", "mode": "supervised",
+            "readiness_summary": {"completion_percent": 25, "machine_ready": 1,
+                                  "human_review": 0, "blocked": 0},
+            "pipeline_summary": {}, "next_recommended_action": None, "work_item_states": [],
+            "human_review_queue": [], "blockers": [], "stale_dependencies": [],
+            "dependency_graph": {"edges": []}, "history": [],
+        }
+        service.get_or_create.return_value = detail
+        flask_app.config.update(TESTING=True)
+        with patch("app.app.KnowledgeCampaignOrchestrationService", return_value=service):
+            response = flask_app.test_client().post(
+                "/curator/growth/orchestration/KORCH-TEST/items/KCW-1/advance",
+                data={"campaign_id": "KCAMP-TEST"}, follow_redirects=True,
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Source retrieval failed.", response.data)
 
     def test_reuse_completion_and_content_studio_boundary(self):
         campaign = campaign_fixture()

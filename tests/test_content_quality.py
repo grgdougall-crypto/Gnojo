@@ -1,10 +1,16 @@
+import hashlib
+import json
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from app.app import app
+from app.app import app, available_workflows
 from app.services.content_quality_service import ContentQualityService
+from app.services.curator_content_quality_bridge_service import (
+    CuratorContentQualityBridgeError,
+    CuratorContentQualityBridgeService,
+)
 from app.services.troubleshooting_history_service import TroubleshootingHistoryService
 
 
@@ -34,18 +40,117 @@ class ContentQualityServiceTests(unittest.TestCase):
         confusing = next(item for item in report["action_queue"] if item["kind"] == "confusing_step")
         self.assertEqual(confusing["node_id"], "step")
         self.assertEqual(confusing["filename"], "slow.json")
+        self.assertEqual(confusing["quality_rule"], "CQ-FREQUENTLY-CONFUSING-STEP")
+        self.assertEqual(confusing["report_count"], 2)
+        self.assertEqual(confusing["sample_count"], 2)
+        self.assertEqual(confusing["aggregate_clarity"], 2.0)
+
+    def test_confusing_step_baseline_uses_authoritative_runtime_version(self):
+        workflows = {
+            "network": {
+                "workflow_id": "network", "name": "Network",
+                "nodes": {"dns": {"type": "instruction", "instruction": "Test DNS"}},
+            }
+        }
+        records = [
+            {"workflow_id": "network", "workflow_version": 1, "status": "completed",
+             "feedback": {"solved": "no", "clarity": 1, "confusing_step": "dns"}},
+            {"workflow_id": "network", "workflow_version": 2, "status": "completed",
+             "feedback": {"solved": "no", "clarity": 3, "confusing_step": "dns"}},
+            {"workflow_id": "network", "workflow_version": 2, "status": "completed",
+             "feedback": {"solved": "yes", "clarity": 5, "confusing_step": None}},
+        ]
+        report = ContentQualityService().build(
+            workflows, records, {"network": "network.json"},
+            workflow_versions={"network": 2},
+        )
+        confusing = next(item for item in report["action_queue"] if item["kind"] == "confusing_step")
+        self.assertEqual(confusing["workflow_version"], 2)
+        self.assertEqual(confusing["report_count"], 1)
+        self.assertEqual(confusing["sample_count"], 2)
+        self.assertEqual(confusing["aggregate_clarity"], 4.0)
+
+
+class CuratorContentQualityBridgeTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.root = Path(self.temporary.name)
+        self.bridge = CuratorContentQualityBridgeService(self.root)
+        self.item = {
+            "kind": "confusing_step",
+            "quality_rule": "CQ-FREQUENTLY-CONFUSING-STEP",
+            "workflow_id": "windows_slow",
+            "workflow_version": 4,
+            "node_id": "confirm_windows",
+            "priority": "high",
+            "report_count": 3,
+            "sample_count": 5,
+            "aggregate_clarity": 2.6,
+            "measured_at": "2026-08-19T20:00:00+00:00",
+            "comment": "raw private feedback must never be copied",
+        }
+
+    def tearDown(self):
+        self.temporary.cleanup()
+
+    def test_confusing_step_creates_one_stable_governed_task_without_content_changes(self):
+        workflow = self.root / "app" / "decision_trees" / "windows_slow.json"
+        publication = self.root / "app" / "workflow_publications" / "windows_slow" / "current.json"
+        workflow.parent.mkdir(parents=True)
+        publication.parent.mkdir(parents=True)
+        workflow.write_text('{"unchanged": true}\n', encoding="utf-8")
+        publication.write_text('{"unchanged": true}\n', encoding="utf-8")
+        before = (workflow.read_bytes(), publication.read_bytes())
+
+        first = self.bridge.send(self.item)
+        second = self.bridge.send({**self.item, "report_count": 4})
+        state = self.bridge.store.load()
+
+        identity = "CQ-FREQUENTLY-CONFUSING-STEP|windows_slow|confirm_windows"
+        expected_id = "GKT-" + hashlib.sha256(identity.encode("utf-8")).hexdigest()[:12].upper()
+        self.assertEqual(first["task_id"], expected_id)
+        self.assertEqual(second["task_id"], expected_id)
+        self.assertEqual(list(state["tasks"]), [expected_id])
+        task = state["tasks"][expected_id]
+        self.assertEqual(task["durable_identity"], identity)
+        self.assertEqual(task["content_identifier"], "windows_slow:confirm_windows")
+        self.assertEqual(task["related_workflows"], ["windows_slow"])
+        self.assertEqual(task["execution_mode"], "HUMAN_DECISION")
+        self.assertFalse(task["future_automated_fix"])
+        self.assertEqual(task["quality_baseline"], {
+            "workflow_id": "windows_slow",
+            "workflow_version": 4,
+            "node_id": "confirm_windows",
+            "quality_rule": "CQ-FREQUENTLY-CONFUSING-STEP",
+            "report_count": 4,
+            "sample_count": 5,
+            "aggregate_clarity": 2.6,
+            "measured_at": "2026-08-19T20:00:00+00:00",
+        })
+        self.assertNotIn("raw private feedback", json.dumps(task))
+        self.assertEqual((workflow.read_bytes(), publication.read_bytes()), before)
+        self.assertFalse((self.root / "curation_memory" / "resolution_packages").exists())
+
+    def test_unrelated_quality_finding_is_rejected_without_creating_a_task(self):
+        with self.assertRaises(CuratorContentQualityBridgeError):
+            self.bridge.send({**self.item, "kind": "clarity", "quality_rule": "CQ-CLARITY"})
+        self.assertEqual(self.bridge.store.load()["tasks"], {})
 
 
 class ContentQualityPageTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.history = TroubleshootingHistoryService(Path(self.temporary.name))
+        self.bridge = CuratorContentQualityBridgeService(Path(self.temporary.name) / "repository")
         self.history_patch = patch("app.app.TroubleshootingHistoryService", return_value=self.history)
+        self.bridge_patch = patch("app.app.CuratorContentQualityBridgeService", return_value=self.bridge)
         self.history_patch.start()
+        self.bridge_patch.start()
         app.config.update(TESTING=True)
         self.client = app.test_client()
 
     def tearDown(self):
+        self.bridge_patch.stop()
         self.history_patch.stop()
         self.temporary.cleanup()
 
@@ -70,6 +175,34 @@ class ContentQualityPageTests(unittest.TestCase):
         ).get_data(as_text=True)
         self.assertIn('data-node-id="instr_check_adapter_status"', html)
         self.assertIn("requestedNodeId", html)
+
+    def test_confusing_step_has_distinct_open_and_curator_actions_then_shows_tracked_state(self):
+        version = available_workflows()["windows_slow"].get("version")
+        for clarity, comment in ((2, "private first comment"), (3, "private second comment")):
+            record = self.history.start("windows_slow", "Computer Running Slowly", "confirm_windows", version=version)
+            self.history.complete(record["id"], "confirm_windows")
+            self.history.add_feedback(record["id"], {
+                "solved": "no", "clarity": clarity,
+                "confusing_step": "confirm_windows", "comment": comment,
+            })
+
+        before = self.client.get("/content-quality").get_data(as_text=True)
+        self.assertIn("Send to Curator", before)
+        self.assertIn("/workflow-editor/windows_slow.json?node=confirm_windows", before)
+
+        response = self.client.post(
+            "/content-quality/confusing-step/curator",
+            data={"workflow_id": "windows_slow", "node_id": "confirm_windows"},
+            follow_redirects=True,
+        )
+        html = response.get_data(as_text=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Tracked by Curator", html)
+        self.assertNotIn("Send to Curator", html)
+        self.assertIn("/workflow-editor/windows_slow.json?node=confirm_windows", html)
+        task = next(iter(self.bridge.store.load()["tasks"].values()))
+        self.assertNotIn("private first comment", json.dumps(task))
+        self.assertNotIn("private second comment", json.dumps(task))
 
 
 if __name__ == "__main__":

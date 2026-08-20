@@ -1,0 +1,58 @@
+<section class="quality-section mt-4" id="governedImprovement" aria-labelledby="governedImprovementTitle">
+  <span class="section-eyebrow">Governed improvement</span>
+  <h2 id="governedImprovementTitle">Confusing-step help text</h2>
+  <p class="text-secondary">A human-reviewed proposal for <code>{{ task.content_identifier }}</code>. No workflow content is changed here.</p>
+
+  {% if not confusing_step_proposal %}
+  <dl class="curator-definition-list">
+    <div><dt>Baseline version</dt><dd>{{ task.quality_baseline.workflow_version or 'Not available' }}</dd></div>
+    <div><dt>Feedback reports</dt><dd>{{ task.quality_baseline.report_count }} confusing out of {{ task.quality_baseline.sample_count }}</dd></div>
+    <div><dt>Aggregate clarity</dt><dd>{{ task.quality_baseline.aggregate_clarity if task.quality_baseline.aggregate_clarity is not none else 'Not available' }}</dd></div>
+  </dl>
+  <form method="post" action="{{ url_for('curator_confusing_step_improvement', task_id=task.task_id) }}">
+    <button class="btn btn-outline-primary" name="action" value="prepare">Prepare help-text proposal</button>
+  </form>
+  {% else %}
+  {% set proposal = confusing_step_proposal %}
+  <dl class="curator-definition-list">
+    <div><dt>Affected workflow/node</dt><dd><code>{{ proposal.workflow_id }}:{{ proposal.node_id }}</code></dd></div>
+    <div><dt>Baseline version</dt><dd>{{ proposal.before_workflow_version }}</dd></div>
+    <div><dt>Proposal status</dt><dd>{{ proposal.status|replace('_', ' ')|title }}</dd></div>
+    <div><dt>Current help text</dt><dd>{{ proposal.current_help_text or 'None' }}</dd></div>
+    <div><dt>Approval</dt><dd>{% if proposal.approved_by %}{{ proposal.approved_by }} at {{ proposal.approved_at|friendly_datetime }} — {{ proposal.approval_note }}{% else %}Not approved{% endif %}</dd></div>
+    <div><dt>Published version</dt><dd>{{ proposal.published_version or 'Not recorded' }}</dd></div>
+  </dl>
+
+  {% if proposal.status == 'proposed' %}
+  <form method="post" action="{{ url_for('curator_confusing_step_improvement', task_id=task.task_id) }}" class="curator-action-form">
+    <label for="proposedHelpText">Proposed help text</label>
+    <textarea id="proposedHelpText" name="proposed_help_text" rows="4" maxlength="1000" required>{{ proposal.proposed_help_text }}</textarea>
+    <button class="btn btn-outline-primary" name="action" value="edit">Save proposal wording</button>
+    <label for="proposalReviewer">Reviewer identity</label>
+    <input id="proposalReviewer" name="reviewer" required>
+    <label for="proposalApprovalNote">Approval note</label>
+    <textarea id="proposalApprovalNote" name="approval_note" rows="3" required></textarea>
+    <button class="btn btn-success" name="action" value="approve">Approve proposal</button>
+  </form>
+  {% else %}
+  <div class="curator-action-grid">
+    <a class="btn btn-primary" href="{{ url_for('curator_confusing_step_improvement_handoff', task_id=task.task_id) }}">Open affected step in Workflow Studio</a>
+    {% if not proposal.published_version %}
+    <form method="post" action="{{ url_for('curator_confusing_step_improvement', task_id=task.task_id) }}"><button class="btn btn-outline-primary" name="action" value="record_published">Record published version</button></form>
+    {% else %}
+    <form method="post" action="{{ url_for('curator_confusing_step_improvement', task_id=task.task_id) }}"><button class="btn btn-outline-primary" name="action" value="measure">Measure outcome</button></form>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if proposal.measurement %}
+  {% set measurement = proposal.measurement %}
+  <div class="alert {% if measurement.state == 'insufficient_post_change_evidence' %}alert-warning{% else %}alert-info{% endif %} mt-3">
+    <strong>{{ measurement.label }}</strong>
+    <p>Before v{{ measurement.before.workflow_version }}: {{ measurement.before.confusing_step_count }}/{{ measurement.before.sample_count }} confusing ({{ measurement.before.confusing_rate }}%), clarity {{ measurement.before.aggregate_clarity if measurement.before.aggregate_clarity is not none else '—' }}.</p>
+    <p>After v{{ measurement.after.workflow_version }}: {{ measurement.after.confusing_step_count }}/{{ measurement.after.sample_count }} confusing ({{ measurement.after.confusing_rate }}%), clarity {{ measurement.after.aggregate_clarity if measurement.after.aggregate_clarity is not none else '—' }}.</p>
+    <p>Confusing-rate change: {{ measurement.confusing_rate_change_points }} percentage points{% if measurement.aggregate_clarity_change is not none %}; clarity change: {{ measurement.aggregate_clarity_change }}{% endif %}.</p>
+  </div>
+  {% endif %}
+  {% endif %}
+</section>

@@ -14,6 +14,7 @@ from app.services.knowledge_draft_generation_service import (
     KnowledgeDraftGenerationError,
     KnowledgeDraftGenerationService,
 )
+from app.services.knowledge_evidence_extraction_service import CANDIDACY_RULE_VERSION
 
 
 class KnowledgeDraftGenerationTests(unittest.TestCase):
@@ -138,19 +139,35 @@ class KnowledgeDraftGenerationTests(unittest.TestCase):
         extraction_root = self.campaign_root / "evidence_extraction"
         extraction_root.mkdir(parents=True, exist_ok=True)
         evidence_id = "EVD-AAAAAAAAAAAA"
-        (extraction_root / "KEX-AAAAAAAAAAAA.json").write_text(json.dumps({
+        extraction = {
             "schema_version": "1.0", "extraction_id": "KEX-AAAAAAAAAAAA",
-            "research_package_id": research["package_id"], "status": "partially_approved",
+            "research_package_id": research["package_id"], "status": "approved",
             "created_at": "now", "evidence_units": [{
                 "evidence_id": evidence_id, "evidence_type": "procedure",
                 "normalized_claim": "Open the approved VPN client and record its status.",
                 "review_state": "approved", "source_title": "VPN technical guide",
                 "source_url": "https://learn.microsoft.com/windows/security/operating-system-security/network-security/vpn/",
                 "publisher": "Microsoft", "fingerprint": "evidence-digest",
+                "candidacy": {"machine_recommended_role": "candidate",
+                               "machine_rationale": "Deterministic test fixture evidence.",
+                               "rule_version": CANDIDACY_RULE_VERSION,
+                               "recommendation_fingerprint": "recommend-evidence",
+                               "human_confirmed_role": "candidate", "role_decided_at": "now",
+                               "role_decided_by": "Human"},
                 "provenance": {"research_package_id": research["package_id"],
                                "source_candidate_id": "KSC-MICROSOFT"},
             }],
-        }), encoding="utf-8")
+            "source_fingerprint": "approved-digest", "revision": 1,
+            "campaign_id": self.work["campaign_id"], "gap_id": self.gap["gap_id"],
+            "work_item_id": self.work["work_item_id"], "platform": "Windows",
+            "candidacy": {"schema_version": "1.0", "rule_version": CANDIDACY_RULE_VERSION,
+                           "candidate_set_status": "confirmed", "confirmed_at": "now",
+                           "confirmed_by": "Human", "confirmation_fingerprint": None},
+        }
+        extraction["candidacy"]["confirmation_fingerprint"] = \
+            self.service.extraction._candidate_set_fingerprint(extraction)
+        (extraction_root / "KEX-AAAAAAAAAAAA.json").write_text(
+            json.dumps(extraction), encoding="utf-8")
         package = self.prepare()
         self.assertEqual(package["draft_preview"]["checklist"],
                          ["Open the approved VPN client and record its status."])

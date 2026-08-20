@@ -38,7 +38,7 @@
             </h1>
 
             <p class="text-muted mb-0">
-                Step {{ current_step }} of {{ estimated_steps }}
+                Step {{ current_step }} of {{ estimated_steps }}{% if branch_aware_progress %} on this path{% endif %}
             </p>
         </div>
 

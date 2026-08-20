@@ -5,6 +5,7 @@
   "category": "Desktop Support",
   "platform": "Windows",
   "estimated_steps": 8,
+  "progress_mode": "branch_aware",
   "start_node": "prepare",
   "nodes": {
     "prepare": {

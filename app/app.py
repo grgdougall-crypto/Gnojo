@@ -90,6 +90,7 @@ from app.services.workflow_ai_service import (
 )
 from app.services.workflow_export_service import WorkflowExportError, WorkflowExportService
 from app.services.workflow_metadata_service import workflow_category, workflow_platform
+from app.services.workflow_progress_service import WorkflowProgressService
 from app.services.device_profile_service import DeviceProfileError, DeviceProfileService
 from app.services.workflow_condition_service import WorkflowConditionError, resolve_applicable_node
 from app.services.learning_mode_service import LearningModeService
@@ -3751,9 +3752,10 @@ def wizard():
 
             current_step = session.get("step", 1)
 
-            session["step"] = min(
-                current_step + 1,
-                estimated_steps,
+            session["step"] = (
+                current_step + 1
+                if WorkflowProgressService.enabled(engine.workflow)
+                else min(current_step + 1, estimated_steps)
             )
             track_history_progress(next_node.id)
 
@@ -3891,15 +3893,23 @@ def render_wizard(engine, node, knowledge, workflow_catalog=None):
     workflow_name = session["workflow"]
     workflow_info = (workflow_catalog or available_workflows())[workflow_name]
 
+    branch_aware_progress = WorkflowProgressService.enabled(engine.workflow)
     estimated_steps = engine.workflow.get("estimated_steps", 5)
     current_step = session.get("step", 1)
     current_step = max(current_step, 1)
+    if branch_aware_progress:
+        estimated_steps = WorkflowProgressService.total(
+            engine.workflow, node.id, current_step
+        )
 
     history_record = None
     is_continuation_result = node.type == "resolution" and bool(node.next_workflow)
     if node.type == "resolution" and not is_continuation_result:
         session["workflow_complete"] = True
-        current_step = estimated_steps
+        if branch_aware_progress:
+            estimated_steps = current_step
+        else:
+            current_step = estimated_steps
         progress_percent = 100
         history_id = session.get("troubleshooting_history_id")
         if history_id:
@@ -3950,6 +3960,7 @@ def render_wizard(engine, node, knowledge, workflow_catalog=None):
     current_step=current_step,
     estimated_steps=estimated_steps,
     progress_percent=progress_percent,
+    branch_aware_progress=branch_aware_progress,
     can_go_back=bool(
         session.get("node_history")
     ),

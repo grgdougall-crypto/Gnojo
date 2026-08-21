@@ -1077,6 +1077,10 @@ dialog { max-height: calc(100dvh - 1rem); max-width: calc(100vw - 1rem); }
 .curator-inventory-filters { background: var(--sp-page); border: 1px solid var(--sp-border); border-radius: .75rem; display: grid; gap: .75rem; grid-template-columns: repeat(auto-fit, minmax(165px, 1fr)); margin-bottom: 1rem; padding: 1rem; }
 .curator-inventory-filters label { color: var(--sp-muted); display: grid; font-size: .75rem; font-weight: 700; gap: .3rem; }
 .curator-inventory-filters input, .curator-inventory-filters select, .curator-disposition select { background: var(--sp-surface); border: 1px solid var(--sp-border); border-radius: .4rem; color: var(--sp-text); min-height: 2.35rem; padding: .4rem .55rem; }
+.curator-inventory-filters .curator-filter-checkbox { align-content: end; align-items: center; grid-template-columns: auto 1fr; }
+.curator-inventory-filters .curator-filter-checkbox input { min-height: 1rem; width: 1rem; }
+.curator-inventory-filters .curator-filter-checkbox span { color: var(--sp-ink); display: grid; gap: .1rem; }
+.curator-inventory-filters .curator-filter-checkbox small { color: var(--sp-muted); font-weight: 500; }
 .curator-inventory-filters select, .curator-disposition select { color-scheme: light; }
 [data-bs-theme="dark"] .curator-inventory-filters select, [data-bs-theme="dark"] .curator-disposition select { color-scheme: dark; }
 .curator-inventory-filters select option, .curator-disposition select option { background-color: var(--sp-surface); color: var(--sp-text); }

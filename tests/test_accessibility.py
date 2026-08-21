@@ -66,7 +66,7 @@ class AccessibilityTests(unittest.TestCase):
 
     def test_dynamic_statuses_are_marked_for_announcements(self):
         html, _ = self.parse("/workflow-editor/vpn_connectivity_win.json")
-        for target in ("nodeDetailsHint", "validationSummary", "publicationMessage", "settingsMessage", "aiSuggestionMessage", "nodeSearchEmpty"):
+        for target in ("nodeDetailsHint", "validationSummary", "publicationMessage", "workflowPublicationSuccess", "settingsMessage", "aiSuggestionMessage", "nodeSearchEmpty"):
             pattern = rf'id="{target}"[^>]*data-a11y-live|data-a11y-live[^>]*id="{target}"'
             self.assertRegex(html, pattern)
 

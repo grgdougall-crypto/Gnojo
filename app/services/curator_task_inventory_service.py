@@ -27,6 +27,7 @@ class CuratorTaskInventoryService:
         options = self._options(enriched)
         selected = {
             "status": filters.get("status", "").strip(),
+            "include_resolved": filters.get("include_resolved", "").strip(),
             "classification": filters.get("classification", "").strip(),
             "workflow": filters.get("workflow", "").strip(),
             "family": filters.get("family", "").strip(),
@@ -47,6 +48,10 @@ class CuratorTaskInventoryService:
             "options": options,
             "calibration": calibration,
             "show_calibration": selected["family"] == "workflow_reasoning",
+            "closed_count": sum(
+                str(task.get("status") or "").casefold() in {"resolved", "ignored", "superseded"}
+                for task in enriched
+            ),
         }
 
     def _enrich(self, task: dict[str, Any]) -> dict[str, Any]:
@@ -69,6 +74,9 @@ class CuratorTaskInventoryService:
 
     @staticmethod
     def _matches(task: dict[str, Any], filters: dict[str, str], *, include_disposition: bool) -> bool:
+        if (not filters["status"] and not filters["include_resolved"]
+                and str(task.get("status") or "").casefold() in {"resolved", "ignored", "superseded"}):
+            return False
         pairs = (
             ("status", "status"), ("classification", "classification"),
             ("workflow", "workflow_id"), ("family", "rule_family"), ("rule", "curator_rule"),

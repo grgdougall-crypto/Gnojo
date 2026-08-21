@@ -37,23 +37,26 @@ class CuratorTaskInventoryTests(unittest.TestCase):
 
     def visible(self, **filters): return self.service.filter(self.tasks, filters)["tasks"]
 
-    def test_empty_filters_preserve_all_tasks(self): self.assertEqual(len(self.visible()), 3)
+    def test_empty_filters_default_to_actionable_tasks(self):
+        self.assertEqual([item["task_id"] for item in self.visible()], ["A", "C"])
+    def test_include_resolved_preserves_complete_inventory(self):
+        self.assertEqual([item["task_id"] for item in self.visible(include_resolved="1")], ["A", "B", "C"])
     def test_status_filter(self): self.assertEqual([x["task_id"] for x in self.visible(status="resolved")], ["B"])
     def test_classification_filter(self): self.assertEqual([x["task_id"] for x in self.visible(classification="Defect")], ["C"])
     def test_workflow_filter(self): self.assertEqual({x["task_id"] for x in self.visible(workflow="printer")}, {"A", "C"})
-    def test_reasoning_family_filter(self): self.assertEqual({x["task_id"] for x in self.visible(family="workflow_reasoning")}, {"A", "B"})
+    def test_reasoning_family_filter(self): self.assertEqual({x["task_id"] for x in self.visible(family="workflow_reasoning", include_resolved="1")}, {"A", "B"})
     def test_other_family_filter(self): self.assertEqual([x["task_id"] for x in self.visible(family="other")], ["C"])
     def test_reasoning_rule_filter(self): self.assertEqual([x["task_id"] for x in self.visible(rule="CUR-WR-PROGRESS")], ["A"])
     def test_title_search(self): self.assertEqual([x["task_id"] for x in self.visible(q="progress")], ["A"])
-    def test_rule_search(self): self.assertEqual([x["task_id"] for x in self.visible(q="signal-retention")], ["B"])
+    def test_rule_search(self): self.assertEqual([x["task_id"] for x in self.visible(q="signal-retention", include_resolved="1")], ["B"])
     def test_finding_search(self): self.assertEqual([x["task_id"] for x in self.visible(q="finding-c")], ["C"])
-    def test_node_search(self): self.assertEqual([x["task_id"] for x in self.visible(q="node-b")], ["B"])
+    def test_node_search(self): self.assertEqual([x["task_id"] for x in self.visible(q="node-b", include_resolved="1")], ["B"])
     def test_filters_compose(self): self.assertEqual([x["task_id"] for x in self.visible(family="workflow_reasoning", status="open")], ["A"])
-    def test_disposition_filter(self): self.assertEqual([x["task_id"] for x in self.visible(disposition="USEFUL")], ["B"])
+    def test_disposition_filter(self): self.assertEqual([x["task_id"] for x in self.visible(disposition="USEFUL", include_resolved="1")], ["B"])
     def test_default_disposition_is_backward_compatible(self): self.assertEqual(self.visible()[0]["review_disposition"], "NOT_REVIEWED")
     def test_human_rule_label_is_derived(self): self.assertEqual(self.visible()[0]["rule_label"], "Progress Inconsistency")
     def test_summary_counts_reviewed_tasks(self):
-        summary = self.service.filter(self.tasks, {"family": "workflow_reasoning"})["calibration"]
+        summary = self.service.filter(self.tasks, {"family": "workflow_reasoning", "include_resolved": "1"})["calibration"]
         self.assertEqual((summary["total"], summary["reviewed"], summary["USEFUL"]), (2, 1, 1))
     def test_summary_is_shown_only_for_reasoning_family(self):
         self.assertTrue(self.service.filter(self.tasks, {"family": "workflow_reasoning"})["show_calibration"])

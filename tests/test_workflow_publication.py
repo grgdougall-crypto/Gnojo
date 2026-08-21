@@ -35,6 +35,18 @@ def valid_workflow():
 
 
 class WorkflowPublicationTests(unittest.TestCase):
+    def test_publication_success_closes_dialog_announces_version_and_restores_focus(self):
+        root = Path(__file__).resolve().parents[1]
+        editor = (root / "app" / "templates" / "workflow_editor.html").read_text(encoding="utf-8")
+        scripts = (root / "app" / "templates" / "workflow" / "_workflow_scripts.html").read_text(encoding="utf-8")
+        self.assertIn('id="workflowPublicationSuccess"', editor)
+        self.assertIn("data-a11y-live", editor)
+        self.assertIn("publicationDialog.close();", scripts)
+        self.assertIn('element("versionHistoryButton").focus()', scripts)
+        self.assertIn("successBanner.hidden = false", scripts)
+        self.assertIn("validationPassed = false", scripts)
+        self.assertIn("updatePublishAvailability();", scripts)
+
     def test_publish_creates_immutable_numbered_versions(self):
         with tempfile.TemporaryDirectory() as directory:
             service = WorkflowPublicationService(directory)

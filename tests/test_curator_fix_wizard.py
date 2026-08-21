@@ -561,6 +561,9 @@ class CuratorFixWizardTests(unittest.TestCase):
         self.assertIn('id="main-content"', wizard)
         self.assertIn('aria-label="Breadcrumb"', wizard)
         self.assertIn('aria-label="Session status"', wizard)
+        self.assertIn("Leave session", wizard)
+        self.assertIn("Progress is already saved.", wizard)
+        self.assertNotIn("Exit / Save Session", wizard)
         self.assertIn('for="reviewer"', start)
         self.assertNotIn("onclick=", wizard)
 

@@ -784,7 +784,7 @@ def curator_dashboard():
     kind, message = messages.get(notice or legacy_status, ("info", ""))
     try:
         filters = {name: request.args.get(name, "") for name in
-                   ("status", "classification", "workflow", "family", "rule", "disposition", "q")}
+                   ("status", "include_resolved", "classification", "workflow", "family", "rule", "disposition", "q")}
         if legacy_status in messages:
             filters["status"] = ""
         dashboard = CuratorDashboardService().dashboard(

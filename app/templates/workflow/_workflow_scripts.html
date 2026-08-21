@@ -575,10 +575,16 @@
             publicationStatus = result;
             validationPassed = false;
             element("publicationLabel").value = "";
-            element("publicationMessage").textContent = `Version ${result.current_version} published successfully.`;
+            const successMessage = `Version ${result.current_version} published successfully.`;
+            element("publicationMessage").textContent = successMessage;
             updatePublicationBadge();
             updatePublishAvailability();
             renderPublicationHistory();
+            const successBanner = element("workflowPublicationSuccess");
+            successBanner.textContent = successMessage;
+            successBanner.hidden = false;
+            publicationDialog.close();
+            window.requestAnimationFrame(() => element("versionHistoryButton").focus());
         } catch (error) {
             element("publicationMessage").textContent = error.message;
             element("publicationMessage").classList.add("is-error");

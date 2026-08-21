@@ -2,6 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+from flask import render_template
 
 from app.app import app
 from app.services.curator_dashboard_service import CuratorDashboardService
@@ -53,8 +54,9 @@ class CuratorDashboardPageTests(unittest.TestCase):
                 "remaining_groups": [],
             },
             "task_inventory": {
-                "filters": {"q": "", "status": "", "classification": "", "workflow": "", "family": "", "rule": "", "disposition": ""},
+                "filters": {"q": "", "status": "", "include_resolved": "", "classification": "", "workflow": "", "family": "", "rule": "", "disposition": ""},
                 "visible": 1, "total": 1, "active": False, "show_calibration": False,
+                "closed_count": 0,
                 "calibration": {},
                 "options": {
                     "statuses": ["open", "resolved"],
@@ -121,6 +123,48 @@ class CuratorDashboardPageTests(unittest.TestCase):
         service.return_value.dashboard.return_value = self.dashboard
         self.client.get("/curator?status=open")
         self.assertEqual(service.return_value.dashboard.call_args.kwargs["filters"]["status"], "open")
+
+    @patch("app.app.CuratorDashboardService")
+    def test_default_queue_is_actionable_and_resolved_can_be_included(self, service):
+        service.return_value.dashboard.return_value = self.dashboard
+        default = self.client.get("/curator").get_data(as_text=True)
+        self.assertIn('<option value="">Actionable</option>', default)
+        self.assertIn("Include resolved", default)
+        self.assertEqual(
+            service.return_value.dashboard.call_args.kwargs["filters"]["include_resolved"], ""
+        )
+
+        self.client.get("/curator?include_resolved=1")
+        self.assertEqual(
+            service.return_value.dashboard.call_args.kwargs["filters"]["include_resolved"], "1"
+        )
+
+    def test_resolved_task_renders_only_reopen_while_open_task_restores_controls(self):
+        base = {
+            "task_id": "GKT-STATE", "title": "State test", "explanation": "Review state.",
+            "classification": "Risk", "priority": "Medium", "owner": "Unassigned",
+            "knowledge_debt_score": 1, "confidence": "high", "navigation": {"url": "/curator", "label": "Open affected content"},
+            "guidance": {"why": "Review.", "impact": "Low.", "certainty": "Human review required."},
+            "recommended_action": "Review.", "original_evidence": [], "current_content": None,
+            "history": [], "related_workflows": [], "related_articles": [], "related_commands": [],
+            "related_scripts": [], "related_tasks": [], "live_related_knowledge": {"articles": []},
+            "finding_type": "missing_safety_guidance", "future_automated_fix": False,
+            "affected_fingerprint": "fingerprint", "current_verification": None,
+        }
+        context = {
+            "owners": ["Unassigned"], "priorities": ["Medium"], "status_kind": "info",
+            "status_message": "", "resolution_package": None, "confusing_step_proposal": None,
+            "verification_presentation": None,
+            "task_review": {"history_count": 0, "recent_history": [], "remaining_history": []},
+            "session_task_actionable": False, "return_to": "", "curator_session": "", "category": "all",
+        }
+        with app.test_request_context():
+            resolved = render_template("curator_task_detail.html", task={**base, "status": "resolved"}, **context)
+            opened = render_template("curator_task_detail.html", task={**base, "status": "open"}, **context)
+        self.assertIn("Reopen task", resolved)
+        for label in ("Assign owner", "Set priority", "Mark in progress", "Defer", "Ignore", "Add note"):
+            self.assertNotIn(label, resolved)
+            self.assertIn(label, opened)
 
     @patch("app.app.CuratorDashboardService")
     def test_inventory_dropdowns_render_actual_options(self, service):

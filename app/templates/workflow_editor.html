@@ -31,6 +31,7 @@
         <a class="btn btn-sm btn-outline-info" href="{{ url_for('curator_fix_session', session_id=curator_session, item=curator_item) }}">Back to Fix Wizard</a>
     </aside>
     {% endif %}
+    <div id="workflowPublicationSuccess" class="alert alert-success" role="status" data-a11y-live hidden tabindex="-1"></div>
     {% include "workflow/_page_header.html" %}
 
     <nav class="workflow-mobile-tabs" aria-label="Workflow Designer panels">

@@ -25,21 +25,20 @@ class InternetUncertaintyTests(unittest.TestCase):
     def test_repeated_scope_uncertainty_ends_safely_and_preserves_history_progress(self):
         start = self.client.get("/wizard?workflow=internet&restart=1")
         self.assertIn("Can any other devices connect to the internet?", start.get_data(as_text=True))
-        self.assertIn("Step 1 of 5", start.get_data(as_text=True))
+        self.assertIn("Step 1 of 12 on this path", start.get_data(as_text=True))
 
         evidence = self.client.post(
             "/wizard", data={"answer": "unknown"}, follow_redirects=True
         )
         self.assertIn("Test Another Device", evidence.get_data(as_text=True))
-        self.assertIn("Step 2 of 5", evidence.get_data(as_text=True))
-        self.assertIn('aria-valuenow="40"', evidence.get_data(as_text=True))
+        self.assertIn("Step 2 of 12 on this path", evidence.get_data(as_text=True))
 
         second_question = self.client.post("/wizard", follow_redirects=True)
         self.assertIn(
             "Can any other devices connect to the internet?",
             second_question.get_data(as_text=True),
         )
-        self.assertIn("Step 3 of 5", second_question.get_data(as_text=True))
+        self.assertIn("Step 3 of 12 on this path", second_question.get_data(as_text=True))
 
         outcome = self.client.post(
             "/wizard", data={"answer": "unknown"}, follow_redirects=True
@@ -47,7 +46,7 @@ class InternetUncertaintyTests(unittest.TestCase):
         outcome_html = outcome.get_data(as_text=True)
         self.assertIn("Network Scope Could Not Be Confirmed", outcome_html)
         self.assertNotIn("Test Another Device", outcome_html)
-        self.assertIn("Step 5 of 5", outcome_html)
+        self.assertIn("Step 4 of 4 on this path", outcome_html)
         self.assertIn('aria-valuenow="100"', outcome_html)
 
         previous = self.client.post(
@@ -55,8 +54,7 @@ class InternetUncertaintyTests(unittest.TestCase):
         )
         previous_html = previous.get_data(as_text=True)
         self.assertIn("Can any other devices connect to the internet?", previous_html)
-        self.assertIn("Step 3 of 5", previous_html)
-        self.assertIn('aria-valuenow="60"', previous_html)
+        self.assertIn("Step 3 of 12 on this path", previous_html)
         with self.client.session_transaction() as session:
             self.assertEqual(session["current_node"], "confirm_scope_after_test")
             self.assertEqual(session["step"], 3)

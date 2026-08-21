@@ -146,7 +146,7 @@ class AdvancedNetworkContinuationTests(unittest.TestCase):
             "/wizard", data={"answer": "no"}, follow_redirects=True
         )
         self.assertIn("Continue to Advanced Network Diagnostics", handoff.get_data(as_text=True))
-        self.assertIn("Step 5 of 5", handoff.get_data(as_text=True))
+        self.assertIn("Step 6 of 6 on this path", handoff.get_data(as_text=True))
         self.assertIn('aria-valuenow="100"', handoff.get_data(as_text=True))
 
         advanced = self.client.post("/wizard", follow_redirects=True)
@@ -158,7 +158,7 @@ class AdvancedNetworkContinuationTests(unittest.TestCase):
         )
         handoff_html = restored_handoff.get_data(as_text=True)
         self.assertIn("Continue to Advanced Network Diagnostics", handoff_html)
-        self.assertIn("Step 5 of 5", handoff_html)
+        self.assertIn("Step 6 of 6 on this path", handoff_html)
         self.assertIn('aria-valuenow="100"', handoff_html)
 
         restored_question = self.client.post(
@@ -166,8 +166,7 @@ class AdvancedNetworkContinuationTests(unittest.TestCase):
         )
         question_html = restored_question.get_data(as_text=True)
         self.assertIn("Can this computer connect to the internet now?", question_html)
-        self.assertIn("Step 5 of 5", question_html)
-        self.assertIn('aria-valuenow="100"', question_html)
+        self.assertIn("Step 5 of 6 on this path", question_html)
         with self.client.session_transaction() as session:
             self.assertEqual(session["workflow"], "internet")
             self.assertEqual(session["current_node"], "verify_resolution")

@@ -5,6 +5,7 @@
   "category": "Networking",
   "platform": "Windows",
   "estimated_steps": 5,
+  "progress_mode": "branch_aware",
   "start_node": "check_scope",
 
   "nodes": {
@@ -84,7 +85,26 @@
       "type": "instruction",
       "title": "Identify the Connection",
       "instruction": "Look near the clock for a Wi-Fi symbol or check whether a network cable is connected to the computer.",
-      "next": "check_connection"
+      "next": "confirm_connection_after_identification"
+    },
+
+    "confirm_connection_after_identification": {
+      "type": "question",
+      "question": "After checking the network icon and cables, how does this computer connect?",
+      "answers": {
+        "wifi": {
+          "label": "Wi-Fi",
+          "next": "check_wifi_enabled"
+        },
+        "ethernet": {
+          "label": "Ethernet",
+          "next": "check_ethernet_cable"
+        },
+        "unknown": {
+          "label": "I'm Still Not Sure",
+          "next": "advanced_diagnostics"
+        }
+      }
     },
 
     "check_wifi_enabled": {
@@ -110,7 +130,26 @@
       "type": "instruction",
       "title": "Check Wi-Fi Status",
       "instruction": "Select the network icon near the clock and confirm that Wi-Fi is turned on.",
-      "next": "check_wifi_enabled"
+      "next": "confirm_wifi_after_check"
+    },
+
+    "confirm_wifi_after_check": {
+      "type": "question",
+      "question": "After checking the network controls, is Wi-Fi turned on?",
+      "answers": {
+        "yes": {
+          "label": "Yes",
+          "next": "reconnect_wifi"
+        },
+        "no": {
+          "label": "No",
+          "next": "enable_wifi"
+        },
+        "unknown": {
+          "label": "I'm Still Not Sure",
+          "next": "advanced_diagnostics"
+        }
+      }
     },
 
     "enable_wifi": {

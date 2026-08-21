@@ -4,8 +4,10 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from app.app import app, available_workflows
+from app.app import app, available_workflows, load_runtime_workflow
+from app.engine.decision_engine import DecisionEngine
 from app.services.troubleshooting_history_service import TroubleshootingHistoryService
+from app.services.workflow_quality_validator import WorkflowQualityValidator
 from app.services.workflow_validation_service import WorkflowValidationService
 import json
 
@@ -31,7 +33,7 @@ class AdvancedNetworkContinuationTests(unittest.TestCase):
             session["workflow"] = "network_diagnostics"
             session["workflow_version"] = version
             session["current_node"] = node_id
-            session["step"] = 5
+            session["step"] = 7 if node_id == "advanced_complete" else 5
             session["node_history"] = [
                 {
                     "workflow": "network_diagnostics",
@@ -49,14 +51,8 @@ class AdvancedNetworkContinuationTests(unittest.TestCase):
         html = response.get_data(as_text=True)
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn("Core Network Diagnostics Passed", html)
-        self.assertIn("Continue Troubleshooting", html)
-        self.assertIn("Choose Another Workflow", html)
-        self.assertIn("Restart This Workflow", html)
-        self.assertIn('href="/"', html)
-        self.assertIn(
-            'href="/wizard?workflow=network_diagnostics&amp;restart=1"', html
-        )
+        self.assertIn("Continue to Higher-Layer Diagnostics", html)
+        self.assertIn("Previous Step", html)
 
         choose_another = self.client.get("/")
         self.assertEqual(choose_another.status_code, 200)
@@ -80,7 +76,6 @@ class AdvancedNetworkContinuationTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("Higher-Layer Connectivity Diagnostics", html)
         self.assertIn("What is still unable to connect?", html)
-        self.assertIn("Continuing from Advanced Network Diagnostics", html)
         self.assertNotIn("Choose a workflow", html)
         with self.client.session_transaction() as session:
             self.assertEqual(session["workflow"], "higher_layer_connectivity")
@@ -99,7 +94,7 @@ class AdvancedNetworkContinuationTests(unittest.TestCase):
         )
         html = response.get_data(as_text=True)
 
-        self.assertIn("Core Network Diagnostics Passed", html)
+        self.assertIn("Continue to Higher-Layer Diagnostics", html)
         self.assertNotIn("Continuing from Advanced Network Diagnostics", html)
         with self.client.session_transaction() as session:
             self.assertEqual(session["workflow"], "network_diagnostics")
@@ -151,7 +146,7 @@ class AdvancedNetworkContinuationTests(unittest.TestCase):
 
         advanced = self.client.post("/wizard", follow_redirects=True)
         self.assertIn("Advanced Network Diagnostics", advanced.get_data(as_text=True))
-        self.assertIn("Step 1 of 5", advanced.get_data(as_text=True))
+        self.assertIn("Step 1 of 7 on this path", advanced.get_data(as_text=True))
 
         restored_handoff = self.client.post(
             "/wizard", data={"navigation_action": "previous"}, follow_redirects=True
@@ -202,6 +197,92 @@ class AdvancedNetworkContinuationTests(unittest.TestCase):
         self.client.post("/wizard", data={"answer": "application"}, follow_redirects=True)
         after = digest_tree()
         self.assertEqual(before, after)
+
+    def test_short_medium_and_long_routes_use_actual_branch_totals(self):
+        short = self._run_network(["", "apipa"])
+        self.assertIn("Step 3 of 3 on this path", short[-1])
+        self.assertIn('aria-valuenow="100"', short[-1])
+
+        medium = self._run_network(["", "normal", "", "no"])
+        self.assertIn("Step 5 of 5 on this path", medium[-1])
+        self.assertIn('aria-valuenow="100"', medium[-1])
+
+        long = self._run_network(["", "normal", "", "yes", "", "yes"])
+        self.assertIn("Step 5 of 7 on this path", long[4])
+        self.assertNotIn("Step 5 of 5", long[4])
+        self.assertIn("Step 6 of 7 on this path", long[5])
+        self.assertIn("Step 7 of 7 on this path", long[6])
+        self.assertIn("Continue to Higher-Layer Diagnostics", long[6])
+        for page in long[:-1]:
+            current, total = self._progress(page)
+            self.assertLess(current, total)
+            expected = round((current / total) * 100)
+            self.assertIn(f'aria-valuenow="{expected}"', page)
+
+    def test_previous_restores_long_route_node_and_progress(self):
+        self._run_network(["", "normal", "", "yes", ""])
+        self.assertIn("Step 6 of 7 on this path", self.client.get(
+            "/wizard?workflow=network_diagnostics&resume=1"
+        ).get_data(as_text=True))
+
+        previous = self.client.post(
+            "/wizard", data={"navigation_action": "previous"}, follow_redirects=True
+        ).get_data(as_text=True)
+        self.assertIn("Test DNS Resolution", previous)
+        self.assertIn("Step 5 of 7 on this path", previous)
+        self.assertIn('aria-valuenow="71"', previous)
+
+        previous_again = self.client.post(
+            "/wizard", data={"navigation_action": "previous"}, follow_redirects=True
+        ).get_data(as_text=True)
+        self.assertIn("Did the default gateway respond?", previous_again)
+        self.assertIn("Step 4 of 7 on this path", previous_again)
+
+    def test_published_graph_is_clean_and_handoff_is_explicit(self):
+        catalog = available_workflows()
+        engine = DecisionEngine()
+        load_runtime_workflow(
+            engine,
+            "network_diagnostics",
+            catalog,
+            catalog["network_diagnostics"].get("version"),
+        )
+        report = WorkflowQualityValidator().validate(engine.workflow, set(catalog))
+        self.assertEqual(report["overall_status"], "CLEAN")
+        self.assertEqual(report["findings"], [])
+        self.assertEqual(report["metrics"]["reachable_nodes"], 12)
+        self.assertEqual(report["metrics"]["unreachable_nodes"], 0)
+        self.assertEqual(report["metrics"]["terminal_nodes"], 6)
+        self.assertEqual(report["metrics"]["terminating_paths"], 6)
+        self.assertEqual(report["metrics"]["shortest_path"], 3)
+        self.assertEqual(report["metrics"]["longest_path"], 7)
+        handoff = engine.workflow["nodes"]["advanced_complete"]
+        self.assertEqual(handoff["type"], "transition")
+        self.assertEqual(handoff["next_workflow"], "higher_layer_connectivity")
+        self.assertEqual(
+            handoff["button_label"], "Continue to Higher-Layer Diagnostics"
+        )
+
+    def _run_network(self, answers):
+        pages = [
+            self.client.get(
+                "/wizard?workflow=network_diagnostics&restart=1"
+            ).get_data(as_text=True)
+        ]
+        for answer in answers:
+            pages.append(
+                self.client.post(
+                    "/wizard", data={"answer": answer}, follow_redirects=True
+                ).get_data(as_text=True)
+            )
+        return pages
+
+    def _progress(self, page):
+        import re
+
+        match = re.search(r"Step (\d+) of (\d+) on this path", page)
+        self.assertIsNotNone(match, page)
+        return int(match.group(1)), int(match.group(2))
 
 
 if __name__ == "__main__":

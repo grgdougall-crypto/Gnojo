@@ -62,7 +62,7 @@ class DesktopSupportContentPackTests(unittest.TestCase):
         paths = {
             "application_crash": (["", "one_file", "", "yes"], "File-Specific"),
             "no_sound": (["one_app", "", "yes"], "Application Audio Restored"),
-            "low_storage": (["", "", "critical", "", "", "yes"], "Working Storage Restored"),
+            "low_storage": (["", "yes", "", "critical", "", "yes"], "Working Storage Restored"),
         }
         for workflow_id, (answers, expected) in paths.items():
             with self.subTest(workflow_id=workflow_id):

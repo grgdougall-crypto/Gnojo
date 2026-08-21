@@ -5,6 +5,7 @@
   "category": "Desktop Support",
   "platform": "Windows",
   "estimated_steps": 7,
+  "progress_mode": "branch_aware",
   "start_node": "protect_data",
   "nodes": {
     "protect_data": {
@@ -13,7 +14,20 @@
       "instruction": "Save open work and confirm that important files are backed up or synchronized. Do not manually delete anything from Windows, Program Files, ProgramData, or unfamiliar folders.",
       "help_text": "Storage cleanup should remove known, replaceable content—not system components or the only copy of personal data.",
       "knowledge_article": "windows-storage-performance",
-      "next": "check_storage"
+      "next": "confirm_data_protection"
+    },
+    "confirm_data_protection": {
+      "type": "question",
+      "question": "Is important work saved and is important data protected before cleanup?",
+      "answers": {
+        "yes": {"label": "Yes", "next": "check_storage"},
+        "no": {"label": "No", "next": "data_protection_required"}
+      }
+    },
+    "data_protection_required": {
+      "type": "resolution",
+      "title": "Protect Important Data Before Cleanup",
+      "message": "Save open work and back up or synchronize important files before removing anything. Do not delete Windows, Program Files, ProgramData, unfamiliar folders, or the only copy of personal data."
     },
     "check_storage": {
       "type": "instruction",
@@ -30,7 +44,23 @@
         "critical": {"label": "Less than 5 GB", "next": "empty_recycle_bin"},
         "low": {"label": "5 to 20 GB", "next": "cleanup_recommendations"},
         "adequate": {"label": "More than 20 GB", "next": "not_storage"},
-        "unsure": {"label": "I'm not sure", "next": "cleanup_recommendations"}
+        "unsure": {"label": "I'm not sure", "next": "recheck_initial_space"}
+      }
+    },
+    "recheck_initial_space": {
+      "type": "instruction",
+      "title": "Confirm Available Space",
+      "instruction": "Return to Settings > System > Storage, wait for the Windows drive totals to finish calculating, and note the displayed free-space amount.",
+      "next": "confirm_initial_space"
+    },
+    "confirm_initial_space": {
+      "type": "question",
+      "question": "After checking the displayed amount, how much free space remains?",
+      "answers": {
+        "critical": {"label": "Less than 5 GB", "next": "empty_recycle_bin"},
+        "low": {"label": "5 to 20 GB", "next": "cleanup_recommendations"},
+        "adequate": {"label": "More than 20 GB", "next": "not_storage"},
+        "unsure": {"label": "I'm still not sure", "next": "escalate"}
       }
     },
     "not_storage": {"type": "resolution", "title": "Available Storage Is Not Critically Low", "message": "The Windows drive has useful working space. If the computer is slow or an application reports insufficient space, record the exact message and check whether it refers to another drive, mailbox, cloud account, or application quota."},
@@ -39,7 +69,31 @@
       "title": "Review the Recycle Bin",
       "instruction": "Open the Recycle Bin, restore anything needed, then empty it only after confirming the remaining items can be permanently removed.",
       "help_text": "Files in the Recycle Bin still occupy drive space but may be recoverable until it is emptied.",
-      "next": "cleanup_recommendations"
+      "next": "recycle_result"
+    },
+    "recycle_result": {
+      "type": "question",
+      "question": "Did reviewing and emptying the Recycle Bin restore enough working space?",
+      "answers": {
+        "yes": {"label": "Yes", "next": "resolved_cleanup"},
+        "no": {"label": "No", "next": "cleanup_recommendations"},
+        "unsure": {"label": "I'm not sure", "next": "recheck_recycle_space"}
+      }
+    },
+    "recheck_recycle_space": {
+      "type": "instruction",
+      "title": "Recheck Space After the Recycle Bin",
+      "instruction": "Return to Settings > System > Storage, wait for the free-space amount to update, and compare it with the space required for your task.",
+      "next": "confirm_recycle_after_recheck"
+    },
+    "confirm_recycle_after_recheck": {
+      "type": "question",
+      "question": "After rechecking, is there enough free space for the task?",
+      "answers": {
+        "yes": {"label": "Yes", "next": "resolved_cleanup"},
+        "no": {"label": "No", "next": "cleanup_recommendations"},
+        "unsure": {"label": "I'm still not sure", "next": "cleanup_recommendations"}
+      }
     },
     "cleanup_recommendations": {
       "type": "instruction",
@@ -62,7 +116,16 @@
       "type": "instruction",
       "title": "Recheck Available Space",
       "instruction": "Return to Settings > System > Storage and note the updated free-space amount. Windows may take a moment to recalculate.",
-      "next": "cleanup_result"
+      "next": "confirm_cleanup_after_recheck"
+    },
+    "confirm_cleanup_after_recheck": {
+      "type": "question",
+      "question": "After rechecking the displayed amount, is there enough free space for the task?",
+      "answers": {
+        "yes": {"label": "Yes", "next": "resolved_cleanup"},
+        "no": {"label": "No", "next": "review_apps"},
+        "unsure": {"label": "I'm still not sure", "next": "escalate"}
+      }
     },
     "resolved_cleanup": {"type": "resolution", "title": "Working Storage Restored", "message": "Windows cleanup reclaimed enough space. Keep important data backed up and review Storage periodically before the drive becomes critically full."},
     "review_apps": {

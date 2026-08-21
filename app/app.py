@@ -610,11 +610,17 @@ def device_profiles():
 @app.route("/troubleshooting-history")
 def troubleshooting_history():
     service = TroubleshootingHistoryService()
-    records = service.list(200)
+    history_page = service.query_page(
+        page=request.args.get("page", "1"),
+        workflow=request.args.get("workflow", ""),
+        status=request.args.get("status", ""),
+        range=request.args.get("range", "all"),
+    )
     return render_template(
         "troubleshooting_history.html",
-        records=records,
-        analytics=service.analytics(records),
+        records=history_page["records"],
+        analytics=history_page["analytics"],
+        history_page=history_page,
     )
 
 

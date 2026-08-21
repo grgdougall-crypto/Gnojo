@@ -10,7 +10,7 @@
             <h1 id="historyTitle">Troubleshooting History</h1>
             <p>Review previous sessions and see how Gnojo workflows are performing.</p>
         </div>
-        {% if records %}
+        {% if history_page.total_count %}
         <form method="post" action="{{ url_for('clear_troubleshooting_history') }}" onsubmit="return confirm('Clear all troubleshooting history? This cannot be undone.');">
             <button class="btn btn-outline-danger" type="submit"><i class="bi bi-trash3 me-2" aria-hidden="true"></i>Clear history</button>
         </form>
@@ -21,6 +21,36 @@
         <i class="bi bi-shield-check" aria-hidden="true"></i>
         <span><strong>Stored locally.</strong> Gnojo records workflow activity and outcomes, but not the answers you enter.</span>
     </div>
+
+    <section class="history-filters" aria-label="Troubleshooting history filters">
+        <form method="get" action="{{ url_for('troubleshooting_history') }}" class="history-filters__form">
+            <div>
+                <label for="historyWorkflow">Workflow</label>
+                <select class="form-select" id="historyWorkflow" name="workflow">
+                    <option value="">All workflows</option>
+                    {% for option in history_page.workflows %}<option value="{{ option.id }}" {% if history_page.filters.workflow == option.id %}selected{% endif %}>{{ option.name }} ({{ option.count }})</option>{% endfor %}
+                </select>
+            </div>
+            <div>
+                <label for="historyStatus">Status</label>
+                <select class="form-select" id="historyStatus" name="status">
+                    <option value="">All statuses</option>
+                    {% for option in history_page.statuses %}<option value="{{ option.value }}" {% if history_page.filters.status == option.value %}selected{% endif %}>{{ option.value|title }} ({{ option.count }})</option>{% endfor %}
+                </select>
+            </div>
+            <div>
+                <label for="historyRange">Date range</label>
+                <select class="form-select" id="historyRange" name="range">
+                    <option value="7d" {% if history_page.filters.range == '7d' %}selected{% endif %}>Last 7 days</option>
+                    <option value="30d" {% if history_page.filters.range == '30d' %}selected{% endif %}>Last 30 days</option>
+                    <option value="all" {% if history_page.filters.range == 'all' %}selected{% endif %}>All time</option>
+                </select>
+            </div>
+            <button class="btn btn-primary" type="submit">Apply filters</button>
+            {% if history_page.filters.workflow or history_page.filters.status or history_page.filters.range != 'all' %}<a class="btn btn-outline-secondary" href="{{ url_for('troubleshooting_history') }}">Clear filters</a>{% endif %}
+        </form>
+        <p class="small text-muted mb-0" role="status">Showing {{ history_page.total_matching }} of {{ history_page.total_count }} sessions.</p>
+    </section>
 
     <section class="analytics-grid" aria-label="Troubleshooting analytics">
         <article><span>Total sessions</span><strong>{{ analytics.total }}</strong></article>
@@ -64,7 +94,7 @@
     <section class="history-section" aria-labelledby="recentTitle">
         <div class="history-section__heading">
             <div><span class="section-eyebrow">Sessions</span><h2 id="recentTitle">Recent Activity</h2></div>
-            {% if records %}<span>{{ records|length }} saved</span>{% endif %}
+            {% if history_page.total_matching %}<span>Page {{ history_page.page }} of {{ history_page.total_pages }}</span>{% endif %}
         </div>
         {% if records %}
         <div class="history-list">
@@ -77,16 +107,29 @@
                     <div><strong>{{ record.workflow_name }}</strong><span class="history-status">{{ record.status|title }}</span>{% if record.feedback %}<span class="history-status history-status--feedback"><i class="bi bi-chat-square-heart me-1" aria-hidden="true"></i>Feedback</span>{% endif %}</div>
                     <p>{{ record.started_at|friendly_datetime }} · {{ record.steps }} step{% if record.steps != 1 %}s{% endif %}{% if record.device %} · {{ record.device.name }}{% endif %}</p>
                 </div>
-                <a class="btn btn-outline-primary" href="{{ url_for('troubleshooting_history_detail', history_id=record.id) }}">View details</a>
+                <a class="btn btn-outline-primary" href="{{ url_for('troubleshooting_history_detail', history_id=record.id) }}" aria-label="View {{ record.workflow_name or record.workflow_id }} session details from {{ record.started_at|friendly_datetime }}">View details</a>
             </article>
             {% endfor %}
         </div>
+        {% if history_page.total_pages > 1 %}
+        <nav class="history-pagination" aria-label="Troubleshooting history pages">
+            {% if history_page.has_previous %}<a class="btn btn-outline-primary" rel="prev" href="{{ url_for('troubleshooting_history', page=history_page.page - 1, workflow=history_page.filters.workflow, status=history_page.filters.status, range=history_page.filters.range) }}">Previous</a>{% else %}<span class="btn btn-outline-secondary disabled" aria-disabled="true">Previous</span>{% endif %}
+            <span aria-current="page">Page {{ history_page.page }} of {{ history_page.total_pages }}</span>
+            {% if history_page.has_next %}<a class="btn btn-outline-primary" rel="next" href="{{ url_for('troubleshooting_history', page=history_page.page + 1, workflow=history_page.filters.workflow, status=history_page.filters.status, range=history_page.filters.range) }}">Next</a>{% else %}<span class="btn btn-outline-secondary disabled" aria-disabled="true">Next</span>{% endif %}
+        </nav>
+        {% endif %}
         {% else %}
         <div class="history-empty">
             <i class="bi bi-clock-history" aria-hidden="true"></i>
+            {% if history_page.total_count %}
+            <h3>No sessions match these filters</h3>
+            <p>Try a different workflow, status, or date range.</p>
+            <a class="btn btn-outline-primary" href="{{ url_for('troubleshooting_history') }}">Clear filters</a>
+            {% else %}
             <h3>No Troubleshooting History Yet</h3>
             <p>Your sessions will appear here after you start a workflow.</p>
             <a class="btn btn-primary" href="{{ url_for('home') }}#workflows">Start troubleshooting</a>
+            {% endif %}
         </div>
         {% endif %}
     </section>

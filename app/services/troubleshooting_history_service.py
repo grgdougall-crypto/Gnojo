@@ -2,7 +2,7 @@ import json
 import os
 import re
 import tempfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from uuid import uuid4
 
@@ -157,6 +157,102 @@ class TroubleshootingHistoryService:
         return value if isinstance(value, dict) else None
 
     def list(self, limit=100):
+        return self._all_records()[:max(1, min(int(limit), 500))]
+
+    def query_page(self, *, page=1, workflow="", status="", range="all",
+                   page_size=25, now=None):
+        """Return one validated, newest-first history page and filter metadata."""
+        records = self._all_records()
+        total_count = len(records)
+        workflows = {}
+        status_counts = {}
+        for record in records:
+            workflow_id = str(record.get("workflow_id") or "").strip()
+            if workflow_id:
+                option = workflows.setdefault(workflow_id, {
+                    "id": workflow_id,
+                    "name": record.get("workflow_name") or workflow_id,
+                    "count": 0,
+                })
+                option["count"] += 1
+            record_status = str(record.get("status") or "").strip().lower()
+            if record_status in self.STATUSES:
+                status_counts[record_status] = status_counts.get(record_status, 0) + 1
+
+        workflow_value = str(workflow or "").strip()
+        workflow_lookup = {key.casefold(): key for key in workflows}
+        workflow_value = workflow_lookup.get(workflow_value.casefold(), "")
+        status_value = str(status or "").strip().lower()
+        if status_value not in self.STATUSES:
+            status_value = ""
+        range_value = str(range or "").strip().lower()
+        if range_value not in {"7d", "30d", "all"}:
+            range_value = "all"
+
+        filtered = records
+        if workflow_value:
+            filtered = [
+                item for item in filtered
+                if str(item.get("workflow_id") or "").casefold() == workflow_value.casefold()
+            ]
+        if status_value:
+            filtered = [
+                item for item in filtered
+                if str(item.get("status") or "").lower() == status_value
+            ]
+        if range_value != "all":
+            reference = now or datetime.now(timezone.utc)
+            if reference.tzinfo is None:
+                reference = reference.replace(tzinfo=timezone.utc)
+            boundary = reference.astimezone(timezone.utc) - timedelta(
+                days=7 if range_value == "7d" else 30
+            )
+            filtered = [
+                item for item in filtered
+                if self._timestamp_at_or_after(item.get("started_at"), boundary)
+            ]
+
+        try:
+            page_value = int(page)
+        except (TypeError, ValueError):
+            page_value = 1
+        page_value = max(1, page_value)
+        try:
+            size = int(page_size)
+        except (TypeError, ValueError):
+            size = 25
+        size = max(1, min(size, 100))
+        matching_count = len(filtered)
+        total_pages = max(1, (matching_count + size - 1) // size)
+        page_value = min(page_value, total_pages)
+        start = (page_value - 1) * size
+
+        return {
+            "records": filtered[start:start + size],
+            "page": page_value,
+            "page_size": size,
+            "total_pages": total_pages,
+            "total_matching": matching_count,
+            "total_count": total_count,
+            "workflows": sorted(
+                workflows.values(), key=lambda item: item["name"].casefold()
+            ),
+            "statuses": [
+                {"value": value, "count": status_counts.get(value, 0)}
+                for value in ("active", "completed", "abandoned")
+                if status_counts.get(value, 0)
+            ],
+            "filters": {
+                "workflow": workflow_value,
+                "status": status_value,
+                "range": range_value,
+            },
+            "has_previous": page_value > 1,
+            "has_next": page_value < total_pages,
+            "analytics": self.analytics(records),
+        }
+
+    def _all_records(self):
         records = []
         for path in self.history_path.glob("*.json"):
             try:
@@ -166,7 +262,17 @@ class TroubleshootingHistoryService:
             if isinstance(value, dict):
                 records.append(value)
         records.sort(key=lambda item: item.get("started_at", ""), reverse=True)
-        return records[:max(1, min(int(limit), 500))]
+        return records
+
+    @staticmethod
+    def _timestamp_at_or_after(value, boundary):
+        try:
+            parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            return parsed.astimezone(timezone.utc) >= boundary
+        except (TypeError, ValueError):
+            return False
 
     def analytics(self, records=None):
         records = list(records if records is not None else self.list(500))

@@ -854,6 +854,9 @@ dialog { max-height: calc(100dvh - 1rem); max-width: calc(100vw - 1rem); }
 }
 .history-privacy { align-items: center; background: rgba(25, 135, 84, .1); border: 1px solid rgba(25, 135, 84, .35); border-radius: .8rem; color: var(--sp-muted); display: flex; gap: .8rem; margin-bottom: 1.5rem; padding: .9rem 1rem; }
 .history-privacy i { color: var(--bs-success); font-size: 1.25rem; }
+.history-filters { background: var(--sp-surface); border: 1px solid var(--sp-border); border-radius: .9rem; margin-bottom: 1.5rem; padding: 1rem; }
+.history-filters__form { align-items: end; display: grid; gap: .75rem; grid-template-columns: repeat(3, minmax(9rem, 1fr)) auto auto; margin-bottom: .65rem; }
+.history-filters__form label { color: var(--sp-muted); display: block; font-size: .78rem; font-weight: 700; margin-bottom: .3rem; }
 .analytics-grid, .session-summary-grid { display: grid; gap: 1rem; grid-template-columns: repeat(4, 1fr); }
 .analytics-grid article, .session-summary-grid article { background: var(--sp-surface); border: 1px solid var(--sp-border); border-radius: .9rem; display: flex; flex-direction: column; gap: .35rem; padding: 1.2rem; }
 .analytics-grid span, .session-summary-grid span { color: var(--sp-muted); font-size: .82rem; }
@@ -881,6 +884,8 @@ dialog { max-height: calc(100dvh - 1rem); max-width: calc(100vw - 1rem); }
 .history-empty { color: var(--sp-muted); padding: 3rem 1rem; text-align: center; }
 .history-empty > i { color: var(--bs-primary); font-size: 2.5rem; }
 .history-empty h3 { color: var(--sp-text); margin-top: 1rem; }
+.history-pagination { align-items: center; display: flex; gap: .75rem; justify-content: center; margin-top: 1rem; }
+.history-pagination > span:not(.btn) { color: var(--sp-muted); font-size: .9rem; font-weight: 700; }
 .back-link { align-items: center; display: inline-flex; gap: .5rem; margin-bottom: 1.5rem; text-decoration: none; }
 .detail-status { font-size: .82rem; padding: .45rem .75rem; }
 .detail-status--completed { border-color: rgba(25, 135, 84, .45); color: var(--bs-success); }
@@ -894,6 +899,8 @@ dialog { max-height: calc(100dvh - 1rem); max-width: calc(100vw - 1rem); }
     .history-page { padding-block: 2rem; }
     .history-heading { align-items: stretch; flex-direction: column; gap: 1rem; }
     .history-heading form, .history-heading .btn { width: 100%; }
+    .history-filters__form { grid-template-columns: 1fr; }
+    .history-filters__form .btn { width: 100%; }
     .analytics-grid, .session-summary-grid { grid-template-columns: repeat(2, 1fr); }
     .workflow-analytics-list article { grid-template-columns: 1fr 3rem; }
     .workflow-analytics-list .analytics-meter { grid-column: 1 / -1; grid-row: 2; }

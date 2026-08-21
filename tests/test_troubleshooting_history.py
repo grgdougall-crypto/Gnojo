@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
 
@@ -61,6 +62,81 @@ class TroubleshootingHistoryServiceTests(unittest.TestCase):
         self.assertIsNone(self.service.get(record["id"]))
         with self.assertRaises(ValueError):
             self.service.get("../private")
+
+    def _record(self, index, *, workflow="internet", status="completed", days_ago=0):
+        record = self.service.start(
+            workflow,
+            "Internet Connection" if workflow == "internet" else "Printer",
+            "start",
+        )
+        if status == "completed":
+            record = self.service.complete(record["id"], "done")
+        elif status == "abandoned":
+            record = self.service.abandon(record["id"])
+        stamp = (
+            datetime(2026, 8, 21, 12, tzinfo=timezone.utc)
+            - timedelta(days=days_ago, seconds=index if days_ago == 0 else 0)
+        ).isoformat()
+        record["started_at"] = stamp
+        record["updated_at"] = stamp
+        self.service._write(self.service._path(record["id"]), record)
+        return record
+
+    def test_query_page_is_newest_first_sized_and_clamps_invalid_pages(self):
+        created = [self._record(index) for index in range(27)]
+        first = self.service.query_page(page=1, page_size=20)
+        second = self.service.query_page(page=2, page_size=20)
+        final = self.service.query_page(page=999, page_size=20)
+        invalid = self.service.query_page(page="bad", page_size=20)
+        negative = self.service.query_page(page=-4, page_size=20)
+        self.assertEqual(len(first["records"]), 20)
+        self.assertEqual(len(second["records"]), 7)
+        self.assertEqual(first["records"][0]["id"], created[0]["id"])
+        self.assertEqual(second["records"][0]["id"], created[20]["id"])
+        self.assertEqual(final["page"], 2)
+        self.assertEqual(invalid["page"], 1)
+        self.assertEqual(negative["page"], 1)
+
+    def test_query_filters_compose_and_date_ranges_are_inclusive(self):
+        self._record(0, workflow="internet", status="completed", days_ago=0)
+        self._record(1, workflow="internet", status="abandoned", days_ago=7)
+        self._record(2, workflow="printer", status="completed", days_ago=8)
+        self._record(3, workflow="internet", status="completed", days_ago=30)
+        self._record(4, workflow="internet", status="completed", days_ago=31)
+        now = datetime(2026, 8, 21, 12, tzinfo=timezone.utc)
+
+        seven = self.service.query_page(range="7d", now=now)
+        thirty = self.service.query_page(range="30d", now=now)
+        all_time = self.service.query_page(range="all", now=now)
+        combined = self.service.query_page(
+            workflow="INTERNET", status="completed", range="30d", now=now
+        )
+        self.assertEqual(seven["total_matching"], 2)
+        self.assertEqual(thirty["total_matching"], 4)
+        self.assertEqual(all_time["total_matching"], 5)
+        self.assertEqual(combined["total_matching"], 2)
+        self.assertEqual(combined["filters"]["workflow"], "internet")
+        self.assertEqual(combined["filters"]["status"], "completed")
+        self.assertEqual(self.service.query_page(range="invalid")["filters"]["range"], "all")
+        self.assertEqual(self.service.query_page(workflow="missing")["total_matching"], 5)
+
+    def test_analytics_are_global_and_independent_of_page_size_and_filters(self):
+        for index in range(30):
+            self._record(index, workflow="internet" if index < 10 else "printer")
+        small = self.service.query_page(page=1, page_size=5, workflow="internet")
+        large = self.service.query_page(page=2, page_size=20, status="abandoned")
+        self.assertEqual(small["analytics"], large["analytics"])
+        self.assertEqual(small["analytics"]["total"], 30)
+        self.assertEqual(small["total_matching"], 10)
+        self.assertEqual(large["total_matching"], 0)
+
+    def test_deletion_that_removes_final_page_clamps_to_new_last_page(self):
+        records = [self._record(index) for index in range(21)]
+        self.assertEqual(self.service.query_page(page=2, page_size=20)["page"], 2)
+        self.service.delete(records[-1]["id"])
+        page = self.service.query_page(page=2, page_size=20)
+        self.assertEqual(page["page"], 1)
+        self.assertEqual(page["total_pages"], 1)
 
 
 class TroubleshootingHistoryPageTests(unittest.TestCase):
@@ -140,6 +216,38 @@ class TroubleshootingHistoryPageTests(unittest.TestCase):
         ).get_data(as_text=True)
         self.assertIn("Workflow Quality", detail_html)
         self.assertIn("A little more detail would help.", detail_html)
+
+    def test_page_filters_pagination_urls_and_accessible_detail_names(self):
+        for index in range(26):
+            record = self.service.start("internet", "Internet Connection", "start")
+            self.service.complete(record["id"], "done")
+        html = self.client.get(
+            "/troubleshooting-history?workflow=internet&status=completed&range=30d"
+        ).get_data(as_text=True)
+        self.assertEqual(html.count("View details</a>"), 25)
+        self.assertIn("Showing 26 of 26 sessions.", html)
+        self.assertIn("Page 1 of 2", html)
+        self.assertIn("page=2&amp;workflow=internet&amp;status=completed&amp;range=30d", html)
+        self.assertIn("Clear filters", html)
+        self.assertIn("aria-label=\"View Internet Connection session details from", html)
+        page_two = self.client.get(
+            "/troubleshooting-history?page=2&workflow=internet&status=completed&range=30d"
+        ).get_data(as_text=True)
+        self.assertEqual(page_two.count("View details</a>"), 1)
+        self.assertIn('aria-current="page">Page 2 of 2', page_two)
+
+    def test_page_distinguishes_no_history_from_filtered_no_match(self):
+        empty = self.client.get("/troubleshooting-history").get_data(as_text=True)
+        self.assertIn("No Troubleshooting History Yet", empty)
+        self.assertNotIn("No sessions match these filters", empty)
+
+        self.service.start("internet", "Internet Connection", "start")
+        filtered = self.client.get(
+            "/troubleshooting-history?status=completed"
+        ).get_data(as_text=True)
+        self.assertIn("No sessions match these filters", filtered)
+        self.assertIn("Clear filters", filtered)
+        self.assertNotIn("No Troubleshooting History Yet", filtered)
 
 
 if __name__ == "__main__":

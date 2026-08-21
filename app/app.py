@@ -2101,6 +2101,11 @@ def workflow_studio():
             "category": workflow_category(workflow),
             "platform": workflow_platform(workflow),
             "estimated_steps": workflow.get("estimated_steps"),
+            "progress_mode": (
+                "branch_aware"
+                if workflow.get("progress_mode") == "branch_aware"
+                else "static"
+            ),
             "draft_filename": existing.get("filename") if existing else None,
         })
 
@@ -3041,7 +3046,11 @@ def search():
     ).strip().lower()
 
     device_context = active_device_profile()
-    results = search_service.search_all(query, context=device_context)
+    results = (
+        search_service.search_all(query, context=device_context)
+        if query
+        else []
+    )
     result_counts = {
         "all": len(results),
         "article": sum(result.content_type == "Article" for result in results),

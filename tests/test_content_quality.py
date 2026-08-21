@@ -168,6 +168,8 @@ class ContentQualityPageTests(unittest.TestCase):
         self.assertIn("Coverage Snapshot", html)
         self.assertIn("Computer Running Slowly", html)
         self.assertIn("Knowledge coverage is thin", html)
+        self.assertIn("Run workflow", html)
+        self.assertIn('aria-label="Run Higher-Layer Connectivity Diagnostics workflow"', html)
 
     def test_editor_supports_direct_node_selection(self):
         html = self.client.get(
@@ -188,6 +190,11 @@ class ContentQualityPageTests(unittest.TestCase):
 
         before = self.client.get("/content-quality").get_data(as_text=True)
         self.assertIn("Send to Curator", before)
+        self.assertIn("Open affected step", before)
+        self.assertIn(
+            'aria-label="Open Computer Running Slowly affected step in Workflow Studio"',
+            before,
+        )
         self.assertIn("/workflow-editor/windows_slow.json?node=confirm_windows", before)
 
         response = self.client.post(

@@ -69,6 +69,10 @@ class WorkflowOrganizationTests(unittest.TestCase):
             html = studio.get_data(as_text=True)
             self.assertIn("Built-in Workflows", html)
             self.assertIn("Create Editable Copy", html)
+            self.assertIn(
+                'aria-label="Create editable copy of Internet Connection"',
+                html,
+            )
 
             response = app.test_client().post(
                 "/workflow-studio/built-ins/internet/copy"
@@ -105,6 +109,44 @@ class WorkflowOrganizationTests(unittest.TestCase):
             drafts.get_draft("internet.json")["name"],
             "My Reviewed Internet Copy",
         )
+
+    def test_studio_distinguishes_static_and_branch_aware_progress_and_names_actions(self):
+        drafts = WorkflowDraftService(self.drafts_temp.name)
+        branch_aware = {
+            **self.workflow,
+            "workflow_id": "adaptive_help",
+            "name": "Adaptive Help",
+            "progress_mode": "branch_aware",
+            "estimated_steps": 99,
+        }
+        drafts.save_draft(branch_aware)
+
+        listed = {item["workflow_id"]: item for item in drafts.list_drafts()}
+        self.assertEqual(listed["identity_help"]["progress_mode"], "static")
+        self.assertEqual(listed["adaptive_help"]["progress_mode"], "branch_aware")
+
+        with patch("app.app.WorkflowDraftService", return_value=drafts):
+            response = app.test_client().get("/workflow-studio")
+        html = response.get_data(as_text=True)
+        self.assertIn("2 planned steps", html)
+        self.assertIn("Branch-aware progress", html)
+        self.assertIn("Path length adapts to the selected route.", html)
+        self.assertNotIn("99 planned steps", html)
+        self.assertIn('aria-label="Open Identity Help in Workflow Designer"', html)
+        self.assertIn('href="/workflow-editor/identity.json"', html)
+        self.assertIn("Open in Designer", html)
+
+    def test_existing_builtin_copy_has_specific_accessible_open_name(self):
+        drafts = WorkflowDraftService(self.drafts_temp.name)
+        internet = json.loads(Path("app/decision_trees/internet.json").read_text(encoding="utf-8"))
+        drafts.save_draft(internet)
+        with patch("app.app.WorkflowDraftService", return_value=drafts):
+            html = app.test_client().get("/workflow-studio").get_data(as_text=True)
+        self.assertIn(
+            'aria-label="Open editable copy of Internet Connection"',
+            html,
+        )
+        self.assertIn('href="/workflow-editor/internet.json"', html)
 
 
 if __name__ == "__main__":

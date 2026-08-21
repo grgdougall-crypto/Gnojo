@@ -61,7 +61,7 @@
                             {{ draft.name }}
                         </h3>
 
-                        <p class="text-muted mb-4">{% if draft.is_damaged %}Gnojo could not read this file safely. Restore it from a backup or inspect the JSON before reopening it.{% else %}{{ draft.estimated_steps }} estimated steps{% endif %}</p>
+                        <p class="text-muted mb-4">{% if draft.is_damaged %}Gnojo could not read this file safely. Restore it from a backup or inspect the JSON before reopening it.{% elif draft.progress_mode == 'branch_aware' %}Branch-aware progress · Path length adapts to the selected route.{% elif draft.estimated_steps %}{{ draft.estimated_steps }} planned steps{% else %}Static progress · Step estimate not set{% endif %}</p>
 
                         {% if not draft.is_damaged %}<a
     href="{{ url_for(
@@ -69,8 +69,9 @@
         filename=draft.filename
     ) }}"
     class="btn btn-outline-primary btn-sm"
+    aria-label="Open {{ draft.name }} in Workflow Designer"
 >
-    Open Workflow
+    Open in Designer
 </a>{% endif %}
 
                     </div>
@@ -135,14 +136,14 @@
                         </div>
                         <h3 class="h5 mt-3">{{ workflow.name }}</h3>
                         <p class="text-muted">{{ workflow.description }}</p>
-                        <p class="small text-muted mt-auto mb-3">{{ workflow.estimated_steps }} estimated steps</p>
+                        <p class="small text-muted mt-auto mb-3">{% if workflow.progress_mode == 'branch_aware' %}Branch-aware progress · Path length adapts to the selected route.{% elif workflow.estimated_steps %}{{ workflow.estimated_steps }} planned steps{% else %}Static progress · Step estimate not set{% endif %}</p>
                         {% if workflow.draft_filename %}
-                            <a class="btn btn-outline-primary btn-sm align-self-start" href="{{ url_for('workflow_editor', filename=workflow.draft_filename) }}">
-                                <i class="bi bi-pencil-square me-2" aria-hidden="true"></i>Open Editable Copy
+                            <a class="btn btn-outline-primary btn-sm align-self-start" href="{{ url_for('workflow_editor', filename=workflow.draft_filename) }}" aria-label="Open editable copy of {{ workflow.name }}">
+                                <i class="bi bi-pencil-square me-2" aria-hidden="true"></i>Open in Designer
                             </a>
                         {% else %}
                             <form method="post" action="{{ url_for('copy_builtin_workflow', workflow_id=workflow.workflow_id) }}">
-                                <button class="btn btn-outline-primary btn-sm" type="submit">
+                                <button class="btn btn-outline-primary btn-sm" type="submit" aria-label="Create editable copy of {{ workflow.name }}">
                                     <i class="bi bi-copy me-2" aria-hidden="true"></i>Create Editable Copy
                                 </button>
                             </form>

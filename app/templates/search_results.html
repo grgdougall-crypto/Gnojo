@@ -102,7 +102,19 @@ Gnojo Search
 
 </div>
 
-    {% if results %}
+    {% if not query %}
+
+        <div class="alert alert-secondary p-4">
+            <h2 class="h5 mb-2">What are you looking for?</h2>
+            <p class="mb-0">Enter an issue, technology, error, or command in the search bar above.</p>
+            <div class="d-flex flex-wrap gap-2 mt-3">
+                <a class="btn btn-outline-primary" href="{{ url_for('home') }}#workflows">Browse workflows</a>
+                <a class="btn btn-outline-primary" href="{{ url_for('knowledge_center') }}">Browse knowledge</a>
+                <a class="btn btn-outline-primary" href="{{ url_for('list_commands') }}">Browse commands</a>
+            </div>
+        </div>
+
+    {% elif results %}
 
         <div
             class="d-flex justify-content-between
@@ -140,11 +152,7 @@ Gnojo Search
             </h2>
 
             <p class="mb-0">
-                {% if not query %}
-                    Enter an issue, technology, error, or command in the search bar above.
-                {% else %}
-                    Try a shorter phrase, check the spelling, or search for a technology such as VPN, DNS, printer, or PowerShell.
-                {% endif %}
+                Try a shorter phrase, check the spelling, or search for a technology such as VPN, DNS, printer, or PowerShell.
             </p>
 
             <div class="d-flex flex-wrap gap-2 mt-3">

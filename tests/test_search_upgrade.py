@@ -49,10 +49,24 @@ class SearchUpgradeTests(unittest.TestCase):
         self.assertIn("/wizard?workflow=vpn_help", html)
         self.assertNotIn("View Article", html)
 
+    def test_initial_state_does_not_search_or_claim_no_results(self):
+        with patch("app.app.search_service.search_all") as search_all:
+            response = app.test_client().get("/search")
+        html = response.get_data(as_text=True)
+        self.assertEqual(response.status_code, 200)
+        search_all.assert_not_called()
+        self.assertIn("What are you looking for?", html)
+        self.assertNotIn("No results found", html)
+        self.assertIn("Browse knowledge", html)
+        self.assertIn("Browse commands", html)
+        self.assertIn("Browse workflows", html)
+
     def test_empty_results_offer_real_browse_destinations(self):
         with patch("app.app.search_service.search_all", return_value=[]):
             response = app.test_client().get("/search?q=unlikelyterm")
         html = response.get_data(as_text=True)
+        self.assertIn("No results found", html)
+        self.assertIn('value="unlikelyterm"', html)
         self.assertIn("Try a shorter phrase", html)
         self.assertIn("Browse workflows", html)
         self.assertNotIn('href="#"', html)

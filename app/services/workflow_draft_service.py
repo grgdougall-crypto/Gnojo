@@ -80,6 +80,7 @@ class WorkflowDraftService:
                     "workflow_id": None,
                     "name": f"Damaged workflow: {file_path.stem}",
                     "estimated_steps": None,
+                    "progress_mode": None,
                     "category": "Needs attention",
                     "platform": "Unknown",
                     "is_damaged": True,
@@ -97,6 +98,11 @@ class WorkflowDraftService:
                     ),
                     "estimated_steps": workflow.get(
                         "estimated_steps",
+                    ),
+                    "progress_mode": (
+                        "branch_aware"
+                        if workflow.get("progress_mode") == "branch_aware"
+                        else "static"
                     ),
                     "category": workflow_category(workflow),
                     "platform": workflow_platform(workflow),

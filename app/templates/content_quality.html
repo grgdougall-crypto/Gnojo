@@ -25,7 +25,7 @@
                 <span class="quality-priority">{{ item.priority|title }}</span>
                 <div class="quality-issue__body"><span>{{ item.workflow_name }}</span><h3>{{ item.title }}</h3><p>{{ item.detail }}</p>{% if item.node_id %}<small>Step: {{ item.node_id|friendly_node }}</small>{% endif %}</div>
                 <div class="quality-issue__actions">
-                    {% if item.filename %}<a class="btn btn-sm btn-primary" href="{{ url_for('workflow_editor', filename=item.filename, node=item.node_id) }}">Open{% if item.node_id %} step{% else %} workflow{% endif %}</a>{% else %}<a class="btn btn-sm btn-outline-primary" href="{{ url_for('wizard', workflow=item.workflow_id, restart='1') }}">Test workflow</a>{% endif %}
+                    {% if item.filename %}<a class="btn btn-sm btn-primary" href="{{ url_for('workflow_editor', filename=item.filename, node=item.node_id) }}" aria-label="{% if item.node_id %}Open {{ item.workflow_name }} affected step in Workflow Studio{% else %}Open {{ item.workflow_name }} in Workflow Studio{% endif %}">{% if item.node_id %}Open affected step{% else %}Open in Workflow Studio{% endif %}</a>{% else %}<a class="btn btn-sm btn-outline-primary" href="{{ url_for('wizard', workflow=item.workflow_id, restart='1') }}" aria-label="Run {{ item.workflow_name }} workflow">Run workflow</a>{% endif %}
                     {% if item.kind == 'confusing_step' %}
                         {% if item.curator_task_id %}<a class="btn btn-sm btn-outline-secondary" href="{{ url_for('curator_task_detail', task_id=item.curator_task_id) }}">Tracked by Curator</a>
                         {% else %}<form method="post" action="{{ url_for('send_confusing_step_to_curator') }}"><input type="hidden" name="workflow_id" value="{{ item.workflow_id }}"><input type="hidden" name="node_id" value="{{ item.node_id }}"><button class="btn btn-sm btn-outline-primary" type="submit">Send to Curator</button></form>{% endif %}
@@ -51,7 +51,7 @@
                     <td>{{ workflow.clarity ~ '/5' if workflow.clarity is not none else '—' }}</td>
                     <td><span class="coverage-value {% if workflow.knowledge_coverage < 25 %}coverage-value--low{% endif %}">{{ workflow.knowledge_coverage }}%</span></td>
                     <td><span class="coverage-value {% if workflow.learning_coverage < 50 %}coverage-value--low{% endif %}">{{ workflow.learning_coverage }}%</span></td>
-                    <td>{% if workflow.filename %}<a href="{{ url_for('workflow_editor', filename=workflow.filename) }}">Edit</a>{% else %}<a href="{{ url_for('wizard', workflow=workflow.workflow_id, restart='1') }}">Test</a>{% endif %}</td>
+                    <td>{% if workflow.filename %}<a href="{{ url_for('workflow_editor', filename=workflow.filename) }}" aria-label="Open {{ workflow.name }} in Workflow Studio">Open</a>{% else %}<a href="{{ url_for('wizard', workflow=workflow.workflow_id, restart='1') }}" aria-label="Run {{ workflow.name }} workflow">Run</a>{% endif %}</td>
                 </tr>{% endfor %}</tbody>
             </table>
         </div>

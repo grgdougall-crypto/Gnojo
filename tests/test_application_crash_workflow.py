@@ -6,6 +6,7 @@ from unittest.mock import patch
 from app.app import app, available_workflows
 from app.services.troubleshooting_history_service import TroubleshootingHistoryService
 from app.services.workflow_progress_service import WorkflowProgressService
+from app.services.workflow_quality_validator import WorkflowQualityValidator
 
 
 class ApplicationCrashWorkflowTests(unittest.TestCase):
@@ -63,10 +64,44 @@ class ApplicationCrashWorkflowTests(unittest.TestCase):
     def test_scope_yes_no_and_uncertainty_paths_remain_bounded(self):
         yes = self._run(["", "crashes", "yes"])[-1]
         self.assertIn("Use the Computer Performance Workflow", yes)
+        self.assertIn("Continue to Computer Performance Diagnostics", yes)
         no = self._run(["", "crashes", "no"])[-1]
         self.assertIn("Close and Reopen the Application", no)
         unsure = self._run(["", "crashes", "unsure"])[-1]
         self.assertIn("Close and Reopen the Application", unsure)
+
+    def test_system_wide_handoff_enters_performance_workflow_and_previous_restores(self):
+        pages = self._run(["", "crashes", "yes"])
+        handoff = pages[-1]
+        self.assertIn("Use the Computer Performance Workflow", handoff)
+        self.assertIn("Continue to Computer Performance Diagnostics", handoff)
+        self.assertIn("Step 4 of 4 on this path", handoff)
+        self.assertIn('aria-valuenow="100"', handoff)
+
+        destination = self.client.post("/wizard", follow_redirects=True).get_data(
+            as_text=True
+        )
+        self.assertIn("Computer Running Slowly", destination)
+        self.assertIn("Confirm the Windows Device", destination)
+        self.assertIn("Step 1 of 22 on this path", destination)
+        with self.client.session_transaction() as session:
+            self.assertEqual(session["workflow"], "windows_slow")
+            self.assertEqual(session["current_node"], "confirm_windows")
+
+        restored = self.client.post(
+            "/wizard", data={"navigation_action": "previous"}, follow_redirects=True
+        ).get_data(as_text=True)
+        self.assertIn("Use the Computer Performance Workflow", restored)
+        self.assertIn("Step 4 of 4 on this path", restored)
+        with self.client.session_transaction() as session:
+            self.assertEqual(session["workflow"], "application_crash")
+            self.assertEqual(session["current_node"], "system_wide")
+
+        restored_scope = self.client.post(
+            "/wizard", data={"navigation_action": "previous"}, follow_redirects=True
+        ).get_data(as_text=True)
+        self.assertIn("Are other applications also freezing or closing?", restored_scope)
+        self.assertIn("Step 3 of 12 on this path", restored_scope)
 
     def test_progress_graph_is_acyclic_and_all_terminals_are_terminal(self):
         catalog = available_workflows()
@@ -79,6 +114,15 @@ class ApplicationCrashWorkflowTests(unittest.TestCase):
         )["workflow"]
         self.assertTrue(WorkflowProgressService.enabled(workflow))
         nodes = workflow["nodes"]
+        report = WorkflowQualityValidator().validate(workflow, set(catalog))
+        self.assertEqual(report["overall_status"], "CLEAN")
+        self.assertEqual(report["findings"], [])
+        self.assertEqual(nodes["system_wide"]["type"], "transition")
+        self.assertEqual(nodes["system_wide"]["next_workflow"], "windows_slow")
+        self.assertEqual(
+            nodes["system_wide"]["button_label"],
+            "Continue to Computer Performance Diagnostics",
+        )
         for node_id, node in nodes.items():
             with self.subTest(node_id=node_id):
                 if node.get("type") == "resolution":

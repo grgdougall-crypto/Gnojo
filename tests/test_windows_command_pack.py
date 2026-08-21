@@ -46,6 +46,10 @@ class WindowsCommandPackTests(unittest.TestCase):
         self.assertIn("Scan the Windows Component Store", html)
         self.assertIn("Risk:", html)
         self.assertIn("command-library-card__action", html)
+        self.assertIn(
+            'aria-label="View command: Inspect Windows System Information"',
+            html,
+        )
 
     def test_every_new_command_detail_page_loads(self):
         new_files = Path("knowledge_base/commands").glob("*.json")

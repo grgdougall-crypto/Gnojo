@@ -1,0 +1,26 @@
+<section class="library-filter-bar mb-4" aria-label="{{ filter_label }} filters">
+    <form method="get" action="{{ filter_action }}" class="library-filter-bar__form">
+        <div class="library-filter-bar__search">
+            <label class="visually-hidden" for="{{ filter_id }}-query">Search {{ item_label }}</label>
+            <input id="{{ filter_id }}-query" class="form-control" type="search" name="q" value="{{ query }}" placeholder="Search {{ item_label }}...">
+        </div>
+        <div>
+            <label class="visually-hidden" for="{{ filter_id }}-category">Filter by category</label>
+            <select id="{{ filter_id }}-category" class="form-select" name="category">
+                <option value="">All categories ({{ total_count }})</option>
+                {% for category, count in categories %}
+                    <option value="{{ category }}" {% if selected_category|lower == category|lower %}selected{% endif %}>{{ category }} ({{ count }})</option>
+                {% endfor %}
+            </select>
+        </div>
+        <button class="btn btn-primary" type="submit">
+            <i class="bi bi-funnel me-2" aria-hidden="true"></i>Apply filters
+        </button>
+        {% if query or selected_category %}
+            <a class="btn btn-outline-secondary" href="{{ filter_action }}">Clear filters</a>
+        {% endif %}
+    </form>
+    <p class="small text-muted mb-0 mt-2" role="status">
+        Showing {{ result_count }} of {{ total_count }} {{ item_label }}.
+    </p>
+</section>

@@ -2861,7 +2861,35 @@ def list_commands():
     Display all commands grouped by category.
     """
 
-    commands = command_repository.get_all()
+    query = request.args.get("q", "").strip()
+    selected_category = request.args.get("category", "").strip()
+    all_commands = command_repository.get_all()
+    category_counts = {}
+    for command in all_commands:
+        category = command.get("category") or "Uncategorized"
+        category_counts[category] = category_counts.get(category, 0) + 1
+
+    commands = []
+    normalized_query = query.casefold()
+    normalized_category = selected_category.casefold()
+    for command in all_commands:
+        category = command.get("category") or "Uncategorized"
+        if normalized_category and category.casefold() != normalized_category:
+            continue
+        tags = command.get("tags", [])
+        platforms = command.get("platforms", [])
+        searchable_text = " ".join([
+            str(command.get("name", "")),
+            str(command.get("title", "")),
+            str(command.get("summary", "")),
+            str(category),
+            str(command.get("shell", "")),
+            " ".join(str(tag) for tag in tags if tags),
+            " ".join(str(platform) for platform in platforms if platforms),
+        ]).casefold()
+        if normalized_query and normalized_query not in searchable_text:
+            continue
+        commands.append(command)
 
     grouped_commands = {}
 
@@ -2879,6 +2907,12 @@ def list_commands():
     return render_template(
         "commands.html",
         grouped_commands=grouped_commands,
+        query=query,
+        selected_category=selected_category,
+        categories=sorted(category_counts.items(), key=lambda item: item[0].casefold()),
+        result_count=len(commands),
+        total_count=len(all_commands),
+        inventory_empty=not all_commands,
     )
 
 
@@ -3262,41 +3296,42 @@ def list_published():
     Display published articles grouped by category.
     """
 
-    query = request.args.get(
-        "q",
-        "",
-    ).strip().lower()
+    query = request.args.get("q", "").strip()
+    selected_category = request.args.get("category", "").strip()
 
-    articles = knowledge_repository.get_published()
-    for article in articles:
+    all_articles = knowledge_repository.get_published()
+    for article in all_articles:
         if not article.get("tags"):
             article["tags"] = ArticleTagService.generate(article)
 
-    if query:
+    category_counts = {}
+    for article in all_articles:
+        category = article.get("category") or "Uncategorized"
+        category_counts[category] = category_counts.get(category, 0) + 1
 
-        filtered = []
+    articles = []
+    normalized_query = query.casefold()
+    normalized_category = selected_category.casefold()
+    for article in all_articles:
+        category = article.get("category") or "Uncategorized"
+        if normalized_category and category.casefold() != normalized_category:
+            continue
 
-        for article in articles:
+        tags = article.get("tags", [])
+        if not isinstance(tags, list):
+            tags = []
 
-            tags = article.get("tags", [])
+        searchable_text = " ".join([
+            str(article.get("title", "")),
+            str(article.get("overview", "")),
+            str(category),
+            str(article.get("difficulty", "")),
+            " ".join(str(tag) for tag in tags),
+        ]).casefold()
 
-            if not isinstance(tags, list):
-                tags = []
-
-            searchable_text = " ".join(
-                [
-                    article.get("title", ""),
-                    article.get("overview", ""),
-                    article.get("category", ""),
-                    article.get("difficulty", ""),
-                    " ".join(str(tag) for tag in tags),
-                ]
-            ).lower()
-
-            if query in searchable_text:
-                filtered.append(article)
-
-        articles = filtered
+        if normalized_query and normalized_query not in searchable_text:
+            continue
+        articles.append(article)
 
     grouped_articles = {}
 
@@ -3316,6 +3351,11 @@ def list_published():
         "published.html",
         grouped_articles=grouped_articles,
         query=query,
+        selected_category=selected_category,
+        categories=sorted(category_counts.items(), key=lambda item: item[0].casefold()),
+        result_count=len(articles),
+        total_count=len(all_articles),
+        inventory_empty=not all_articles,
     )
 
 

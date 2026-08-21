@@ -1282,6 +1282,26 @@ dialog { max-height: calc(100dvh - 1rem); max-width: calc(100vw - 1rem); }
     gap: 1rem;
 }
 
+.library-filter-bar {
+    position: sticky;
+    top: 5rem;
+    z-index: 10;
+    padding: .85rem;
+    border: 1px solid var(--sp-border);
+    border-radius: .75rem;
+    background: color-mix(in srgb, var(--sp-surface) 94%, transparent);
+    box-shadow: 0 8px 20px rgba(11, 46, 89, .06);
+    backdrop-filter: blur(12px);
+}
+
+.library-filter-bar__form {
+    display: grid;
+    grid-template-columns: minmax(12rem, 1fr) minmax(12rem, auto) auto auto;
+    gap: .65rem;
+}
+
+.library-filter-bar__search { min-width: 0; }
+
 .command-library-card__content {
     min-width: 0;
 }
@@ -1292,6 +1312,9 @@ dialog { max-height: calc(100dvh - 1rem); max-width: calc(100vw - 1rem); }
 }
 
 @media (max-width: 767.98px) {
+    .library-filter-bar { position: static; }
+    .library-filter-bar__form { grid-template-columns: minmax(0, 1fr); }
+    .library-filter-bar__form .btn { width: 100%; }
     .command-library-card {
         grid-template-columns: minmax(0, 1fr);
     }

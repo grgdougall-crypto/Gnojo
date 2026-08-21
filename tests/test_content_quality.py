@@ -157,6 +157,7 @@ class ContentQualityPageTests(unittest.TestCase):
     def test_content_studio_links_to_quality_dashboard(self):
         html = self.client.get("/content-studio").get_data(as_text=True)
         self.assertIn("Content Quality Dashboard", html)
+        self.assertIn("Open Content Quality", html)
         self.assertIn('href="/content-quality"', html)
 
     def test_dashboard_renders_queue_health_and_coverage(self):
@@ -166,6 +167,7 @@ class ContentQualityPageTests(unittest.TestCase):
         self.assertIn("What Needs Attention", html)
         self.assertIn("Library Overview", html)
         self.assertIn("Coverage Snapshot", html)
+        self.assertIn("Open Workflow Studio", html)
         self.assertIn("Computer Running Slowly", html)
         self.assertIn("Knowledge coverage is thin", html)
         self.assertIn("Run workflow", html)

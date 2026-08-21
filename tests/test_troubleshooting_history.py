@@ -255,6 +255,7 @@ class TroubleshootingHistoryPageTests(unittest.TestCase):
             'href="/troubleshooting-history?page=2&amp;workflow=internet&amp;status=completed&amp;range=30d"',
             detail,
         )
+        self.assertIn("Back to Troubleshooting History", detail)
         back_url = unescape(re.search(
             r'<a class="back-link" href="([^"]+)"', detail
         ).group(1))

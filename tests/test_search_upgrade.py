@@ -65,9 +65,9 @@ class SearchUpgradeTests(unittest.TestCase):
         search_all.assert_not_called()
         self.assertIn("What are you looking for?", html)
         self.assertNotIn("No results found", html)
-        self.assertIn("Browse knowledge", html)
-        self.assertIn("Browse commands", html)
-        self.assertIn("Browse workflows", html)
+        self.assertIn("Open Knowledge Center", html)
+        self.assertIn("Browse Commands", html)
+        self.assertIn("Browse Workflows", html)
 
     def test_empty_results_offer_real_browse_destinations(self):
         with patch("app.app.search_service.search_all", return_value=[]):
@@ -76,7 +76,7 @@ class SearchUpgradeTests(unittest.TestCase):
         self.assertIn("No results found", html)
         self.assertIn('value="unlikelyterm"', html)
         self.assertIn("Try a shorter phrase", html)
-        self.assertIn("Browse workflows", html)
+        self.assertIn("Browse Workflows", html)
         self.assertNotIn('href="#"', html)
 
 

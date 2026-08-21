@@ -15,6 +15,8 @@ class LandingPageActionTests(unittest.TestCase):
         self.assertIn('href="#workflows"', self.html)
         self.assertIn("Create Device Profile", self.html)
         self.assertIn('/device-profiles', self.html)
+        self.assertIn("Knowledge Center", self.html)
+        self.assertNotIn(">Knowledge Base<", self.html)
 
     def test_primary_destinations_load(self):
         for route in ("/content-studio", "/workflow-studio", "/knowledge", "/device-profiles"):
@@ -33,7 +35,7 @@ class LandingPageActionTests(unittest.TestCase):
             "Search Gnojo Knowledge",
             "Knowledge Studio",
             "Review Drafts",
-            "Browse Published Articles",
+            "Published Articles",
             "Learning Library",
         ):
             with self.subTest(destination=destination):

@@ -57,6 +57,7 @@ class LibraryFilterTests(unittest.TestCase):
         self.assertIn('value="dns"', html)
         self.assertIn('value="Networking" selected', html)
         self.assertIn("Showing 1 of 3 published articles.", html)
+        self.assertIn("Back to Knowledge Center", html)
         self.assertIn('aria-label="View article: DNS Basics"', html)
         self.assertIn('aria-label="Manage article: DNS Basics"', html)
         self.assertIn(
@@ -77,6 +78,7 @@ class LibraryFilterTests(unittest.TestCase):
         self.assertIn('value="DNS"', html)
         self.assertIn('value="Networking" selected', html)
         self.assertIn("Showing 2 of 3 commands.", html)
+        self.assertIn("Back to Knowledge Center", html)
         self.assertIn('aria-label="View command: Inspect IP Configuration"', html)
         self.assertIn(
             "return_to=/commands?q%3DDNS%26category%3DNETWORKING",

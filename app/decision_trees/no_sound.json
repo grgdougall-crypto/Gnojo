@@ -5,6 +5,7 @@
   "category": "Desktop Support",
   "platform": "Windows",
   "estimated_steps": 7,
+  "progress_mode": "branch_aware",
   "start_node": "identify_scope",
   "nodes": {
     "identify_scope": {
@@ -21,7 +22,32 @@
       "type": "instruction",
       "title": "Test Sound in Another Application",
       "instruction": "Play a familiar system sound or a trusted local media file in a second application. Keep the volume at a moderate level.",
-      "next": "identify_scope"
+      "next": "confirm_scope_after_test"
+    },
+
+    "confirm_scope_after_test": {
+      "type": "question",
+      "question": "After testing sound in another application, where is sound missing?",
+      "answers": {
+        "one_app": {
+          "label": "Only the original application",
+          "next": "check_app_volume"
+        },
+        "all_apps": {
+          "label": "Every application tested",
+          "next": "check_mute"
+        },
+        "unsure": {
+          "label": "I'm Still Not Sure",
+          "next": "scope_unresolved"
+        }
+      }
+    },
+
+    "scope_unresolved": {
+      "type": "resolution",
+      "title": "Audio Scope Could Not Be Confirmed",
+      "message": "Testing a second application did not establish whether the issue is application-specific or system-wide. Record the applications and audio files tested, the selected output device, and any visible audio status, then ask an authorized support contact to review the audio scope before making deeper changes."
     },
     "check_app_volume": {
       "type": "instruction",

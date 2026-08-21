@@ -1,6 +1,8 @@
 import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
+from html import unescape
+import re
 from pathlib import Path
 from unittest.mock import patch
 
@@ -230,11 +232,44 @@ class TroubleshootingHistoryPageTests(unittest.TestCase):
         self.assertIn("page=2&amp;workflow=internet&amp;status=completed&amp;range=30d", html)
         self.assertIn("Clear filters", html)
         self.assertIn("aria-label=\"View Internet Connection session details from", html)
+        self.assertIn(
+            "return_to=%2Ftroubleshooting-history%3Fworkflow%3Dinternet%26status%3Dcompleted%26range%3D30d",
+            html,
+        )
         page_two = self.client.get(
             "/troubleshooting-history?page=2&workflow=internet&status=completed&range=30d"
         ).get_data(as_text=True)
         self.assertEqual(page_two.count("View details</a>"), 1)
         self.assertIn('aria-current="page">Page 2 of 2', page_two)
+
+        detail_url = unescape(re.search(
+            r'href="([^"]+\?return_to=[^"]+)"[^>]+aria-label="View Internet Connection session details',
+            page_two,
+        ).group(1))
+        self.assertIn(
+            "return_to=%2Ftroubleshooting-history%3Fpage%3D2%26workflow%3Dinternet%26status%3Dcompleted%26range%3D30d",
+            detail_url,
+        )
+        detail = self.client.get(detail_url).get_data(as_text=True)
+        self.assertIn(
+            'href="/troubleshooting-history?page=2&amp;workflow=internet&amp;status=completed&amp;range=30d"',
+            detail,
+        )
+        back_url = unescape(re.search(
+            r'<a class="back-link" href="([^"]+)"', detail
+        ).group(1))
+        returned = self.client.get(back_url).get_data(as_text=True)
+        self.assertIn('value="internet" selected', returned)
+        self.assertIn('value="completed" selected', returned)
+        self.assertIn('value="30d" selected', returned)
+        self.assertIn('aria-current="page">Page 2 of 2', returned)
+
+        record = self.service.list()[0]
+        unsafe = self.client.get(
+            f"/troubleshooting-history/{record['id']}?return_to=https%3A%2F%2Fevil.example"
+        ).get_data(as_text=True)
+        self.assertIn('href="/troubleshooting-history"', unsafe)
+        self.assertNotIn("evil.example", unsafe)
 
     def test_page_distinguishes_no_history_from_filtered_no_match(self):
         empty = self.client.get("/troubleshooting-history").get_data(as_text=True)

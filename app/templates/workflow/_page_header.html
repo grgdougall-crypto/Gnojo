@@ -1,6 +1,6 @@
 <header class="workflow-header">
     <div class="workflow-header__identity">
-        <a class="workflow-header__back" href="{{ url_for('workflow_studio') }}" aria-label="Back to Workflow Studio">
+        <a class="workflow-header__back" href="{{ return_to or url_for('workflow_studio') }}" aria-label="{{ return_label }}">
             <i class="bi bi-arrow-left" aria-hidden="true"></i>
         </a>
         <div class="workflow-header__copy">

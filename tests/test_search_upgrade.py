@@ -49,6 +49,14 @@ class SearchUpgradeTests(unittest.TestCase):
         self.assertIn("/wizard?workflow=vpn_help", html)
         self.assertNotIn("View Article", html)
 
+    def test_article_and_command_results_preserve_search_return_context(self):
+        results = self.search("DNS")
+        with patch("app.app.search_service.search_all", return_value=results):
+            html = app.test_client().get("/search?q=DNS&type=all").get_data(as_text=True)
+        self.assertIn("return_to=/search?q%3DDNS%26type%3Dall", html)
+        self.assertIn("/knowledge/published/dns-guide", html)
+        self.assertIn("/commands/ipconfig", html)
+
     def test_initial_state_does_not_search_or_claim_no_results(self):
         with patch("app.app.search_service.search_all") as search_all:
             response = app.test_client().get("/search")

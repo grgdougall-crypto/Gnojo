@@ -196,6 +196,13 @@ class ContentQualityPageTests(unittest.TestCase):
             before,
         )
         self.assertIn("/workflow-editor/windows_slow.json?node=confirm_windows", before)
+        self.assertIn("return_to=/content-quality", before)
+
+        editor = self.client.get(
+            "/workflow-editor/windows_slow.json?node=confirm_windows&return_to=%2Fcontent-quality"
+        ).get_data(as_text=True)
+        self.assertIn('href="/content-quality"', editor)
+        self.assertIn('aria-label="Back to Content Quality"', editor)
 
         response = self.client.post(
             "/content-quality/confusing-step/curator",

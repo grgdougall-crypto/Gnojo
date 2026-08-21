@@ -21,6 +21,24 @@ class LandingPageActionTests(unittest.TestCase):
             with self.subTest(route=route):
                 self.assertEqual(self.client.get(route).status_code, 200)
 
+    def test_knowledge_center_exposes_existing_command_library_with_other_destinations(self):
+        response = self.client.get("/knowledge")
+        html = response.get_data(as_text=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Command Library", html)
+        self.assertIn("Browse Commands", html)
+        self.assertIn('href="/commands"', html)
+        self.assertEqual(self.client.get("/commands").status_code, 200)
+        for destination in (
+            "Search Gnojo Knowledge",
+            "Knowledge Studio",
+            "Review Drafts",
+            "Browse Published Articles",
+            "Learning Library",
+        ):
+            with self.subTest(destination=destination):
+                self.assertIn(destination, html)
+
     def test_service_areas_link_to_focused_searches(self):
         self.assertIn("Windows+macOS+applications+printers+user+access", self.html)
         self.assertIn("Wi-Fi+DNS+DHCP+VPN+routing+network+diagnostics", self.html)

@@ -107,7 +107,7 @@
                     <div><strong>{{ record.workflow_name }}</strong><span class="history-status">{{ record.status|title }}</span>{% if record.feedback %}<span class="history-status history-status--feedback"><i class="bi bi-chat-square-heart me-1" aria-hidden="true"></i>Feedback</span>{% endif %}</div>
                     <p>{{ record.started_at|friendly_datetime }} · {{ record.steps }} step{% if record.steps != 1 %}s{% endif %}{% if record.device %} · {{ record.device.name }}{% endif %}</p>
                 </div>
-                <a class="btn btn-outline-primary" href="{{ url_for('troubleshooting_history_detail', history_id=record.id) }}" aria-label="View {{ record.workflow_name or record.workflow_id }} session details from {{ record.started_at|friendly_datetime }}">View details</a>
+                <a class="btn btn-outline-primary" href="{{ url_for('troubleshooting_history_detail', history_id=record.id) }}?return_to={{ history_return_to }}" aria-label="View {{ record.workflow_name or record.workflow_id }} session details from {{ record.started_at|friendly_datetime }}">View details</a>
             </article>
             {% endfor %}
         </div>

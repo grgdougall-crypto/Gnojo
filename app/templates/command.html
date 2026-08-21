@@ -293,11 +293,11 @@
 </div>
 
         <a
-            href="{{ url_for('list_commands') }}"
+            href="{{ return_to or url_for('list_commands') }}"
             class="btn btn-outline-primary"
         >
             <i class="bi bi-arrow-left me-2"></i>
-            Command Library
+            {{ 'Back to Search Results' if return_to.startswith('/search') else 'Back to Command Library' }}
         </a>
 
     </div>

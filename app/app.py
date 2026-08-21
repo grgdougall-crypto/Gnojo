@@ -5,6 +5,7 @@ import secrets
 from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import quote, urlsplit
 from uuid import uuid4
 
 from flask import (
@@ -228,6 +229,25 @@ command_repository = CommandRepository()
 script_repository = ScriptRepository()
 script_authoring_service = ScriptAuthoringService()
 search_service = SearchService()
+
+
+def safe_internal_return(value, allowed_prefixes):
+    """Accept a local return URL only when it belongs to an expected journey."""
+    candidate = str(value or "").strip()
+    parsed = urlsplit(candidate)
+    if (
+        not candidate.startswith("/")
+        or candidate.startswith("//")
+        or "\\" in candidate
+        or parsed.scheme
+        or parsed.netloc
+    ):
+        return ""
+    path = parsed.path
+    return candidate if any(
+        path == prefix or path.startswith(f"{prefix}/")
+        for prefix in allowed_prefixes
+    ) else ""
 relationship_service = RelationshipService()
 explanation_service = ExplanationService()
 draft_generation_service = DraftGenerationService()
@@ -621,6 +641,7 @@ def troubleshooting_history():
         records=history_page["records"],
         analytics=history_page["analytics"],
         history_page=history_page,
+        history_return_to=quote(request.full_path.rstrip("?"), safe=""),
     )
 
 
@@ -629,7 +650,12 @@ def troubleshooting_history_detail(history_id):
     record = TroubleshootingHistoryService().get(history_id)
     if record is None:
         abort(404)
-    return render_template("troubleshooting_history_detail.html", record=record)
+    return_to = safe_internal_return(
+        request.args.get("return_to", ""), ("/troubleshooting-history",)
+    )
+    return render_template(
+        "troubleshooting_history_detail.html", record=record, return_to=return_to
+    )
 
 
 @app.route("/troubleshooting-history/<history_id>/delete", methods=["POST"])
@@ -2181,6 +2207,10 @@ def workflow_editor(filename):
     curator_return = request.args.get("curator_return", "")
     if curator_return and not curator_return.startswith("/curator/tasks/"):
         curator_return = ""
+    return_to = safe_internal_return(
+        request.args.get("return_to", ""),
+        ("/workflow-studio", "/content-quality"),
+    )
     return render_template(
         "workflow_editor.html",
         workflow=workflow,
@@ -2194,6 +2224,12 @@ def workflow_editor(filename):
         curator_task=request.args.get("curator_task", ""),
         curator_return=curator_return,
         curator_category=request.args.get("category", "all"),
+        return_to=return_to,
+        return_label=(
+            "Back to Content Quality"
+            if return_to.startswith("/content-quality")
+            else "Back to Workflow Studio"
+        ),
     )
 
 
@@ -2950,12 +2986,16 @@ def view_command(command_id):
     related_commands,
 )
 
+    return_to = safe_internal_return(
+        request.args.get("return_to", ""), ("/commands", "/search")
+    )
     return render_template(
         "command.html",
         command=command,
         related_articles=related_articles,
         related_commands=related_commands,
         explanation=explanation,
+        return_to=return_to,
     )
 
 
@@ -3413,9 +3453,10 @@ def view_published(article_id):
     if article.get("type") == "command":
         template_name = "published_command.html"
 
-    return_to = request.args.get("return_to", "")
-    if not return_to.startswith("/curator/fix/"):
-        return_to = ""
+    return_to = safe_internal_return(
+        request.args.get("return_to", ""),
+        ("/knowledge/published", "/search", "/curator/fix"),
+    )
     return render_template(
         template_name,
         article=article,

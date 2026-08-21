@@ -70,7 +70,8 @@
             <a
                 href="{{ url_for(
                     result.endpoint,
-                    article_id=result.id
+                    article_id=result.id,
+                    return_to=request.full_path.rstrip('?')
                 ) }}"
                 class="btn btn-primary"
             >
@@ -83,7 +84,8 @@
             <a
                 href="{{ url_for(
                     result.endpoint,
-                    command_id=result.id
+                    command_id=result.id,
+                    return_to=request.full_path.rstrip('?')
                 ) }}"
                 class="btn btn-primary"
             >

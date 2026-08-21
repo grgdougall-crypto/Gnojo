@@ -4,7 +4,7 @@
 
 {% block content %}
 <section class="container history-page history-detail" aria-labelledby="sessionTitle">
-    <a class="back-link" href="{{ url_for('troubleshooting_history') }}"><i class="bi bi-arrow-left" aria-hidden="true"></i>Back to history</a>
+    <a class="back-link" href="{{ return_to or url_for('troubleshooting_history') }}"><i class="bi bi-arrow-left" aria-hidden="true"></i>Back to troubleshooting history</a>
     <div class="history-heading">
         <div>
             <span class="section-eyebrow">Troubleshooting session</span>

@@ -149,7 +149,8 @@
                                         <div class="d-flex gap-2"><a
                                             href="{{ url_for(
                                                 'view_published',
-                                                article_id=article.id
+                                                article_id=article.id,
+                                                return_to=request.full_path.rstrip('?')
                                             ) }}"
                                             class="btn btn-primary"
                                             aria-label="View article: {{ article.title }}"

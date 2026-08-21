@@ -154,7 +154,8 @@
                                         <a
                                             href="{{ url_for(
                                                 'view_command',
-                                                command_id=command.id
+                                                command_id=command.id,
+                                                return_to=request.full_path.rstrip('?')
                                             ) }}"
                                             class="btn btn-primary command-library-card__action"
                                             aria-label="View command: {{ command.title }}"

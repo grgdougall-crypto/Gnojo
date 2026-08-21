@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "generated_at": "2026-08-09T02:39:18.513690+00:00",
+  "generated_at": "2026-08-21T06:26:22.259371+00:00",
   "articles": [
     {
       "id": "ethernet-connection-check",
@@ -99,14 +99,14 @@
       "version": 1
     },
     {
-      "id": "vpn-connectivity-win-instr-reinstall-vpn-client",
-      "title": "How to Reinstall VPN Client",
+      "id": "vpn-connectivity-win-instr-reset-ip-stack",
+      "title": "How to Refresh DNS and Restart Windows",
       "category": "Networking",
-      "version": 1
+      "version": 2
     },
     {
-      "id": "vpn-connectivity-win-instr-reset-ip-stack",
-      "title": "How to Reset IP Stack and Flush DNS",
+      "id": "vpn-connectivity-win-instr-reinstall-vpn-client",
+      "title": "How to Reinstall VPN Client",
       "category": "Networking",
       "version": 1
     },

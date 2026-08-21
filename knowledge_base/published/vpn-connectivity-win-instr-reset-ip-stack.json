@@ -1,96 +1,100 @@
 {
   "schema_version": "1.0",
   "id": "vpn-connectivity-win-instr-reset-ip-stack",
-  "title": "How to Reset IP Stack and Flush DNS",
+  "canonical_id": "vpn-connectivity-win-instr-reset-ip-stack",
+  "title": "How to Refresh DNS and Restart Windows",
   "category": "Networking",
   "difficulty": "Beginner",
   "estimated_time": "5 to 10 minutes",
-  "overview": "This draft supports the “Reset IP Stack and Flush DNS” step in the VPN Connectivity Troubleshooting (Windows) workflow. It explains the intended check, safe execution, and the evidence to capture before continuing.",
+  "overview": "Use this article to perform the VPN workflow's bounded DNS refresh. It clears only the local Windows DNS resolver cache with ipconfig /flushdns, then restarts Windows and retests the VPN. It does not reset Winsock or TCP/IP and does not release or renew network addressing.",
   "tags": [
     "ipconfig",
     "dns",
     "vpn",
     "windows",
-    "reset",
-    "stack",
     "flush",
     "networking"
   ],
   "checklist": [
-    "Save open work and confirm you are working on the intended Windows device.",
-    "Open Command Prompt as Administrator.",
-    "Run the network reset commands in the order shown below.",
-    "Allow each command to complete before continuing to the next command.",
-    "Be aware that releasing the IP configuration can temporarily interrupt network connectivity.",
-    "Restart the computer after the commands have completed.",
-    "After restart, reconnect to the network and return to the workflow to verify whether the issue is resolved."
+    "Save open work and disconnect the VPN client.",
+    "On a managed device, follow your organization's approved procedure before opening an elevated Command Prompt or changing network state.",
+    "Open Command Prompt and run only ipconfig /flushdns for this workflow step.",
+    "Confirm that Windows reports the DNS resolver cache was flushed.",
+    "Restart Windows, reconnect to the normal network, and retry the VPN connection.",
+    "Record whether the VPN connected and return to the workflow before making another change.",
+    "Do not run netsh resets or ipconfig /release or /renew unless an IT administrator or the VPN provider's official instructions explicitly require them."
   ],
   "common_indicators": [
-    "The workflow reached the Reset IP Stack and Flush DNS step.",
-    "The observed result will determine which diagnostic step should come next."
+    "The VPN still does not connect after the client, computer, security software, and adapter checks.",
+    "A stale local DNS resolver entry may be affecting access to the VPN service.",
+    "The workflow has reached Refresh DNS and Restart Windows."
   ],
   "commands": [
     {
-      "command": "netsh winsock reset",
-      "description": "Resets the Winsock catalog to its default configuration.\\nnetsh int ip reset | Resets TCP/IP configuration components.\\nipconfig /release | Releases the current DHCP-assigned IP configuration and temporarily interrupts network connectivity.\\nipconfig /renew | Requests a new DHCP-assigned IP configuration.\\nipconfig /flushdns | Clears the Windows DNS resolver cache."
+      "command": "ipconfig /flushdns",
+      "description": "Clears the local Windows DNS resolver cache without resetting Winsock, TCP/IP, DHCP leases, or managed network configuration."
     }
   ],
   "related_topics": [
     "VPN Connectivity Troubleshooting (Windows)",
-    "Reset IP Stack and Flush DNS",
-    "Diagnostic reasoning"
+    "DNS resolver cache",
+    "Managed-device network safety"
   ],
   "quiz": [
     {
-      "question": "What should you do after completing this troubleshooting step?",
+      "question": "Which command is authorized by this workflow step?",
       "answers": [
-        "Record the result and return to the workflow",
-        "Change several unrelated settings",
-        "Ignore what happened"
+        "ipconfig /flushdns",
+        "netsh winsock reset",
+        "ipconfig /release"
       ],
-      "correct_answer": "Record the result and return to the workflow"
+      "correct_answer": "ipconfig /flushdns"
     }
   ],
   "sources": [
     {
-      "title": "Fix Wi-Fi connection issues in Windows | Microsoft Support | https://support.microsoft.com/en-US/Windows/Experience/Connectivity-Networking/fix-wi-fi-connection-issues-in-windows\\nipconfig | Microsoft Learn | https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/ipconfig?view=windows-server-2019\\nReset TCP/IP by Using the NetShell Utility - Windows Server | Microsoft Learn",
-      "url": "https://learn.microsoft.com/en-us/troubleshoot/windows-server/networking/reset-tcp-ip-net-shell"
+      "title": "ipconfig | Microsoft Learn",
+      "url": "https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/ipconfig"
     }
   ],
   "generation": {
-    "provider": "Gnojo Coverage Assistant",
-    "model": "deterministic-node-draft-v1",
-    "generated_at": "2026-08-08T02:29:11.843392+00:00"
+    "provider": "Gnojo reviewer correction",
+    "model": "deterministic-safety-revision-v2",
+    "generated_at": "2026-08-21T00:00:00+00:00"
   },
   "review": {
     "status": "approved",
-    "reviewed_by": "Gnojo reviewer",
-    "reviewed_at": "2026-08-08T02:33:57.965074+00:00",
     "notes": [
-      "Generated from a workflow node.",
-      "Verify technical accuracy and add authoritative sources before publication."
+      "Safety correction aligns the article with the active workflow's bounded ipconfig /flushdns action.",
+      "Broad network-reset and DHCP lease commands were removed because they can interrupt connectivity or alter managed configuration."
     ],
     "checks": {
       "technical_accuracy": true,
       "user_safety": true,
       "sources_verified": true,
       "commands_reviewed": true
-    }
+    },
+    "reviewed_by": "Gnojo reviewer",
+    "reviewed_at": "2026-08-21T06:26:21.140039+00:00"
   },
   "workflow_origin": {
     "filename": "vpn_connectivity_win.json",
     "workflow_id": "vpn_connectivity_win",
     "workflow_name": "VPN Connectivity Troubleshooting (Windows)",
     "node_id": "instr_reset_ip_stack",
-    "node_title": "Reset IP Stack and Flush DNS"
+    "node_title": "Refresh DNS and Restart Windows"
   },
-  "canonical_id": "vpn-connectivity-win-instr-reset-ip-stack",
-  "version": 1,
-  "published_at": "2026-08-08T02:33:57.965074+00:00",
+  "version": 2,
+  "published_at": "2026-08-21T06:26:21.140039+00:00",
   "version_history": [
     {
       "version": 1,
       "published_at": "2026-08-08T02:33:57.965074+00:00",
+      "reviewed_by": "Gnojo reviewer"
+    },
+    {
+      "version": 2,
+      "published_at": "2026-08-21T06:26:21.140039+00:00",
       "reviewed_by": "Gnojo reviewer"
     }
   ]

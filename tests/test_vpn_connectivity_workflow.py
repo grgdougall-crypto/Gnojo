@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 from app.app import app, available_workflows, load_runtime_workflow
 from app.engine.decision_engine import DecisionEngine
+from app.repositories.knowledge_repository import KnowledgeRepository
 from app.services.troubleshooting_history_service import TroubleshootingHistoryService
 from app.services.workflow_progress_service import WorkflowProgressService
 from app.services.workflow_quality_validator import WorkflowQualityValidator
@@ -44,12 +45,12 @@ class VPNConnectivityWorkflowTests(unittest.TestCase):
         report = WorkflowQualityValidator().validate(workflow, set(catalog))
         self.assertEqual(report["overall_status"], "CLEAN")
         self.assertEqual(report["findings"], [])
-        self.assertEqual(report["metrics"]["reachable_nodes"], 39)
+        self.assertEqual(report["metrics"]["reachable_nodes"], 40)
         self.assertEqual(report["metrics"]["unreachable_nodes"], 0)
         self.assertEqual(report["metrics"]["terminal_nodes"], 5)
-        self.assertEqual(report["metrics"]["terminating_paths"], 739)
+        self.assertEqual(report["metrics"]["terminating_paths"], 1299)
         self.assertEqual(report["metrics"]["shortest_path"], 5)
-        self.assertEqual(report["metrics"]["longest_path"], 34)
+        self.assertEqual(report["metrics"]["longest_path"], 36)
         self.assertEqual(report["metrics"]["cycles_detected"], 0)
         self.assertTrue(WorkflowProgressService.enabled(workflow))
         expected = {
@@ -123,6 +124,61 @@ class VPNConnectivityWorkflowTests(unittest.TestCase):
         self.assertIn("approved software portal", reinstall)
         self.assertIn("official website", reinstall)
         self.assertIn("Do not download VPN installers from third-party", reinstall)
+
+    def test_approved_security_configuration_requires_explicit_retest(self):
+        pages = self._run([
+            "internet_works_no_vpn", "yes", "yes", "no", "", "no", "", "no",
+            "yes", "", "yes", "",
+        ])
+        self.assertIn("Configure Security Software for the VPN", pages[-2])
+        self.assertIn(
+            "After applying the approved security-software configuration", pages[-1]
+        )
+        self.assertIn("Step 13 of 21 on this path", pages[-1])
+        self.assertNotIn("VPN Connectivity Restored", pages[-1])
+
+        resolved = self._post("yes")
+        self.assertIn("VPN Connectivity Restored", resolved)
+        self.assertIn("Step 14 of 14 on this path", resolved)
+
+    def test_failed_or_uncertain_security_configuration_continues_diagnostics(self):
+        prefix = [
+            "internet_works_no_vpn", "yes", "yes", "no", "", "no", "", "no",
+            "yes", "", "yes", "",
+        ]
+        for answer in ("no", "unsure"):
+            with self.subTest(answer=answer):
+                pages = self._run(prefix)
+                result = self._post(answer)
+                self.assertIn("Check Network Adapter Status", result)
+                self.assertNotIn("VPN Connectivity Restored", result)
+                current, total = self._progress(result)
+                self.assertLess(current, total)
+
+    def test_previous_restores_security_configuration_and_progress(self):
+        self._run([
+            "internet_works_no_vpn", "yes", "yes", "no", "", "no", "", "no",
+            "yes", "", "yes", "",
+        ])
+        previous = self._previous()
+        self.assertIn("Configure Security Software for the VPN", previous)
+        self.assertIn("Step 12 of 21 on this path", previous)
+        previous_again = self._previous()
+        self.assertIn("After checking your security software settings", previous_again)
+        self.assertIn("Step 11 of 21 on this path", previous_again)
+
+    def test_dns_refresh_knowledge_matches_safe_workflow_boundary(self):
+        article = KnowledgeRepository().get_published_article(
+            "vpn-connectivity-win-instr-reset-ip-stack"
+        )
+        self.assertEqual(article["version"], 2)
+        self.assertEqual(article["review"]["status"], "approved")
+        self.assertEqual(article["workflow_origin"]["node_id"], "instr_reset_ip_stack")
+        self.assertEqual(
+            [item["command"] for item in article["commands"]],
+            ["ipconfig /flushdns"],
+        )
+        self.assertIn("run only ipconfig /flushdns", " ".join(article["checklist"]).lower())
 
     def test_deep_handoff_and_previous_restore_exact_workflow_progress(self):
         pages = self._run(self.LONG_PATH)

@@ -117,6 +117,23 @@ class CuratorRuntimeRuleTests(unittest.TestCase):
         protected_three = self._record("Create a restore point before running System Restore.")
         self.assertFalse(any(item.rule == "CUR-SAFE-L3" for item in checks.run_record(protected_three)))
 
+    def test_active_rule_accepts_open_work_only_before_the_disruptive_action(self):
+        self._activate()
+        checks = CuratorChecks(self.root)
+        compliant = self._record(
+            "Save any open work before restarting the application. Restart the application "
+            "and repeat the action that previously caused the failure."
+        )
+        self.assertEqual(self._safety(checks.run_record(compliant)), [])
+
+        for instruction in (
+            "Restart the application, then save any open work.",
+            "Save the application settings before restarting the application.",
+            "Restart the application and repeat the action that caused the failure.",
+        ):
+            with self.subTest(instruction=instruction):
+                self.assertEqual(len(self._safety(checks.run_record(self._record(instruction)))), 1)
+
     def test_activation_records_immutable_manifest_provenance_and_tampering_fails_closed(self):
         active = self._activate()
         self.assertEqual(active["activated_runtime_rule"], MANIFEST)
@@ -178,6 +195,29 @@ class CuratorRuntimeRuleTests(unittest.TestCase):
         targeted = CuratorTargetedVerificationService(self.root).verify("GKT-RUNTIME")
         self.assertEqual(targeted["status"], "appears_corrected")
         self.assertEqual(self.store.load()["tasks"]["GKT-RUNTIME"]["status"], "open")
+
+    def test_targeted_verification_marks_open_work_guidance_corrected(self):
+        self._activate()
+        drafts = self.root / "app" / "workflow_drafts"
+        drafts.mkdir(parents=True)
+        record = self._record(
+            "Save any open work before restarting the application. Restart the application "
+            "and repeat the action that previously caused the failure."
+        )
+        (drafts / "flow.json").write_text(json.dumps(record.raw), encoding="utf-8")
+        state = self.store.load()
+        state["tasks"]["GKT-OPEN-WORK"] = {
+            "task_id": "GKT-OPEN-WORK", "content_type": "workflow_node",
+            "content_identifier": "flow:restart", "curator_rule": "CUR-SAFE-L1",
+            "finding_type": "missing_safety_guidance", "classification": "risk",
+            "status": "open", "evidence": ["Restart the application."], "history": [],
+        }
+        self.store.save(state)
+
+        targeted = CuratorTargetedVerificationService(self.root).verify("GKT-OPEN-WORK")
+
+        self.assertEqual(targeted["status"], "appears_corrected")
+        self.assertEqual(self.store.load()["tasks"]["GKT-OPEN-WORK"]["status"], "open")
 
 
 if __name__ == "__main__":

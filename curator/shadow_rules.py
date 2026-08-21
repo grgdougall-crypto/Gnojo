@@ -17,7 +17,7 @@ SAFETY_PATTERNS = {
         r"\bclose\b.{0,40}\breopen\b",
         r"\bbrief interruption\b",
         r"\bwait\b",
-        r"\bsave (?:any |your |active )?(?:work|documents?|files?)\b.{0,80}\b(?:restart\w*|reopen\w*|relaunch\w*|clos\w*)\b",
+        r"\bsave (?:any |your |active )?(?:open )?(?:work|documents?|files?)\b.{0,80}\b(?:restart\w*|reopen\w*|relaunch\w*|clos\w*)\b",
         r"\b(?:lose|lost) unsaved work\b",
     ),
     2: (r"\bsave\b.{0,30}\bactive work\b", r"\bdisconnect\b", r"\bapproval\b"),

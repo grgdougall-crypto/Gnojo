@@ -25,3 +25,4 @@ class Node:
 
     # New: allows one workflow to transition into another
     next_workflow: Optional[str] = None
+    button_label: Optional[str] = None

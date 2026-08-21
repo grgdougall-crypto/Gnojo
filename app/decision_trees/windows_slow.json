@@ -5,6 +5,7 @@
   "category": "Desktop Support",
   "platform": "Windows",
   "estimated_steps": 10,
+  "progress_mode": "branch_aware",
   "start_node": "confirm_windows",
   "nodes": {
     "confirm_windows": {
@@ -144,25 +145,13 @@
       }
     },
     "safe_storage_cleanup": {
-      "type": "instruction",
-      "title": "Free Space with Windows Recommendations",
-      "instruction": "In Settings > System > Storage, open Cleanup recommendations. Review each category and remove only files you recognize and no longer need. Do not manually delete Windows or Program Files folders.",
-      "help_text": "Windows cleanup recommendations are safer than deleting system folders manually.",
+      "type": "transition",
+      "title": "Continue to Low Disk Space",
+      "message": "Low or uncertain free space may be contributing to poor Windows performance. Continue with the dedicated Low Disk Space workflow to confirm available space and use its safety-bounded cleanup guidance.",
+      "help_text": "Low available space can contribute to slow Windows performance, update failures, and constrained temporary storage. The dedicated workflow confirms the measurement before cleanup and preserves warnings against deleting unfamiliar or system files.",
       "knowledge_article": "windows-storage-performance",
-      "next": "cleanup_improved"
-    },
-    "cleanup_improved": {
-      "type": "question",
-      "question": "After cleanup and a restart, has performance improved?",
-      "answers": {
-        "yes": {"label": "Yes", "next": "resolved_storage"},
-        "no": {"label": "No", "next": "review_startup_apps"}
-      }
-    },
-    "resolved_storage": {
-      "type": "resolution",
-      "title": "Low Storage Was Affecting Performance",
-      "message": "Freeing storage restored working space for Windows, updates, and temporary files. Keep important personal files backed up and review storage periodically."
+      "button_label": "Continue to Low Disk Space",
+      "next_workflow": "low_storage"
     },
     "review_startup_apps": {
       "type": "instruction",

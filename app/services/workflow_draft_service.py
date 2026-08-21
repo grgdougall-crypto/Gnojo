@@ -156,6 +156,7 @@ class WorkflowDraftService:
             "knowledge_article",
             "next",
             "next_workflow",
+            "button_label",
             "answers",
             "conditions",
             "skip_to",

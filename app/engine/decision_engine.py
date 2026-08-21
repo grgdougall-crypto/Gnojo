@@ -57,6 +57,7 @@ class DecisionEngine:
             next=node_data.get("next"),
             knowledge_article=node_data.get("knowledge_article"),
             next_workflow=node_data.get("next_workflow"),
+            button_label=node_data.get("button_label"),
         )
 
     def get_start_node(self):

@@ -83,7 +83,7 @@ class CuratorUxPassThreeTests(unittest.TestCase):
         self.assertIn("Healthy checks", source)
         self.assertIn("integrity-healthy", source)
         self.assertIn("0 findings", source)
-        for key in ["broken_relationships", "duplicate_groups", "inventory_mismatches", "missing_review_metadata", "orphaned_articles"]:
+        for key in ["broken_relationships", "command_relationship_defects", "duplicate_groups", "inventory_mismatches", "missing_review_metadata", "orphaned_articles"]:
             self.assertIn(key, source)
         for action in ["knowledge_integrity_reindex", "knowledge_integrity_normalize_identities"]:
             self.assertIn(action, source)

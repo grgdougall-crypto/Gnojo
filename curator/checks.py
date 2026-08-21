@@ -8,6 +8,9 @@ from typing import Any, Iterable
 from urllib.parse import urlparse
 
 from app.knowledge.article_validator import ArticleValidator
+from app.repositories.knowledge_repository import KnowledgeRepository
+from app.services.article_identity_resolver import ArticleIdentityResolver
+from app.services.knowledge_identity_service import KnowledgeIdentityError, KnowledgeIdentityService
 from app.services.workflow_validation_service import WorkflowValidationService
 from app.services.curator_workflow_lifecycle_service import CuratorWorkflowLifecycleService
 
@@ -32,6 +35,8 @@ DEFECT_TYPES = {
     "article_validation", "insufficient_source_evidence", "malformed_source",
     "malformed_relationship", "entry_behavior_mismatch", "canonical_identity_mismatch",
     "multiple_published_versions", "missing_review_provenance", "stale_relationship",
+    "command_article_relationship_invalid", "command_command_relationship_invalid",
+    "article_command_reciprocity_conflict",
 }
 RISK_TYPES = {
     "overly_general_field", "missing_safety_guidance", "command_quality_gap",
@@ -121,6 +126,10 @@ class CuratorChecks:
         class_order = {"defect": 0, "risk": 1, "opportunity": 2, "recommendation": 3}
         findings = sorted({item.identifier: item for item in findings}.values(), key=lambda item: (class_order[item.classification], SEVERITY_ORDER[item.severity], item.domain, item.content_type, item.content_identifier, item.identifier))
         return findings, self._coverage(inventory)
+
+    def relationship_findings(self, inventory: list[InventoryRecord]) -> list[Finding]:
+        """Expose the canonical collection-wide relationship checks to read-only consumers."""
+        return self._relationships(inventory)
 
     def _metadata(self, record: InventoryRecord) -> list[Finding]:
         findings = []
@@ -337,6 +346,10 @@ class CuratorChecks:
             item.identifier for item in inventory
             if item.content_type == "article" and item.state == "published"
         }
+        published_article_records = {
+            item.identifier: item for item in inventory
+            if item.content_type == "article" and item.state == "published"
+        }
         published_by_title = {
             self._normalized_identity(item.title): item for item in inventory
             if item.content_type == "article" and item.state == "published"
@@ -366,6 +379,85 @@ class CuratorChecks:
                 command_links[str(command_id)] += 1
                 if command_id not in by_type["command"]:
                     findings.append(self._missing_link(article, "related_commands", "command", str(command_id)))
+        published_repository = KnowledgeRepository(self.root / "knowledge_base")
+        article_resolver = ArticleIdentityResolver(published_repository)
+        article_states = {
+            item.identifier: {candidate.state for candidate in inventory
+                              if candidate.content_type == "article"
+                              and candidate.identifier == item.identifier}
+            for item in inventory if item.content_type == "article"
+        }
+        reciprocity_pairs: set[tuple[str, str]] = set()
+        reciprocity_conflicts: dict[str, tuple[InventoryRecord, set[str]]] = {}
+        for command in by_type["command"].values():
+            article_values, article_malformed = self._relationship_values(
+                command, "related_articles", "article", "CUR-REL-CMD-ARTICLE-001")
+            findings.extend(article_malformed)
+            command_values, command_malformed = self._relationship_values(
+                command, "related_commands", "command", "CUR-REL-CMD-COMMAND-001")
+            findings.extend(command_malformed)
+            for article_id in article_values:
+                try:
+                    canonical_probe = KnowledgeIdentityService.canonical_id(article_id)
+                except KnowledgeIdentityError:
+                    findings.append(self._invalid_command_relationship(
+                        command, "related_articles", "article", article_id,
+                        "The value is not a valid canonical article identifier.",
+                        "CUR-REL-CMD-ARTICLE-001"))
+                    continue
+                match = article_resolver.resolve_published(identifier=canonical_probe)
+                if not match:
+                    states = sorted(article_states.get(canonical_probe, set()))
+                    reason = (f"The article exists only in inactive lifecycle state(s): {', '.join(states)}."
+                              if states else "No authoritative published article resolves this identifier.")
+                    findings.append(self._invalid_command_relationship(
+                        command, "related_articles", "article", article_id, reason,
+                        "CUR-REL-CMD-ARTICLE-001"))
+                    continue
+                canonical_article = KnowledgeIdentityService.canonical_id(match.article)
+                article = published_article_records.get(canonical_article)
+                if article and "related_commands" in article.raw:
+                    declared = article.raw.get("related_commands")
+                    if isinstance(declared, list) and command.identifier not in declared:
+                        pair = (canonical_article, command.identifier)
+                        if pair not in reciprocity_pairs:
+                            reciprocity_pairs.add(pair)
+                            reciprocity_conflicts.setdefault(command.identifier, (command, set()))[1].add(canonical_article)
+            for related_id in command_values:
+                if not self._valid_relationship_id(related_id):
+                    findings.append(self._invalid_command_relationship(
+                        command, "related_commands", "command", related_id,
+                        "The value is not a valid command identifier.",
+                        "CUR-REL-CMD-COMMAND-001"))
+                elif related_id not in by_type["command"]:
+                    findings.append(self._invalid_command_relationship(
+                        command, "related_commands", "command", related_id,
+                        "No authoritative Command Library record has this identifier.",
+                        "CUR-REL-CMD-COMMAND-001"))
+        for article in published_article_records.values():
+            declared = article.raw.get("related_commands")
+            if not isinstance(declared, list):
+                continue
+            for command_id in declared:
+                command = by_type["command"].get(str(command_id))
+                if not command or "related_articles" not in command.raw:
+                    continue
+                reciprocal = command.raw.get("related_articles")
+                reciprocal_ids = set()
+                if isinstance(reciprocal, list):
+                    for value in reciprocal:
+                        if not isinstance(value, str):
+                            continue
+                        match = article_resolver.resolve_published(identifier=value.strip())
+                        if match:
+                            reciprocal_ids.add(KnowledgeIdentityService.canonical_id(match.article))
+                if isinstance(reciprocal, list) and article.identifier not in reciprocal_ids:
+                    pair = (article.identifier, command.identifier)
+                    if pair not in reciprocity_pairs:
+                        reciprocity_pairs.add(pair)
+                        reciprocity_conflicts.setdefault(command.identifier, (command, set()))[1].add(article.identifier)
+        for command, article_ids in reciprocity_conflicts.values():
+            findings.append(self._reciprocity_conflict(command, sorted(article_ids)))
         for script in by_type["script"].values():
             for command_id in script.raw.get("related_commands", []):
                 command_links[str(command_id)] += 1
@@ -416,6 +508,57 @@ class CuratorChecks:
                         domain="content", future_fix=True,
                     ))
         return findings
+
+    def _relationship_values(self, record: InventoryRecord, field: str, target_type: str,
+                             rule: str) -> tuple[list[str], list[Finding]]:
+        if field not in record.raw:
+            return [], []
+        raw = record.raw.get(field)
+        if not isinstance(raw, list):
+            return [], [self._invalid_command_relationship(
+                record, field, target_type, repr(raw),
+                f"{field} must be a list of canonical identifiers.", rule)]
+        values: list[str] = []
+        findings: list[Finding] = []
+        for value in raw:
+            if not isinstance(value, str) or not value.strip():
+                findings.append(self._invalid_command_relationship(
+                    record, field, target_type, repr(value),
+                    "Relationship entries must be non-empty identifier strings.", rule))
+            else:
+                values.append(value.strip())
+        return values, findings
+
+    @staticmethod
+    def _valid_relationship_id(value: str) -> bool:
+        return bool(re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", value))
+
+    def _invalid_command_relationship(self, record: InventoryRecord, field: str,
+                                      target_type: str, target_id: str,
+                                      reason: str, rule: str) -> Finding:
+        return FindingFactory.create(
+            finding_type=("command_article_relationship_invalid" if target_type == "article"
+                          else "command_command_relationship_invalid"),
+            severity="high", confidence="high", record=record,
+            title=f"Command {target_type} relationship is invalid",
+            explanation=f"The explicit {field} relationship cannot be resolved. {reason}",
+            evidence=[f"{field}: {target_id}", record.source_path], rule=rule,
+            action=f"Review the command and correct or remove the {target_type} identifier; no replacement is inferred.",
+            domain="content", future_fix=False,
+        )
+
+    def _reciprocity_conflict(self, command: InventoryRecord, article_ids: list[str]) -> Finding:
+        return FindingFactory.create(
+            finding_type="article_command_reciprocity_conflict",
+            severity="medium", confidence="high", record=command,
+            title="Explicit article and command relationships conflict",
+            explanation="Both records explicitly declare relationship fields, but their declarations disagree.",
+            evidence=[*[f"Article: {article_id}" for article_id in article_ids],
+                      f"Command: {command.identifier}", command.source_path],
+            rule="CUR-REL-ARTICLE-COMMAND-RECIPROCITY-001",
+            action="Review both explicit declarations and align them through the normal content review process.",
+            domain="content", future_fix=False,
+        )
 
     def _application_invariants(self, inventory: list[InventoryRecord]) -> list[Finding]:
         if not inventory:

@@ -9,6 +9,7 @@ from typing import Any
 from app.services.workflow_draft_service import WorkflowDraftService
 from app.services.curator_workflow_lifecycle_service import CuratorWorkflowLifecycleService
 from curator.checks import CuratorChecks
+from curator.inventory import CuratorInventory
 from curator.memory import CuratorMemoryError, CuratorMemoryStore
 from curator.models import InventoryRecord
 from curator.resolution import ResolutionPackageError, ResolutionPackageRepository
@@ -44,6 +45,31 @@ class CuratorTargetedVerificationService:
             "message": "Curator cannot safely verify this task from one affected workflow node.",
             "human_approval_required": True,
         }
+        relationship_rules = {
+            "CUR-REL-CMD-ARTICLE-001",
+            "CUR-REL-CMD-COMMAND-001",
+            "CUR-REL-ARTICLE-COMMAND-RECIPROCITY-001",
+        }
+        if task.get("curator_rule") in relationship_rules and task.get("content_type") in {"article", "command"}:
+            inventory = CuratorInventory(self.root).collect()
+            affected = next((record for record in inventory
+                             if record.content_type == task.get("content_type")
+                             and record.identifier == task.get("content_identifier")), None)
+            if not affected:
+                return self._record(task_id, {**base, "status": "not_found",
+                    "message": "The affected authoritative content record can no longer be located."})
+            findings = self.checks.relationship_findings(inventory)
+            exact = [finding for finding in findings
+                     if finding.rule == task.get("curator_rule")
+                     and finding.content_identifier == task.get("content_identifier")
+                     and finding.finding_type == task.get("finding_type")]
+            status = "still_detected" if exact else "appears_corrected"
+            message = ("The current authoritative content still matches the deterministic relationship condition."
+                       if exact else
+                       "Curator no longer detects the original deterministic relationship condition. Human resolution remains explicit.")
+            return self._record(task_id, {**base, "status": status, "message": message,
+                "affected_fingerprint": self.fingerprint(affected.raw),
+                "human_approval_required": True})
         if task.get("content_type") not in {"workflow", "workflow_node"}:
             return self._record(task_id, base)
         if task.get("curator_rule") == "CUR-REL-ARTICLE-CANDIDATE":

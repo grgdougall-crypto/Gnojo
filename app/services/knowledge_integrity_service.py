@@ -9,6 +9,7 @@ from app.repositories.knowledge_repository import KnowledgeRepository
 from app.services.knowledge_identity_service import KnowledgeIdentityError, KnowledgeIdentityService
 from app.services.article_identity_resolver import ArticleIdentityResolver
 from curator.inventory import CuratorInventory
+from curator.checks import CuratorChecks
 
 
 class KnowledgeIntegrityError(RuntimeError):
@@ -93,6 +94,18 @@ class KnowledgeIntegrityService:
             except (OSError, json.JSONDecodeError, AttributeError):
                 indexed_ids = set()
         inventory_mismatch = sorted(published_ids.symmetric_difference(indexed_ids))
+        command_relationship_types = {
+            "command_article_relationship_invalid",
+            "command_command_relationship_invalid",
+            "article_command_reciprocity_conflict",
+        }
+        command_relationship_findings = [
+            finding.to_dict() for finding in CuratorChecks(self.root).relationship_findings(inventory)
+            if finding.finding_type in command_relationship_types
+        ]
+        command_relationship_findings = list({
+            item["identifier"]: item for item in command_relationship_findings
+        }.values())
         counts = {
             "published_articles": len(published), "draft_articles": sum(item.state == "draft" for item in articles),
             "broken_relationships": len(broken), "duplicate_groups": len(duplicate_groups),
@@ -103,16 +116,19 @@ class KnowledgeIntegrityService:
             "archived_articles": self.repository.count_archived(),
             "knowledge_debt_reduction_potential": sum(max(0, len(group["records"]) - 1) for group in duplicate_groups),
             "estimated_cleanup_minutes": sum(max(0, len(group["records"]) - 1) * 8 for group in duplicate_groups),
+            "command_relationship_defects": len(command_relationship_findings),
         }
         return {"counts": counts, "broken_relationships": broken, "duplicate_groups": duplicate_groups,
                 "missing_review_metadata": missing_review, "orphaned_articles": orphans,
                 "inventory_mismatches": inventory_mismatch,
+                "command_relationship_defects": command_relationship_findings,
                 "references": references, "explanations": {
                     "broken_relationships": "Workflow links whose canonical article is not currently published.",
                     "duplicate_groups": "Multiple live records that appear to represent one logical article.",
                     "missing_review_metadata": "Published records without a reviewer identity or approval time.",
                     "orphaned_articles": "Published articles with no inbound workflow link; they may still be valid search content.",
                 "inventory_mismatches": "Canonical published IDs that disagree with the generated knowledge inventory.",
+                "command_relationship_defects": "Deterministic missing, malformed, inactive, or contradictory relationships declared by Command Library records.",
                 }}
 
     def merge_preview(self, canonical_id: str, duplicate_ids: list[str]) -> dict[str, Any]:

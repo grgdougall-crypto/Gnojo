@@ -81,7 +81,9 @@
     "ipconfig",
     "get-computerinfo"
   ],
-  "related_articles": [],
+  "related_articles": [
+    "windows-task-manager-performance"
+  ],
   "tags": [
     "systeminfo",
     "networking",

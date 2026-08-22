@@ -16,7 +16,8 @@
     "ethernet-connection-check"
   ],
   "related_commands": [
-    "ipconfig"
+    "ipconfig",
+    "get-netipconfiguration"
   ],
   "difficulty": "Beginner",
   "estimated_time": "5 to 10 minutes",

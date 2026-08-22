@@ -78,6 +78,10 @@ class CuratorTargetedVerificationService:
                 "id": article_id,
                 "found": article is not None,
                 "title": article.title if article else "",
+                "overview": str(article.raw.get("overview") or article.raw.get("summary") or "") if article else "",
+                "category": article.category if article else "",
+                "tags": self._declared_values(article.raw, "tags") if article else [],
+                "structured_commands": self._structured_command_text(article.raw) if article else [],
                 "related_commands": self._declared_values(article.raw, "related_commands") if article else [],
                 "related_commands_declared": bool(article and "related_commands" in article.raw),
             })
@@ -94,6 +98,15 @@ class CuratorTargetedVerificationService:
             "related_articles_declared": "related_articles" in raw,
             "related_commands": related_commands,
             "related_commands_declared": "related_commands" in raw,
+            "command_context": {
+                "id": identifier,
+                "title": str(raw.get("title") or raw.get("name") or identifier),
+                "name": str(raw.get("name") or ""),
+                "summary": str(raw.get("summary") or ""),
+                "category": command.category,
+                "platforms": self._metadata_values(raw.get("platforms") or raw.get("platform")),
+                "tags": self._declared_values(raw, "tags"),
+            },
             "articles": article_records, "commands": command_records,
         }
 
@@ -103,6 +116,20 @@ class CuratorTargetedVerificationService:
         if not isinstance(value, list):
             return []
         return [str(item) for item in value if isinstance(item, str) and item.strip()]
+
+    @staticmethod
+    def _metadata_values(value: Any) -> list[str]:
+        if isinstance(value, list):
+            return [str(item) for item in value if str(item).strip()]
+        return [str(value)] if str(value or "").strip() else []
+
+    @staticmethod
+    def _structured_command_text(article: dict[str, Any]) -> list[str]:
+        commands = article.get("commands")
+        if not isinstance(commands, list):
+            return []
+        return [str(item.get("command")).strip() for item in commands
+                if isinstance(item, dict) and str(item.get("command") or "").strip()]
 
     def verify(self, task_id: str) -> dict[str, Any]:
         task = self.store.load().get("tasks", {}).get(task_id)

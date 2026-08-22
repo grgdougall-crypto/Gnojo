@@ -29,14 +29,17 @@ class CuratorRelationshipEvidenceTests(unittest.TestCase):
         return {
             "id": identifier, "canonical_id": identifier, "title": identifier.replace("-", " ").title(),
             "category": "Networking", "overview": "Current authoritative relationship evidence.",
+            "tags": ["network", "review"],
+            "commands": [{"command": "ipconfig /all", "description": "Stored evidence."}],
             "related_commands": related_commands,
             "review": {"status": "approved", "reviewed_by": "Reviewer", "reviewed_at": "2026-08-21"},
         }
 
     @staticmethod
     def command(identifier, *, related_articles=None, related_commands=None):
-        value = {"id": identifier, "title": identifier.title(), "category": "Networking",
+        value = {"id": identifier, "name": "System Information", "title": identifier.title(), "category": "Networking",
                  "summary": "Current authoritative command relationship evidence.",
+                 "platforms": ["Windows 11", "Windows Server"], "tags": ["system", "diagnostics"],
                  "review_status": "reviewed"}
         if related_articles is not None:
             value["related_articles"] = related_articles
@@ -69,6 +72,12 @@ class CuratorRelationshipEvidenceTests(unittest.TestCase):
         self.assertEqual([item["id"] for item in result["articles"]], ["performance", "storage"])
         self.assertEqual(result["articles"][0]["related_commands"], [])
         self.assertEqual(result["articles"][1]["related_commands"], ["systeminfo"])
+        self.assertEqual(result["command_context"]["summary"], "Current authoritative command relationship evidence.")
+        self.assertEqual(result["command_context"]["platforms"], ["Windows 11", "Windows Server"])
+        self.assertEqual(result["command_context"]["tags"], ["system", "diagnostics"])
+        self.assertEqual(result["articles"][1]["overview"], "Current authoritative relationship evidence.")
+        self.assertEqual(result["articles"][1]["tags"], ["network", "review"])
+        self.assertEqual(result["articles"][1]["structured_commands"], ["ipconfig /all"])
         self.assertEqual(command_path.read_bytes(), before)
 
     def test_invalid_article_projection_shows_declared_value_and_missing_target(self):
@@ -77,10 +86,9 @@ class CuratorRelationshipEvidenceTests(unittest.TestCase):
         result = self.service.relationship_evidence(
             self.task("command_article_relationship_invalid"))
         self.assertEqual(result["related_articles"], ["missing-article"])
-        self.assertEqual(result["articles"], [{
-            "id": "missing-article", "found": False, "title": "",
-            "related_commands": [], "related_commands_declared": False,
-        }])
+        self.assertEqual(result["articles"][0]["id"], "missing-article")
+        self.assertFalse(result["articles"][0]["found"])
+        self.assertEqual(result["articles"][0]["structured_commands"], [])
 
     def test_invalid_command_projection_shows_declared_value_and_missing_target(self):
         self.write("knowledge_base/commands/systeminfo.json",
@@ -94,10 +102,15 @@ class CuratorRelationshipEvidenceTests(unittest.TestCase):
         projection = {
             "heading": "Current relationship declarations", "affected_type": "command",
             "affected_id": "systeminfo", "target_found": True,
+            "command_context": {"id": "systeminfo", "title": "System Information", "name": "systeminfo",
+                                "summary": "Shows current system metadata.", "category": "Diagnostics",
+                                "platforms": ["Windows 11"], "tags": []},
             "related_articles": [], "related_commands": [], "articles": [
                 {"id": "storage", "found": True, "title": "Storage",
-                 "related_commands": [], "related_commands_declared": True},
+                 "overview": "Storage purpose.", "category": "Storage", "tags": [],
+                 "structured_commands": [], "related_commands": [], "related_commands_declared": True},
                 {"id": "missing", "found": False, "title": "",
+                 "overview": "", "category": "", "tags": [], "structured_commands": [],
                  "related_commands": [], "related_commands_declared": False},
             ], "commands": [],
         }
@@ -106,7 +119,29 @@ class CuratorRelationshipEvidenceTests(unittest.TestCase):
         self.assertIn("Current article relationship data", html)
         self.assertGreaterEqual(html.count("None declared"), 3)
         self.assertIn("Target article record not found", html)
+        self.assertIn("Relationship Review Context", html)
+        self.assertIn("Shows current system metadata", html)
+        self.assertIn("Structured command references", html)
+        self.assertIn('href="/commands/systeminfo"', html)
+        self.assertIn('href="/knowledge/published/storage"', html)
         self.assertNotIn("affected workflow content is not currently available", html)
+
+    def test_missing_metadata_is_presented_neutrally(self):
+        self.write("knowledge_base/commands/systeminfo.json", {
+            "id": "systeminfo", "title": "Systeminfo", "summary": "", "category": "",
+            "related_articles": ["plain-article"], "related_commands": [],
+        })
+        self.write("knowledge_base/published/plain-article.json", {
+            "id": "plain-article", "canonical_id": "plain-article", "title": "Plain Article",
+            "overview": "", "category": "", "related_commands": ["systeminfo"], "commands": [],
+        })
+        projection = self.service.relationship_evidence(
+            self.task("article_command_reciprocity_conflict", ["Article: plain-article"]))
+        html = self._render(projection)
+        self.assertEqual(projection["command_context"]["tags"], [])
+        self.assertEqual(projection["articles"][0]["structured_commands"], [])
+        self.assertIn("Tags</dt><dd>None", html)
+        self.assertIn("Structured command references</dt><dd>None", html)
 
     def test_generic_task_keeps_existing_workflow_presentation(self):
         html = self._render(None)

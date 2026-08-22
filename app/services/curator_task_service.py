@@ -45,15 +45,16 @@ class CuratorTaskService:
         value["repair_preview"] = self._repair_preview(value)
         value["original_evidence"] = self._original_evidence(value)
         value["current_content"] = self._current_content(value)
+        from app.services.curator_targeted_verification_service import CuratorTargetedVerificationService
+        verification_service = CuratorTargetedVerificationService(self.repository_root)
+        value["current_relationship_evidence"] = verification_service.relationship_evidence(value)
         value["live_related_knowledge"] = self._live_related_knowledge(value)
         value["current_verification"] = deepcopy(value.get("current_verification") or {})
         value["calibration_context"] = ReasoningCalibrationService().context(
             value, state.get("tasks", {}).values()
         )
         value["saved_work_note_available"] = bool(self._latest_work_note(task_id))
-        from app.services.curator_targeted_verification_service import CuratorTargetedVerificationService
-        value["affected_fingerprint"] = CuratorTargetedVerificationService(
-            self.repository_root).current_fingerprint(value)
+        value["affected_fingerprint"] = verification_service.current_fingerprint(value)
         return value
 
     def update(self, task_id: str, *, action: str, owner: str = "", priority: str = "", note: str = "",

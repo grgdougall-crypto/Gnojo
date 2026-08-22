@@ -8,6 +8,8 @@ from typing import Any
 
 from app.services.workflow_draft_service import WorkflowDraftService
 from app.services.curator_workflow_lifecycle_service import CuratorWorkflowLifecycleService
+from app.repositories.knowledge_repository import KnowledgeRepository
+from app.services.article_identity_resolver import ArticleIdentityResolver
 from curator.checks import CuratorChecks
 from curator.inventory import CuratorInventory
 from curator.memory import CuratorMemoryError, CuratorMemoryStore
@@ -29,6 +31,78 @@ class CuratorTargetedVerificationService:
         # Verification is read-only. Never create repository structure merely to
         # discover that affected content is absent.
         return WorkflowDraftService(self.drafts_path) if self.drafts_path.is_dir() else None
+
+    def relationship_evidence(self, task: dict[str, Any]) -> dict[str, Any] | None:
+        """Project current explicit declarations for deterministic relationship tasks."""
+        supported = {
+            "command_article_relationship_invalid",
+            "command_command_relationship_invalid",
+            "article_command_reciprocity_conflict",
+        }
+        if task.get("finding_type") not in supported:
+            return None
+        inventory = CuratorInventory(self.root).collect()
+        commands = {item.identifier: item for item in inventory if item.content_type == "command"}
+        published_articles = {
+            item.identifier: item for item in inventory
+            if item.content_type == "article" and item.state == "published"
+        }
+        identifier = str(task.get("content_identifier") or "")
+        command = commands.get(identifier)
+        if not command:
+            return {
+                "heading": "Current command relationship data",
+                "affected_type": "command", "affected_id": identifier,
+                "target_found": False, "related_articles": [], "related_commands": [],
+                "articles": [], "commands": [],
+            }
+        raw = command.raw
+        related_articles = self._declared_values(raw, "related_articles")
+        related_commands = self._declared_values(raw, "related_commands")
+        resolver = ArticleIdentityResolver(KnowledgeRepository(self.root / "knowledge_base"))
+        article_ids = set(related_articles)
+        if task.get("finding_type") == "article_command_reciprocity_conflict":
+            for evidence in [*task.get("evidence", []), *task.get("current_evidence", [])]:
+                if str(evidence).startswith("Article: "):
+                    article_ids.add(str(evidence).split(": ", 1)[1].strip())
+            article_ids.update(
+                article.identifier for article in published_articles.values()
+                if identifier in (article.raw.get("related_commands") or [])
+            )
+        article_records = []
+        for article_id in sorted(article_ids):
+            match = resolver.resolve_published(identifier=article_id)
+            article = published_articles.get(
+                str((match.article.get("canonical_id") or match.article.get("id"))) if match else "")
+            article_records.append({
+                "id": article_id,
+                "found": article is not None,
+                "title": article.title if article else "",
+                "related_commands": self._declared_values(article.raw, "related_commands") if article else [],
+                "related_commands_declared": bool(article and "related_commands" in article.raw),
+            })
+        command_records = [{
+            "id": command_id,
+            "found": command_id in commands,
+            "title": commands[command_id].title if command_id in commands else "",
+        } for command_id in related_commands]
+        return {
+            "heading": "Current relationship declarations",
+            "affected_type": "command", "affected_id": identifier,
+            "target_found": True, "source_path": command.source_path,
+            "related_articles": related_articles,
+            "related_articles_declared": "related_articles" in raw,
+            "related_commands": related_commands,
+            "related_commands_declared": "related_commands" in raw,
+            "articles": article_records, "commands": command_records,
+        }
+
+    @staticmethod
+    def _declared_values(record: dict[str, Any], field: str) -> list[str]:
+        value = record.get(field)
+        if not isinstance(value, list):
+            return []
+        return [str(item) for item in value if isinstance(item, str) and item.strip()]
 
     def verify(self, task_id: str) -> dict[str, Any]:
         task = self.store.load().get("tasks", {}).get(task_id)

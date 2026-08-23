@@ -32,7 +32,7 @@ class CuratorUxPassOneTests(unittest.TestCase):
             self.assertIn("partials/_curator_nav.html", source)
             self.assertIn("curator_active='{}'".format(active), source)
         task = (TEMPLATES / "curator_task_detail.html").read_text(encoding="utf-8")
-        self.assertIn("Return to Fix Wizard", task)
+        self.assertIn("task_navigation.return_label", task)
 
     def test_dashboard_lifecycle_explainer_has_five_steps_and_audit_controls(self):
         source = (TEMPLATES / "curator_dashboard.html").read_text(encoding="utf-8")

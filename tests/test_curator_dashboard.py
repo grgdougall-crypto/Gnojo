@@ -98,7 +98,10 @@ class CuratorDashboardPageTests(unittest.TestCase):
         self.assertIn("Operational Health", html)
         self.assertIn("Curator Status", html)
         self.assertIn("Knowledge Evolution", html)
-        self.assertIn('href="/curator/tasks/GKT-TEST"', html)
+        self.assertIn(
+            'href="/curator/tasks/GKT-TEST?origin=knowledge_tasks&amp;'
+            'return_to=/curator%23knowledge-tasks"', html,
+        )
 
     @patch("app.app.CuratorDashboardService")
     def test_run_button_executes_audit_and_redirects(self, service):

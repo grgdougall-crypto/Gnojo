@@ -235,7 +235,7 @@ class CuratorRelationshipProposalQueuePageTests(unittest.TestCase):
             "finding_type": "article_command_reciprocity_conflict", "content_type": "command",
             "content_identifier": "sample-command", "evidence": [],
         }
-        with patch("app.app.CuratorTaskService.get", return_value={
+        with patch("app.app.CuratorRelationshipProposalQueueService") as queue_service, patch("app.app.CuratorTaskService.get", return_value={
                 **task, "classification": "Defect", "priority": "Medium", "owner": "Curator",
                 "knowledge_debt_score": 1, "confidence": "high", "explanation": "Review.",
                 "navigation": {"url": "/commands/sample-command", "label": "Open affected command"},
@@ -248,11 +248,22 @@ class CuratorRelationshipProposalQueuePageTests(unittest.TestCase):
                 "future_automated_fix": False, "affected_fingerprint": "",
             }), patch("app.app.CuratorResolutionService.get", return_value=None), patch(
                 "app.app.CuratorConfusingStepImprovementService.get", return_value=None):
-            html = self.client.get(
-                "/curator/tasks/GKT-QUEUE?return_to=/curator/relationship-proposals%3Foutcome%3Dadd_reciprocal"
+            queue_service.return_value.queue.return_value = {
+                **self.queue,
+                "filters": {"outcome": "add_reciprocal", "status": "open"},
+            }
+            queue_html = self.client.get(
+                "/curator/relationship-proposals?outcome=add_reciprocal&status=open"
             ).get_data(as_text=True)
+            href = html_module.unescape(re.search(
+                r'href="([^"]+)"[^>]*>Review task</a>', queue_html
+            ).group(1))
+            html = self.client.get(href).get_data(as_text=True)
         self.assertIn("Return to Relationship Proposals", html)
-        self.assertIn('href="/curator/relationship-proposals?outcome=add_reciprocal"', html)
+        self.assertIn(
+            'href="/curator/relationship-proposals?outcome=add_reciprocal&amp;status=open"', html
+        )
+        self.assertNotIn("Maintenance session context", html)
 
 
 if __name__ == "__main__":

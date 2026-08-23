@@ -4,10 +4,10 @@
 
 {% block content %}
 <section class="container article-review-page" aria-labelledby="articleReviewTitle">
-    {% if return_to %}<div class="alert alert-info" role="status">You are reviewing this article from a Curator maintenance session. Save or publish to return to the Fix Wizard.</div>{% endif %}
+    {% if return_to %}<div class="alert alert-info" role="status">{% if return_to.startswith('/curator/tasks/') %}You are reviewing this article from Assisted Resolution. Save or publish to return to the governed task.{% else %}You are reviewing this article from a Curator maintenance session. Save or publish to return to the Fix Wizard.{% endif %}</div>{% endif %}
     <div class="article-review-heading">
         <div><span class="section-eyebrow">Knowledge Review Workspace</span><h1 id="articleReviewTitle">{{ article.title }}</h1><p>Edit, validate, preview, and approve this article without touching its JSON file.</p></div>
-        {% if workflow_return_url %}<a class="btn btn-outline-primary" href="{{ workflow_return_url }}"><i class="bi bi-arrow-left me-2" aria-hidden="true"></i>{{ 'Back to Fix Wizard' if return_to else 'Back to workflow' }}</a>{% else %}<a class="btn btn-outline-primary" href="{{ url_for('list_drafts') }}"><i class="bi bi-arrow-left me-2" aria-hidden="true"></i>Back to drafts</a>{% endif %}
+        {% if workflow_return_url %}<a class="btn btn-outline-primary" href="{{ workflow_return_url }}"><i class="bi bi-arrow-left me-2" aria-hidden="true"></i>{{ 'Back to Assisted Resolution' if return_to.startswith('/curator/tasks/') else ('Back to Fix Wizard' if return_to else 'Back to workflow') }}</a>{% else %}<a class="btn btn-outline-primary" href="{{ url_for('list_drafts') }}"><i class="bi bi-arrow-left me-2" aria-hidden="true"></i>Back to drafts</a>{% endif %}
     </div>
 
     {% if error %}<div class="alert alert-danger" role="alert"><strong>Review could not be saved.</strong> {{ error }}</div>{% elif request.args.get('revision') == '1' %}<div class="alert alert-info" role="status"><strong>Revision draft created.</strong> The published article remains live until this revision is reviewed and published.</div>{% elif request.args.get('saved') == '1' %}<div class="alert alert-success" role="status">Article review saved.</div>{% endif %}

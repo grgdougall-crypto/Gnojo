@@ -184,11 +184,12 @@ class CuratorTaskLifecycleTests(unittest.TestCase):
         with patch("app.app.CuratorTaskService", return_value=self.service):
             with flask_app.test_client() as client:
                 response = client.post("/curator/tasks/GKT-TEST/actions", data={
-                    "action": "resolve", "return_to": "/curator/fix/CFX-000000000001"},
+                    "action": "resolve", "origin": "maintenance",
+                    "return_to": "/curator/fix/CFX-000000000001"},
                     follow_redirects=True)
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Add a resolution note", response.data)
-        self.assertIn(b"Return to Fix Wizard", response.data)
+        self.assertIn(b"Return to Maintenance", response.data)
 
     def test_successful_route_resolution_triggers_session_reconciliation_once(self):
         reconciler = Mock()

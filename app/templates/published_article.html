@@ -58,7 +58,7 @@
                 class="btn btn-outline-primary"
             >
                 <i class="bi bi-arrow-left me-2"></i>
-                {% if return_to.startswith('/curator/fix') %}Back to Fix Wizard{% elif return_to.startswith('/search') %}Back to Search Results{% else %}Back to Published Articles{% endif %}
+                {% if return_to.startswith('/curator/tasks/') %}Back to Assisted Resolution{% elif return_to.startswith('/curator/fix') %}Back to Fix Wizard{% elif return_to.startswith('/search') %}Back to Search Results{% else %}Back to Published Articles{% endif %}
             </a>
         </div>
 

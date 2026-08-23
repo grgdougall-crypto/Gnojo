@@ -124,7 +124,8 @@ class CuratorAssistedResolutionTests(unittest.TestCase):
              patch("app.app.knowledge_repository", service.knowledge):
             with flask_app.test_client() as client:
                 response = client.get(
-                    f"/curator/tasks/GKT-TEST0/assisted-resolution/article?return_to={return_to}",
+                    f"/curator/tasks/GKT-TEST0/assisted-resolution/article"
+                    f"?origin=maintenance&return_to={return_to}",
                     follow_redirects=True,
                 )
 

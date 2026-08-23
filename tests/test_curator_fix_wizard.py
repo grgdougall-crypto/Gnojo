@@ -225,6 +225,7 @@ class CuratorFixWizardTests(unittest.TestCase):
             with flask_app.test_client() as client:
                 response = client.post("/curator/tasks/GKT-DEFER/actions", data={
                     "action": "defer", "curator_session": session["session_id"],
+                    "origin": "maintenance",
                     "return_to": return_to,
                 })
 
@@ -591,7 +592,8 @@ class CuratorFixWizardTests(unittest.TestCase):
         package = (templates / "_curator_resolution_package.html").read_text(encoding="utf-8")
         draft = (templates / "draft_review.html").read_text(encoding="utf-8")
         self.assertIn('name="return_to"', merge)
-        self.assertIn("Return to Fix Wizard", task)
+        self.assertIn("task_navigation.return_label", task)
+        self.assertIn('name="origin"', task)
         self.assertIn('name="return_to"', package)
         self.assertIn('name="return_to"', draft)
 

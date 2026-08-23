@@ -50,7 +50,8 @@ class CuratorUxPassTwoTests(unittest.TestCase):
 
     def test_task_detail_keeps_fix_wizard_return_context(self):
         source = (TEMPLATES / "curator_task_detail.html").read_text(encoding="utf-8")
-        self.assertIn("Return to Fix Wizard", source)
+        self.assertIn("task_navigation.return_label", source)
+        self.assertIn('name="origin"', source)
         self.assertIn("return_to", source)
 
 

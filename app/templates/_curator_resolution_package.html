@@ -1,11 +1,11 @@
-<section class="quality-section mt-4 curator-resolution" aria-labelledby="resolutionTitle">
+<section class="quality-section mt-4 curator-resolution" id="assisted-resolution" aria-labelledby="resolutionTitle">
   <div class="quality-section__heading">
     <div><span class="section-eyebrow">Assisted resolution</span><h2 id="resolutionTitle">Resolution Package</h2></div>
     {% if resolution_package %}<span class="badge text-bg-secondary">v{{ resolution_package.version }} · {{ resolution_package.status|replace('_',' ')|title }}</span>{% endif %}
   </div>
   {% if not resolution_package %}
     <p>Prepare a structured, reviewable proposal from this finding. Preparing a package does not change an article, workflow, or publishing state.</p>
-    <form method="post" action="{{ url_for('curator_assisted_resolution', task_id=task.task_id) }}"><input type="hidden" name="return_to" value="{{ return_to|default('') }}">
+    <form method="post" action="{{ url_for('curator_assisted_resolution', task_id=task.task_id) }}"><input type="hidden" name="origin" value="{{ task_origin }}"><input type="hidden" name="return_to" value="{{ task_navigation.return_url }}">
       <button class="btn btn-info" name="action" value="prepare"><i class="bi bi-stars me-2"></i>Prepare Assisted Resolution Package</button>
     </form>
   {% else %}
@@ -35,13 +35,13 @@
     {% if resolution_package.validation_errors %}<div class="alert alert-danger"><strong>Package validation failed</strong><ul>{% for error in resolution_package.validation_errors %}<li>{{ error }}</li>{% endfor %}</ul></div>{% endif %}
     <h3>Human decisions still required</h3><ul>{% for value in resolution_package.human_decisions %}<li>{{ value }}</li>{% endfor %}</ul>
     <div class="curator-package-actions">
-      <form method="post" action="{{ url_for('curator_assisted_resolution', task_id=task.task_id) }}"><input type="hidden" name="return_to" value="{{ return_to|default('') }}"><button class="btn btn-outline-info" name="action" value="prepare">Refresh package</button></form>
+      <form method="post" action="{{ url_for('curator_assisted_resolution', task_id=task.task_id) }}"><input type="hidden" name="origin" value="{{ task_origin }}"><input type="hidden" name="return_to" value="{{ task_navigation.return_url }}"><button class="btn btn-outline-info" name="action" value="prepare">Refresh package</button></form>
       {% if resolution_package.recommendation == 'CREATE_NEW_ARTICLE' and not resolution_package.draft_article_id and resolution_package.validation_status == 'passed' %}
-      <form method="post" action="{{ url_for('curator_assisted_resolution', task_id=task.task_id) }}" class="curator-confirm-draft"><input type="hidden" name="return_to" value="{{ return_to|default('') }}">
+      <form method="post" action="{{ url_for('curator_assisted_resolution', task_id=task.task_id) }}" class="curator-confirm-draft"><input type="hidden" name="origin" value="{{ task_origin }}"><input type="hidden" name="return_to" value="{{ task_navigation.return_url }}">
         <label><input type="checkbox" name="confirmed" value="yes" required> I reviewed this package and want to create a draft. The workflow will not be linked.</label>
         <button class="btn btn-success" name="action" value="create_draft">Create Article Draft from Package</button>
       </form>
-      {% elif resolution_package.draft_article_id %}<a class="btn btn-primary" href="{{ url_for('curator_assisted_resolution_article', task_id=task.task_id, return_to=return_to|default('')) }}">Open article {{ 'draft' if resolution_package.status == 'draft_created' else '' }}</a>{% endif %}
+      {% elif resolution_package.draft_article_id %}<a class="btn btn-primary" href="{{ url_for('curator_assisted_resolution_article', task_id=task.task_id, origin=task_origin, return_to=task_navigation.return_url) }}">Open article {{ 'draft' if resolution_package.status == 'draft_created' else '' }}</a>{% endif %}
     </div>
     <details class="mt-3"><summary>Package history</summary><ol class="curator-timeline">{% for event in resolution_package.history|reverse %}<li><strong>{{ event.event|replace('_',' ')|title }}</strong><span>{{ event.at|friendly_datetime }}</span></li>{% endfor %}</ol></details>
   {% endif %}

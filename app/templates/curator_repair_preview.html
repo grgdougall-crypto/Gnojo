@@ -2,7 +2,7 @@
 {% block title %}Repair Preview | {{ task.task_id }} | Gnojo{% endblock %}
 {% block content %}
 <main class="container curator-task-page" aria-labelledby="repairTitle">
-  <nav class="curator-breadcrumb"><a href="{{ url_for('curator_task_detail', task_id=task.task_id, curator_session=curator_session) }}"><i class="bi bi-arrow-left"></i> Return to Knowledge Task</a></nav>
+  <nav class="curator-breadcrumb"><a href="{{ url_for('curator_task_detail', task_id=task.task_id, curator_session=curator_session, origin=task_navigation.origin, return_to=task_navigation.return_url) }}"><i class="bi bi-arrow-left"></i> Return to Knowledge Task</a></nav>
   <header class="curator-task-heading"><div><span class="section-eyebrow">Deterministic repair preview</span><h1 id="repairTitle">{{ task.title }}</h1><p>This preview is read-only. Nothing is changed until you explicitly approve.</p></div></header>
   <section class="quality-section">
     {% if repair_error %}<div class="alert alert-danger" role="alert"><strong>Repair was not applied.</strong><p class="mb-0">{{ repair_error }}</p></div>{% endif %}
@@ -22,6 +22,8 @@
       {% if p.eligible and curator_session %}
       <form method="post" class="mt-4">
         <input type="hidden" name="curator_session" value="{{ curator_session }}">
+        <input type="hidden" name="origin" value="{{ task_navigation.origin }}">
+        <input type="hidden" name="return_to" value="{{ task_navigation.return_url }}">
         <input type="hidden" name="preview_token" value="{{ p.preview_token }}">
         <label class="form-check mb-3"><input class="form-check-input" type="checkbox" name="approved" value="yes" required> <span class="form-check-label">I reviewed this exact before/after change and approve linking the published canonical article.</span></label>
         <button class="btn btn-success" type="submit">Approve and apply repair</button>

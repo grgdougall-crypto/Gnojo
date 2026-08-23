@@ -111,6 +111,7 @@ from app.services.curator_confusing_step_improvement_service import (
 from app.services.curator_dashboard_service import CuratorDashboardService
 from app.services.curator_task_review_presentation_service import CuratorTaskReviewPresentationService
 from app.services.curator_task_service import CuratorTaskService
+from app.services.curator_task_navigation_service import CuratorTaskNavigationService
 from app.services.curator_relationship_proposal_queue_service import CuratorRelationshipProposalQueueService
 from app.services.curator_relationship_repair_application_service import (
     CuratorRelationshipRepairApplicationError,
@@ -1679,17 +1680,18 @@ def knowledge_draft_generation_reject(package_id):
 
 @app.route("/curator/tasks/<task_id>")
 def curator_task_detail(task_id):
-    return_to = request.args.get("return_to", "")
-    if (return_to and not return_to.startswith("/curator/fix/")
-            and not return_to.startswith("/curator/relationship-proposals")):
-        return_to = ""
+    task_navigation = CuratorTaskNavigationService.resolve(
+        request.args.get("origin", ""), request.args.get("return_to", ""), task_id=task_id
+    )
+    return_to = task_navigation.return_url
+    origin = task_navigation.origin
     session_id = request.args.get("curator_session", "")
     category = request.args.get("category", "all")
     try:
         if request.args.get("verify") == "1":
             CuratorTargetedVerificationService().verify(task_id)
         task = CuratorTaskService().get(task_id, session_id=session_id,
-                                        return_to=return_to, category=category)
+                                        return_to=return_to, category=category, origin=origin)
         session_task_actionable = (
             CuratorFixSessionService().task_action_eligible(session_id, task_id)
             if session_id else False
@@ -1724,14 +1726,15 @@ def curator_task_detail(task_id):
         task_review=CuratorTaskReviewPresentationService.present(task),
         session_task_actionable=session_task_actionable,
         return_to=return_to, curator_session=session_id, category=category,
+        task_navigation=task_navigation, task_origin=origin,
     )
 
 
 @app.post("/curator/tasks/<task_id>/relationship-proposal/apply")
 def curator_relationship_proposal_apply(task_id):
-    return_to = request.form.get("return_to", "")
-    if (return_to and not return_to.startswith("/curator/relationship-proposals")):
-        return_to = ""
+    navigation = CuratorTaskNavigationService.resolve(
+        request.form.get("origin", ""), request.form.get("return_to", ""), task_id=task_id
+    )
     try:
         CuratorRelationshipRepairApplicationService().apply(
             task_id,
@@ -1743,7 +1746,8 @@ def curator_relationship_proposal_apply(task_id):
             UnicodeDecodeError, ValueError, json.JSONDecodeError) as exception:
         status, error = "relationship_apply_failed", str(exception)
     return redirect(url_for(
-        "curator_task_detail", task_id=task_id, status=status, error=error, return_to=return_to
+        "curator_task_detail", task_id=task_id, status=status, error=error,
+        origin=navigation.origin, return_to=navigation.return_url,
     ))
 
 
@@ -1831,18 +1835,26 @@ def curator_confusing_step_improvement(task_id):
             raise CuratorConfusingStepImprovementError("Unsupported improvement action.")
     except (CuratorConfusingStepImprovementError, WorkflowPublicationError) as exception:
         status, error = "invalid", str(exception)
-    return redirect(url_for("curator_task_detail", task_id=task_id, status=status, error=error))
+    navigation = CuratorTaskNavigationService.resolve(
+        request.form.get("origin", ""), request.form.get("return_to", ""), task_id=task_id
+    )
+    return redirect(url_for("curator_task_detail", task_id=task_id, status=status, error=error,
+                            origin=navigation.origin, return_to=navigation.return_url))
 
 
 @app.get("/curator/tasks/<task_id>/confusing-step-improvement/handoff")
 def curator_confusing_step_improvement_handoff(task_id):
+    navigation = CuratorTaskNavigationService.resolve(
+        request.args.get("origin", ""), request.args.get("return_to", ""), task_id=task_id
+    )
     try:
         target = CuratorConfusingStepImprovementService().handoff(task_id)
     except CuratorConfusingStepImprovementError as exception:
         return redirect(url_for(
             "curator_task_detail", task_id=task_id, status="invalid", error=str(exception)
         ))
-    return_to = url_for("curator_task_detail", task_id=task_id, _external=False)
+    return_to = url_for("curator_task_detail", task_id=task_id, origin=navigation.origin,
+                        return_to=navigation.return_url, _external=False)
     return redirect(url_for(
         "workflow_editor", filename=target["filename"], node=target["node_id"],
         curator_task=task_id, curator_return=return_to,
@@ -1851,7 +1863,9 @@ def curator_confusing_step_improvement_handoff(task_id):
 
 @app.post("/curator/tasks/<task_id>/verify")
 def curator_task_verify(task_id):
-    return_to = request.form.get("return_to", "")
+    navigation = CuratorTaskNavigationService.resolve(
+        request.form.get("origin", ""), request.form.get("return_to", ""), task_id=task_id
+    )
     session_id = request.form.get("curator_session", "")
     category = request.form.get("category", "all")
     try:
@@ -1860,13 +1874,16 @@ def curator_task_verify(task_id):
     except CuratorMemoryError as exception:
         status, error = "invalid", str(exception)
     return redirect(url_for("curator_task_detail", task_id=task_id, status=status,
-                            error=error, return_to=return_to,
+                            error=error, origin=navigation.origin, return_to=navigation.return_url,
                             curator_session=session_id, category=category))
 
 
 @app.post("/curator/tasks/<task_id>/actions")
 def curator_task_action(task_id):
-    return_to = request.form.get("return_to", "")
+    navigation = CuratorTaskNavigationService.resolve(
+        request.form.get("origin", ""), request.form.get("return_to", ""), task_id=task_id
+    )
+    return_to = navigation.return_url
     session_id = request.form.get("curator_session", "")
     action = request.form.get("action", "")
     category = request.form.get("category", "all")
@@ -1909,16 +1926,19 @@ def curator_task_action(task_id):
                                        "task_id": task_id, "action": action,
                                        "error_type": type(error).__name__}))
         return redirect(url_for("curator_task_detail", task_id=task_id, status=status,
-                                error=str(error), return_to=return_to,
+                                error=str(error), origin=navigation.origin, return_to=return_to,
                                 curator_session=session_id, category=category))
     return redirect(url_for("curator_task_detail", task_id=task_id, status=status,
-                            return_to=return_to, curator_session=session_id, category=category))
+                            origin=navigation.origin, return_to=return_to,
+                            curator_session=session_id, category=category))
 
 
 @app.post("/curator/tasks/<task_id>/assisted-resolution")
 def curator_assisted_resolution(task_id):
     action = request.form.get("action", "")
-    return_to = request.form.get("return_to", "")
+    navigation = CuratorTaskNavigationService.resolve(
+        request.form.get("origin", ""), request.form.get("return_to", ""), task_id=task_id
+    )
     try:
         service = CuratorResolutionService()
         if action == "prepare":
@@ -1927,19 +1947,25 @@ def curator_assisted_resolution(task_id):
         elif action == "create_draft":
             service.create_article_draft(task_id, confirmed=request.form.get("confirmed") == "yes")
             return redirect(url_for("curator_assisted_resolution_article", task_id=task_id,
-                                    return_to=return_to))
+                                    origin=navigation.origin, return_to=navigation.return_url))
         else:
             raise ResolutionPackageError("Unsupported assisted-resolution action.")
     except (ResolutionPackageError, ValueError, KnowledgeRepositoryError):
         status = "invalid"
-    return redirect(url_for("curator_task_detail", task_id=task_id, status=status, return_to=return_to))
+    return redirect(url_for("curator_task_detail", task_id=task_id, status=status,
+                            origin=navigation.origin, return_to=navigation.return_url))
 
 
 @app.get("/curator/tasks/<task_id>/assisted-resolution/article")
 def curator_assisted_resolution_article(task_id):
-    return_to = request.args.get("return_to", "")
-    if return_to and not return_to.startswith("/curator/fix/"):
-        return_to = ""
+    navigation = CuratorTaskNavigationService.resolve(
+        request.args.get("origin", ""), request.args.get("return_to", ""), task_id=task_id
+    )
+    return_to = (
+        navigation.return_url
+        if navigation.origin == "maintenance"
+        else CuratorTaskNavigationService.assisted_task_return(task_id, navigation)
+    )
     try:
         state, article = CuratorResolutionService().article_location(task_id)
     except ResolutionPackageError:
@@ -1964,6 +1990,9 @@ def curator_task_repair_preview(task_id):
         CuratorArticleLinkRepairError, CuratorArticleLinkRepairService,
     )
     session_id = request.values.get("curator_session", "")
+    navigation = CuratorTaskNavigationService.resolve(
+        request.values.get("origin", ""), request.values.get("return_to", ""), task_id=task_id
+    )
     error = ""
     if request.method == "POST":
         try:
@@ -1978,11 +2007,13 @@ def curator_task_repair_preview(task_id):
         except (CuratorArticleLinkRepairError, CuratorMemoryError, CuratorFixSessionError) as caught:
             error = str(caught)
     try:
-        task = CuratorTaskService().get(task_id, session_id=session_id)
+        task = CuratorTaskService().get(task_id, session_id=session_id,
+                                        origin=navigation.origin, return_to=navigation.return_url)
     except CuratorMemoryError:
         abort(404)
     return render_template("curator_repair_preview.html", task=task,
-                           curator_session=session_id, repair_error=error)
+                           curator_session=session_id, repair_error=error,
+                           task_navigation=navigation)
 
 
 @app.route("/curator/run", methods=["POST"])
@@ -3367,8 +3398,10 @@ def workflow_references_for_article(article_id):
 
 def render_article_review(article, error=None, status=200):
     return_to = request.form.get("return_to", "") if request.method == "POST" else request.args.get("return_to", "")
-    if not return_to.startswith("/curator/fix/"):
-        return_to = ""
+    return_to = (
+        CuratorTaskNavigationService.valid_maintenance_return(return_to)
+        or CuratorTaskNavigationService.valid_assisted_return(return_to)
+    )
     return render_template(
         "draft_review.html",
         article=article,
@@ -3431,7 +3464,11 @@ def review_draft(article_id):
                         400,
                     )
                 return_location = request.form.get("return_to", "")
-                if not return_location.startswith("/curator/fix/"):
+                return_location = (
+                    CuratorTaskNavigationService.valid_maintenance_return(return_location)
+                    or CuratorTaskNavigationService.valid_assisted_return(return_location)
+                )
+                if not return_location:
                     return_location = workflow_return_location(article)
                 KnowledgePublicationService(knowledge_repository, WorkflowDraftService()).publish(
                     article_id,
@@ -3574,10 +3611,15 @@ def view_published(article_id):
     if article.get("type") == "command":
         template_name = "published_command.html"
 
-    return_to = safe_internal_return(
-        request.args.get("return_to", ""),
-        ("/knowledge/published", "/search", "/curator/fix"),
+    requested_return = request.args.get("return_to", "")
+    return_to = (
+        CuratorTaskNavigationService.valid_assisted_return(requested_return)
+        or CuratorTaskNavigationService.valid_maintenance_return(requested_return)
     )
+    if not return_to:
+        return_to = safe_internal_return(
+            requested_return, ("/knowledge/published", "/search"),
+        )
     return render_template(
         template_name,
         article=article,

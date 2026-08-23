@@ -25,7 +25,7 @@ class CuratorTaskService:
         self.store = CuratorMemoryStore(self.repository_root / "curation_memory")
 
     def get(self, task_id: str, *, session_id: str = "", return_to: str = "",
-            category: str = "all") -> dict[str, Any]:
+            category: str = "all", origin: str = "") -> dict[str, Any]:
         state = self.store.load()
         task = state.get("tasks", {}).get(task_id)
         if not task:
@@ -38,7 +38,8 @@ class CuratorTaskService:
         for field in ("related_content", "related_workflows", "related_articles", "related_commands", "related_scripts", "evidence", "history", "resolution_history"):
             value.setdefault(field, [])
         value["navigation"] = self._navigation(value, session_id=session_id,
-                                                return_to=return_to, category=category)
+                                                return_to=return_to, category=category,
+                                                origin=origin)
         value["related_tasks"] = self._related_tasks(value, state.get("tasks", {}))
         value["audit_history"] = self._audit_history(value, state.get("audits", []))
         value["guidance"] = self._guidance(value)
@@ -215,11 +216,12 @@ class CuratorTaskService:
         return sorted(events, key=lambda item: item.get("at") or "", reverse=True)[:25]
 
     def _navigation(self, task: dict[str, Any], *, session_id: str = "",
-                    return_to: str = "", category: str = "all") -> dict[str, str]:
+                    return_to: str = "", category: str = "all",
+                    origin: str = "") -> dict[str, str]:
         kind = task.get("content_type", "")
         identifier = task.get("content_identifier", "")
         task_id = task.get("task_id", "")
-        task_query = {"curator_session": session_id, "return_to": return_to,
+        task_query = {"curator_session": session_id, "return_to": return_to, "origin": origin,
                       "category": category, "verify": "1"}
         task_query = {key: value for key, value in task_query.items() if value}
         task_return = f"/curator/tasks/{quote(task_id)}"

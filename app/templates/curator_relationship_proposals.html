@@ -2,7 +2,9 @@
 {% block title %}Relationship Proposals | Curator | Gnojo{% endblock %}
 {% block content %}
 <main class="container" aria-labelledby="relationshipQueueTitle">
-  {% with curator_active='relationships' %}{% include 'partials/_curator_nav.html' %}{% endwith %}
+  {% if not harness_mode %}{% with curator_active='relationships' %}{% include 'partials/_curator_nav.html' %}{% endwith %}{% endif %}
+
+  {% if harness_mode %}<div class="alert alert-warning" role="alert"><strong>Temporary Phase 3 development/test fixtures.</strong> This page uses an isolated temporary repository and temporary Curator memory. It is not production Curator state.<form class="mt-2" method="post" action="{{ url_for('phase3_relationship_harness_reset') }}"><button class="btn btn-sm btn-warning" type="submit">Reset all fixture cases</button></form></div>{% endif %}
 
   <header class="page-header mb-4">
     <span class="section-eyebrow">Supervised review</span>
@@ -15,7 +17,7 @@
     <form method="get" class="row g-3 align-items-end">
       <div class="col-md-5"><label class="form-label" for="proposalOutcome">Proposal outcome</label><select class="form-select" id="proposalOutcome" name="outcome"><option value="">All outcomes</option>{% for value in queue.options.outcomes %}<option value="{{ value }}"{% if queue.filters.outcome == value %} selected{% endif %}>{{ value|replace('_', ' ')|title }}</option>{% endfor %}</select></div>
       <div class="col-md-4"><label class="form-label" for="proposalStatus">Task status</label><select class="form-select" id="proposalStatus" name="status"><option value="">All actionable statuses</option>{% for value in queue.options.statuses %}<option value="{{ value }}"{% if queue.filters.status == value %} selected{% endif %}>{{ value|replace('_', ' ')|title }}</option>{% endfor %}</select></div>
-      <div class="col-md-3 d-flex gap-2"><button class="btn btn-primary" type="submit">Apply filters</button><a class="btn btn-outline-secondary" href="{{ url_for('curator_relationship_proposals') }}">Clear</a></div>
+      <div class="col-md-3 d-flex gap-2"><button class="btn btn-primary" type="submit">Apply filters</button><a class="btn btn-outline-secondary" href="{{ queue_clear_url or url_for('curator_relationship_proposals') }}">Clear</a></div>
     </form>
   </section>
 
@@ -28,7 +30,7 @@
         <p><strong>Rationale:</strong> {{ item.rationale }}</p>
         <dl class="curator-definition-list"><div><dt>Command declares article</dt><dd>{{ 'Yes' if item.command_declares_article else 'No' }}</dd></div><div><dt>Article declares command</dt><dd>{{ 'Yes' if item.article_declares_command else 'No' }}</dd></div><div><dt>Exact proposed metadata change</dt><dd>{{ item.metadata_change }}</dd></div>{% if item.affected_record %}<div><dt>Affected authoritative record</dt><dd><code>{{ item.affected_record }}</code></dd></div>{% endif %}</dl>
         <div class="alert alert-secondary py-2" role="note">Proposal only — no relationship metadata has been applied.</div>
-        <a class="btn btn-outline-primary" href="{{ url_for('curator_task_detail', task_id=item.task_id, return_to=request.full_path.rstrip('?')) }}">Review task</a>
+        <a class="btn btn-outline-primary" href="{{ url_for('phase3_relationship_harness_task', task_id=item.task_id) if harness_mode else url_for('curator_task_detail', task_id=item.task_id, return_to=request.full_path.rstrip('?')) }}">Review task</a>
       </article></div>{% endfor %}
     </div>{% else %}<div class="alert alert-info" role="status">{% if queue.actionable_count %}No relationship repair proposals match the selected filters.{% else %}No relationship repair proposals currently require review.{% endif %}</div>{% endif %}
   </section>

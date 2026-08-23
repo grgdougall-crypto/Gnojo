@@ -112,6 +112,11 @@ from app.services.curator_dashboard_service import CuratorDashboardService
 from app.services.curator_task_review_presentation_service import CuratorTaskReviewPresentationService
 from app.services.curator_task_service import CuratorTaskService
 from app.services.curator_relationship_proposal_queue_service import CuratorRelationshipProposalQueueService
+from app.services.curator_relationship_repair_application_service import (
+    CuratorRelationshipRepairApplicationError,
+    CuratorRelationshipRepairApplicationService,
+)
+from app.services.curator_relationship_repair_browser_harness import phase3_browser_harness
 from app.services.curator_resolution_service import CuratorResolutionService
 from app.services.curator_batch_service import CuratorBatchService
 from app.services.curator_fix_session_service import CuratorFixSessionError, CuratorFixSessionService
@@ -837,6 +842,35 @@ def curator_relationship_proposals():
         outcome=request.args.get("outcome", ""), status=request.args.get("status", "")
     )
     return render_template("curator_relationship_proposals.html", queue=queue)
+
+
+def _phase3_harness_enabled():
+    explicitly_enabled = os.getenv("GNOJO_PHASE3_BROWSER_HARNESS", "").casefold() in {"1", "true", "yes"}
+    return explicitly_enabled and (app.testing or app.debug)
+
+
+def _require_phase3_harness():
+    if not _phase3_harness_enabled():
+        abort(404)
+    return phase3_browser_harness()
+
+
+@app.get("/__dev/phase3-relationship-harness")
+def phase3_relationship_harness_queue():
+    harness = _require_phase3_harness()
+    queue = CuratorRelationshipProposalQueueService(harness.root).queue(
+        outcome=request.args.get("outcome", ""), status=request.args.get("status", "")
+    )
+    return render_template(
+        "curator_relationship_proposals.html", queue=queue, harness_mode=True,
+        queue_clear_url=url_for("phase3_relationship_harness_queue"),
+    )
+
+
+@app.post("/__dev/phase3-relationship-harness/reset")
+def phase3_relationship_harness_reset():
+    _require_phase3_harness().reset()
+    return redirect(url_for("phase3_relationship_harness_queue", reset="1"))
 
 
 @app.post("/curator/tasks/<task_id>/review-disposition")
@@ -1674,6 +1708,8 @@ def curator_task_detail(task_id):
         "proposal_approved": ("success", "The human approval was recorded. The workflow remains unchanged."),
         "publication_recorded": ("success", "The approved change was associated with its published workflow version."),
         "outcome_measured": ("success", "Runtime outcome evidence was measured."),
+        "relationship_applied": ("success", "The approved relationship metadata repair was applied and verified. The task remains open for human resolution."),
+        "relationship_apply_failed": ("danger", request.args.get("error") or "The relationship repair was not applied."),
     }
     kind, message = messages.get(request.args.get("status", ""), ("info", ""))
     return render_template(
@@ -1689,6 +1725,81 @@ def curator_task_detail(task_id):
         session_task_actionable=session_task_actionable,
         return_to=return_to, curator_session=session_id, category=category,
     )
+
+
+@app.post("/curator/tasks/<task_id>/relationship-proposal/apply")
+def curator_relationship_proposal_apply(task_id):
+    return_to = request.form.get("return_to", "")
+    if (return_to and not return_to.startswith("/curator/relationship-proposals")):
+        return_to = ""
+    try:
+        CuratorRelationshipRepairApplicationService().apply(
+            task_id,
+            approval_token=request.form.get("approval_token", ""),
+            approved=request.form.get("approved") == "yes",
+        )
+        status, error = "relationship_applied", ""
+    except (CuratorRelationshipRepairApplicationError, CuratorMemoryError, OSError,
+            UnicodeDecodeError, ValueError, json.JSONDecodeError) as exception:
+        status, error = "relationship_apply_failed", str(exception)
+    return redirect(url_for(
+        "curator_task_detail", task_id=task_id, status=status, error=error, return_to=return_to
+    ))
+
+
+@app.get("/__dev/phase3-relationship-harness/tasks/<task_id>")
+def phase3_relationship_harness_task(task_id):
+    harness = _require_phase3_harness()
+    try:
+        task = CuratorTaskService(harness.root).get(task_id)
+    except CuratorMemoryError:
+        abort(404)
+    status = request.args.get("status", "")
+    return render_template(
+        "curator_task_detail.html", task=task,
+        owners=CuratorTaskService.OWNERS, priorities=CuratorTaskService.PRIORITIES,
+        status_kind="success" if status == "relationship_applied" else "danger" if status else "info",
+        status_message=("The temporary fixture repair was applied and verified. The fixture task remains open."
+                        if status == "relationship_applied" else
+                        ("The request was not applied. " + request.args.get("error", "") if status else "")),
+        resolution_package=None, confusing_step_proposal=None,
+        verification_presentation=CuratorVerificationPresentationService.present(
+            task.get("current_verification")
+        ),
+        task_review=CuratorTaskReviewPresentationService.present(task),
+        session_task_actionable=False,
+        return_to=url_for("phase3_relationship_harness_queue"),
+        curator_session="", category="all", harness_mode=True,
+        relationship_apply_url=url_for("phase3_relationship_harness_apply", task_id=task_id),
+        verification_url=url_for("phase3_relationship_harness_verify", task_id=task_id),
+    )
+
+
+@app.post("/__dev/phase3-relationship-harness/tasks/<task_id>/apply")
+def phase3_relationship_harness_apply(task_id):
+    harness = _require_phase3_harness()
+    try:
+        CuratorRelationshipRepairApplicationService(harness.root).apply(
+            task_id, approval_token=request.form.get("approval_token", ""),
+            approved=request.form.get("approved") == "yes",
+        )
+        status, error = "relationship_applied", ""
+    except (CuratorRelationshipRepairApplicationError, CuratorMemoryError, OSError,
+            UnicodeDecodeError, ValueError, json.JSONDecodeError) as exception:
+        status, error = "relationship_apply_failed", str(exception)
+    return redirect(url_for("phase3_relationship_harness_task", task_id=task_id,
+                            status=status, error=error))
+
+
+@app.post("/__dev/phase3-relationship-harness/tasks/<task_id>/verify")
+def phase3_relationship_harness_verify(task_id):
+    harness = _require_phase3_harness()
+    try:
+        CuratorTargetedVerificationService(harness.root).verify(task_id)
+        error = ""
+    except CuratorMemoryError as exception:
+        error = str(exception)
+    return redirect(url_for("phase3_relationship_harness_task", task_id=task_id, error=error))
 
 
 @app.post("/curator/tasks/<task_id>/confusing-step-improvement")

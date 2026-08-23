@@ -2,10 +2,11 @@
 {% block title %}{{ task.task_id }} | Curator | Gnojo{% endblock %}
 {% block content %}
 <main class="container curator-task-page" aria-labelledby="taskTitle">
-  {% with curator_active='tasks' %}{% include 'partials/_curator_nav.html' %}{% endwith %}
+  {% if not harness_mode %}{% with curator_active='tasks' %}{% include 'partials/_curator_nav.html' %}{% endwith %}{% endif %}
 
-  <nav class="curator-breadcrumb" aria-label="Task navigation"><a href="{{ return_to or url_for('curator_dashboard') }}"><i class="bi bi-arrow-left" aria-hidden="true"></i> {{ 'Return to Relationship Proposals' if return_to.startswith('/curator/relationship-proposals') else ('Return to Fix Wizard' if return_to else 'Curator Dashboard') }}</a></nav>
-  {% if return_to %}<div class="alert alert-info" role="status">This task was opened from a maintenance session. Your Fix Wizard progress is saved.</div>{% endif %}
+  <nav class="curator-breadcrumb" aria-label="Task navigation"><a href="{{ return_to or url_for('curator_dashboard') }}"><i class="bi bi-arrow-left" aria-hidden="true"></i> {{ 'Return to temporary fixture queue' if harness_mode else ('Return to Relationship Proposals' if return_to.startswith('/curator/relationship-proposals') else ('Return to Fix Wizard' if return_to else 'Curator Dashboard')) }}</a></nav>
+  {% if harness_mode %}<div class="alert alert-warning" role="alert"><strong>Temporary Phase 3 development/test fixture.</strong> All displayed content, relationship metadata, verification, and task history on this page live in an isolated temporary repository.</div>{% endif %}
+  {% if return_to and not harness_mode %}<div class="alert alert-info" role="status">This task was opened from a maintenance session. Your Fix Wizard progress is saved.</div>{% endif %}
   {% if status_message %}<div class="alert alert-{{ status_kind }}" role="status">{{ status_message }}</div>{% endif %}
 
   <header class="curator-task-heading">
@@ -21,7 +22,7 @@
     <div class="quality-section__heading"><div><span class="section-eyebrow">What is true now</span><h2 id="verificationTitle">Targeted Verification</h2></div>{% if verification_presentation %}<span class="badge text-bg-{{ 'success' if verification_presentation.tone == 'success' else 'warning' }}">{{ verification_presentation.headline }}</span>{% endif %}</div>
     {% set verification = task.current_verification or {} %}
     {% if verification_presentation %}<div class="alert alert-{{ verification_presentation.tone }} curator-verification-result"><strong>{{ verification_presentation.headline }}.</strong><p>{{ verification_presentation.explanation }}</p><p class="mb-0"><strong>Reviewer next step:</strong> {{ verification_presentation.next_action }}</p></div>{% else %}<div class="alert alert-secondary"><strong>Current content has not been verified yet.</strong> Run the targeted check before making a closure decision.</div>{% endif %}
-    <div class="curator-review-state__footer"><p>This check reads the exact affected content using Curator's existing canonical rules. It does not change content or resolve the task.</p><form method="post" action="{{ url_for('curator_task_verify', task_id=task.task_id) }}"><input type="hidden" name="return_to" value="{{ return_to }}"><input type="hidden" name="curator_session" value="{{ curator_session }}"><input type="hidden" name="category" value="{{ category }}"><button class="btn btn-outline-info" type="submit">Verify Current Content</button></form></div>
+    <div class="curator-review-state__footer"><p>This check reads the exact affected content using Curator's existing canonical rules. It does not change content or resolve the task.</p><form method="post" action="{{ verification_url or url_for('curator_task_verify', task_id=task.task_id) }}"><input type="hidden" name="return_to" value="{{ return_to }}"><input type="hidden" name="curator_session" value="{{ curator_session }}"><input type="hidden" name="category" value="{{ category }}"><button class="btn btn-outline-info" type="submit">Verify Current Content</button></form></div>
     {% if verification_presentation and verification_presentation.technical_detail %}<details class="curator-technical-disclosure"><summary>Verification technical details</summary><p>{{ verification_presentation.technical_detail }}</p><code>{{ verification_presentation.technical_state }}</code></details>{% endif %}
   </section>
 
@@ -51,6 +52,16 @@
           <div><dt>Exact proposed metadata change</dt><dd>{{ proposal.metadata_change }}</dd></div>
           {% if proposal.affected_record %}<div><dt>Affected authoritative record</dt><dd><code>{{ proposal.affected_record }}</code></dd></div>{% endif %}
         </dl>
+        {% if proposal.outcome in ['add_reciprocal', 'remove_unsupported'] and task.status in ['open', 'in_progress', 'deferred'] %}
+        <form method="post" action="{{ relationship_apply_url or url_for('curator_relationship_proposal_apply', task_id=task.task_id) }}" class="mt-3">
+          <input type="hidden" name="approval_token" value="{{ proposal.approval_token }}">
+          <input type="hidden" name="return_to" value="{{ return_to }}">
+          <div class="form-check mb-3"><input class="form-check-input" id="approveRelationshipRepair" name="approved" value="yes" type="checkbox" required><label class="form-check-label" for="approveRelationshipRepair">I reviewed this exact metadata change and approve applying it.</label></div>
+          <button class="btn btn-primary" type="submit">Apply proposed relationship repair</button>
+          <p class="form-text">This changes only the named relationship metadata. Curator will verify the result, but the task will remain open for your resolution decision.</p>
+        </form>
+        {% elif proposal.outcome == 'human_review_required' %}<p class="alert alert-warning mb-0">No apply action is available because Curator cannot determine one safe metadata change.</p>
+        {% else %}<p class="alert alert-secondary mb-0">This proposal cannot be applied in the task's current state.</p>{% endif %}
       </section>
       {% endif %}
 
@@ -74,7 +85,8 @@
     <aside class="col-xl-4 curator-decision-column">
       <section class="quality-section curator-guidance" aria-labelledby="guidanceTitle"><span class="section-eyebrow">What Curator recommends</span><h2 id="guidanceTitle">Review Decision</h2><p>{{ task.guidance.why }}</p><p>{{ task.guidance.impact }}</p><div class="curator-next-step"><strong>Suggested next step</strong><p>{{ task.recommended_action }}</p></div><p class="alert alert-warning"><strong>{{ task.guidance.certainty }}</strong> Curator will not close this task automatically.</p>{% if task.calibration_context %}<details class="curator-calibration-context"><summary>Human calibration context</summary><p>{{ task.calibration_context.prior_review_count }} structurally similar prior review{% if task.calibration_context.prior_review_count != 1 %}s{% endif %}.</p>{% if task.calibration_context.dispositions %}<ul>{% for disposition, count in task.calibration_context.dispositions.items() %}<li>{{ disposition|replace('_', ' ')|title }}: {{ count }}</li>{% endfor %}</ul>{% endif %}<p><strong>{{ task.calibration_context.advisory }}</strong></p></details>{% endif %}{% if task.future_automated_fix %}<a class="btn btn-outline-info w-100" href="{{ url_for('curator_task_repair_preview', task_id=task.task_id, curator_session=curator_session) }}">Preview deterministic repair</a>{% endif %}</section>
 
-      {% if task.status == 'resolved' %}
+      {% if harness_mode %}<section class="quality-section mt-4"><span class="section-eyebrow">Fixture boundary</span><h2>Manual task closure disabled</h2><p>Use targeted verification and inspect history here. Reset the fixture queue when finished; production task-management actions are intentionally unavailable.</p></section>
+      {% elif task.status == 'resolved' %}
       <section class="quality-section mt-4 curator-action-scope curator-action-scope--item" aria-labelledby="actionsTitle">
         <div class="curator-action-scope__heading"><span class="section-eyebrow">Resolved task</span><h2 id="actionsTitle">Task Resolved</h2><p>Task-management controls are unavailable while this task is resolved. Reopen it to resume work.</p></div>
         <form method="post" action="{{ url_for('curator_task_action', task_id=task.task_id) }}" class="curator-action-form"><input type="hidden" name="return_to" value="{{ return_to }}"><input type="hidden" name="curator_session" value="{{ curator_session }}"><input type="hidden" name="category" value="{{ category }}"><input type="hidden" name="affected_fingerprint" value="{{ task.affected_fingerprint }}"><button name="action" value="reopen" class="btn btn-warning">Reopen task</button></form>

@@ -52,6 +52,16 @@ class CuratorTaskService:
         value["relationship_repair_proposal"] = CuratorRelationshipRepairProposalService().build(
             value, value["current_relationship_evidence"]
         )
+        proposal = value["relationship_repair_proposal"]
+        if proposal and proposal.get("outcome") in {"add_reciprocal", "remove_unsupported"}:
+            from app.services.curator_relationship_repair_application_service import (
+                CuratorRelationshipRepairApplicationService,
+            )
+            proposal["approval_token"] = CuratorRelationshipRepairApplicationService(
+                self.repository_root
+            ).approval_token(value, proposal)
+        elif proposal:
+            proposal["approval_token"] = ""
         value["live_related_knowledge"] = self._live_related_knowledge(value)
         value["current_verification"] = deepcopy(value.get("current_verification") or {})
         value["calibration_context"] = ReasoningCalibrationService().context(

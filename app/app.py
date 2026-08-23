@@ -111,6 +111,7 @@ from app.services.curator_confusing_step_improvement_service import (
 from app.services.curator_dashboard_service import CuratorDashboardService
 from app.services.curator_task_review_presentation_service import CuratorTaskReviewPresentationService
 from app.services.curator_task_service import CuratorTaskService
+from app.services.curator_relationship_proposal_queue_service import CuratorRelationshipProposalQueueService
 from app.services.curator_resolution_service import CuratorResolutionService
 from app.services.curator_batch_service import CuratorBatchService
 from app.services.curator_fix_session_service import CuratorFixSessionError, CuratorFixSessionService
@@ -828,6 +829,14 @@ def curator_dashboard():
         "curator_dashboard.html", dashboard=dashboard, status_kind=kind, status_message=message,
         assisted_batch=CuratorBatchService().latest(),
     )
+
+
+@app.get("/curator/relationship-proposals")
+def curator_relationship_proposals():
+    queue = CuratorRelationshipProposalQueueService().queue(
+        outcome=request.args.get("outcome", ""), status=request.args.get("status", "")
+    )
+    return render_template("curator_relationship_proposals.html", queue=queue)
 
 
 @app.post("/curator/tasks/<task_id>/review-disposition")
@@ -1637,7 +1646,8 @@ def knowledge_draft_generation_reject(package_id):
 @app.route("/curator/tasks/<task_id>")
 def curator_task_detail(task_id):
     return_to = request.args.get("return_to", "")
-    if return_to and not return_to.startswith("/curator/fix/"):
+    if (return_to and not return_to.startswith("/curator/fix/")
+            and not return_to.startswith("/curator/relationship-proposals")):
         return_to = ""
     session_id = request.args.get("curator_session", "")
     category = request.args.get("category", "all")

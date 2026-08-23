@@ -4,6 +4,7 @@
     {% for value, label, destination in [
       ('overview', 'Overview', url_for('curator_dashboard')),
       ('tasks', 'Knowledge Tasks', url_for('curator_dashboard') ~ '#knowledge-tasks'),
+      ('relationships', 'Relationship Proposals', url_for('curator_relationship_proposals')),
       ('integrity', 'Integrity', url_for('knowledge_integrity_dashboard')),
       ('maintenance', 'Maintenance', url_for('curator_fix_start')),
       ('growth', 'Growth', url_for('curator_growth_dashboard'))

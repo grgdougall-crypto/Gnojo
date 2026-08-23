@@ -4,7 +4,7 @@
 <main class="container curator-task-page" aria-labelledby="taskTitle">
   {% with curator_active='tasks' %}{% include 'partials/_curator_nav.html' %}{% endwith %}
 
-  <nav class="curator-breadcrumb" aria-label="Task navigation"><a href="{{ return_to or url_for('curator_dashboard') }}"><i class="bi bi-arrow-left" aria-hidden="true"></i> {{ 'Return to Fix Wizard' if return_to else 'Curator Dashboard' }}</a></nav>
+  <nav class="curator-breadcrumb" aria-label="Task navigation"><a href="{{ return_to or url_for('curator_dashboard') }}"><i class="bi bi-arrow-left" aria-hidden="true"></i> {{ 'Return to Relationship Proposals' if return_to.startswith('/curator/relationship-proposals') else ('Return to Fix Wizard' if return_to else 'Curator Dashboard') }}</a></nav>
   {% if return_to %}<div class="alert alert-info" role="status">This task was opened from a maintenance session. Your Fix Wizard progress is saved.</div>{% endif %}
   {% if status_message %}<div class="alert alert-{{ status_kind }}" role="status">{{ status_message }}</div>{% endif %}
 

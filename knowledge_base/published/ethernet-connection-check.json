@@ -14,7 +14,8 @@
     "inspect-windows-network-ipconfig"
   ],
   "related_commands": [
-    "ipconfig"
+    "ipconfig",
+    "get-netadapter"
   ],
   "difficulty": "Beginner",
   "estimated_time": "1 to 2 minutes",

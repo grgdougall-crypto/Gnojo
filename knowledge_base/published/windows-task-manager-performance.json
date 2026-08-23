@@ -15,7 +15,8 @@
   ],
   "related_commands": [
     "tasklist",
-    "systeminfo"
+    "systeminfo",
+    "get-process"
   ],
   "difficulty": "Beginner",
   "estimated_time": "3 to 5 minutes",

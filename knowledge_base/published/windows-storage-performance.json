@@ -12,7 +12,9 @@
   "related_articles": [
     "windows-task-manager-performance"
   ],
-  "related_commands": [],
+  "related_commands": [
+    "get-volume"
+  ],
   "difficulty": "Beginner",
   "estimated_time": "5 to 10 minutes",
   "overview": "Windows needs free storage for updates, temporary files, application caches, and virtual memory. Cleanup recommendations help identify removable content while keeping the user in control of what is deleted.",

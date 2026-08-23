@@ -117,7 +117,9 @@
     }
   ],
   "related_commands": [],
-  "related_articles": [],
+  "related_articles": [
+    "windows-task-manager-performance"
+  ],
   "tags": [
     "tasklist",
     "networking",

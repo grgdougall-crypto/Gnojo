@@ -36,6 +36,24 @@
         </div>
       </section>
 
+      {% if task.relationship_repair_proposal %}{% set proposal = task.relationship_repair_proposal %}
+      <section class="quality-section mt-4" aria-labelledby="relationshipProposalTitle">
+        <div class="quality-section__heading"><div><span class="section-eyebrow">Assisted review</span><h2 id="relationshipProposalTitle">Relationship Repair Proposal</h2><p>This read-only proposal is separate from original evidence, current declarations, and targeted verification.</p></div><span class="badge text-bg-{{ 'warning' if proposal.outcome == 'human_review_required' else 'info' }}">{{ proposal.outcome|replace('_', ' ')|title }}</span></div>
+        <div class="alert alert-{{ 'warning' if proposal.outcome == 'human_review_required' else 'info' }}" role="status"><strong>{{ proposal.status_message }}</strong></div>
+        <dl class="curator-definition-list">
+          <div><dt>Command</dt><dd><code>{{ proposal.command_id or 'Unavailable' }}</code>{% if proposal.command_title %} — {{ proposal.command_title }}{% endif %}</dd></div>
+          <div><dt>Command purpose</dt><dd>{{ proposal.command_purpose or 'Insufficient metadata' }}</dd></div>
+          <div><dt>Article</dt><dd><code>{{ proposal.article_id or 'Unavailable' }}</code>{% if proposal.article_title %} — {{ proposal.article_title }}{% endif %}</dd></div>
+          <div><dt>Article purpose</dt><dd>{{ proposal.article_purpose or 'Insufficient metadata' }}</dd></div>
+          <div><dt>Command declares article</dt><dd>{{ 'Yes' if proposal.command_declares_article else 'No' }}</dd></div>
+          <div><dt>Article declares command</dt><dd>{{ 'Yes' if proposal.article_declares_command else 'No' }}</dd></div>
+          <div><dt>Rationale</dt><dd>{{ proposal.rationale }}</dd></div>
+          <div><dt>Exact proposed metadata change</dt><dd>{{ proposal.metadata_change }}</dd></div>
+          {% if proposal.affected_record %}<div><dt>Affected authoritative record</dt><dd><code>{{ proposal.affected_record }}</code></dd></div>{% endif %}
+        </dl>
+      </section>
+      {% endif %}
+
       <section class="quality-section mt-4" aria-labelledby="historyTitle">
         <div class="quality-section__heading"><div><span class="section-eyebrow">Traceable lifecycle</span><h2 id="historyTitle">Task History</h2><p>{{ task_review.history_count }} recorded event{{ '' if task_review.history_count == 1 else 's' }}. The most recent events are shown first.</p></div></div>
         <ol class="curator-timeline">{% for event in task_review.recent_history %}<li><strong>{{ event.event|default('observed')|replace('_', ' ')|title }}</strong><span>{{ event.at|friendly_datetime }}</span>{% if event.note %}<p>{{ event.note }}</p>{% endif %}{% if event.run_id %}<code>{{ event.run_id }}</code>{% endif %}</li>{% else %}<li>No history is available.</li>{% endfor %}</ol>

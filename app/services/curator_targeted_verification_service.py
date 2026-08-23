@@ -77,6 +77,7 @@ class CuratorTargetedVerificationService:
             article_records.append({
                 "id": article_id,
                 "found": article is not None,
+                "source_path": article.source_path if article else "",
                 "title": article.title if article else "",
                 "overview": str(article.raw.get("overview") or article.raw.get("summary") or "") if article else "",
                 "category": article.category if article else "",

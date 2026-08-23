@@ -48,6 +48,10 @@ class CuratorTaskService:
         from app.services.curator_targeted_verification_service import CuratorTargetedVerificationService
         verification_service = CuratorTargetedVerificationService(self.repository_root)
         value["current_relationship_evidence"] = verification_service.relationship_evidence(value)
+        from app.services.curator_relationship_repair_proposal_service import CuratorRelationshipRepairProposalService
+        value["relationship_repair_proposal"] = CuratorRelationshipRepairProposalService().build(
+            value, value["current_relationship_evidence"]
+        )
         value["live_related_knowledge"] = self._live_related_knowledge(value)
         value["current_verification"] = deepcopy(value.get("current_verification") or {})
         value["calibration_context"] = ReasoningCalibrationService().context(

@@ -44,6 +44,14 @@ class CuratorBatchService:
         path = self.root / "curation_memory" / "resolution_batches" / "latest.json"
         try:
             value = json.loads(path.read_text(encoding="utf-8"))
-            return value if isinstance(value, dict) else {}
+            if not isinstance(value, dict):
+                return {}
+            available, unavailable = [], []
+            for item in value.get("prepared", []):
+                if isinstance(item, dict) and self.service.get(str(item.get("task_id") or "")):
+                    available.append(item)
+                else:
+                    unavailable.append(item)
+            return {**value, "prepared": available, "unavailable": unavailable}
         except (OSError, json.JSONDecodeError):
             return {}

@@ -20,6 +20,8 @@ class CuratorTaskNavigationServiceTests(unittest.TestCase):
              "Return to Maintenance"),
             ("assisted_resolution", "/curator/tasks/GKT-TEST#assisted-resolution",
              "Return to Assisted Resolution"),
+            ("assisted_resolution_batch", "/curator#assisted-resolution-batch",
+             "Return to Assisted Resolution Batch"),
         )
         for origin, return_to, label in cases:
             with self.subTest(origin=origin):
@@ -36,6 +38,8 @@ class CuratorTaskNavigationServiceTests(unittest.TestCase):
             ("knowledge_tasks", "/curator?unsupported=1#knowledge-tasks"),
             ("maintenance", "/curator/fix/CFX-1/../../admin"),
             ("assisted_resolution", "/curator/tasks/GKT-OTHER#assisted-resolution"),
+            ("assisted_resolution_batch", "/curator?status=open#assisted-resolution-batch"),
+            ("assisted_resolution_batch", "/curator#knowledge-tasks"),
         ):
             with self.subTest(origin=origin, return_to=return_to):
                 navigation = self.resolve(origin, return_to)

@@ -19,6 +19,7 @@ class CuratorTaskNavigationService:
         "relationship_proposals": "Return to Relationship Proposals",
         "maintenance": "Return to Maintenance",
         "assisted_resolution": "Return to Assisted Resolution",
+        "assisted_resolution_batch": "Return to Assisted Resolution Batch",
     }
     OVERVIEW_QUERY = {
         "status", "include_resolved", "classification", "workflow", "family",
@@ -87,6 +88,9 @@ class CuratorTaskNavigationService:
         if origin == "assisted_resolution":
             return (parsed.path == f"/curator/tasks/{task_id}" and not parsed.query
                     and parsed.fragment == "assisted-resolution")
+        if origin == "assisted_resolution_batch":
+            return (parsed.path == "/curator" and not parsed.query
+                    and parsed.fragment == "assisted-resolution-batch")
         return False
 
     @staticmethod

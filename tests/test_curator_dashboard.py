@@ -111,6 +111,49 @@ class CuratorDashboardPageTests(unittest.TestCase):
         self.assertEqual(response.headers["Location"], "/curator?status=completed")
         service.return_value.run_audit.assert_called_once_with()
 
+    @patch("app.app.CuratorBatchService")
+    @patch("app.app.CuratorDashboardService")
+    def test_prepared_batch_entries_link_to_existing_task_package_section(
+            self, dashboard_service, batch_service):
+        dashboard_service.return_value.dashboard.return_value = self.dashboard
+        batch_service.return_value.latest.return_value = {
+            "at": "2026-08-24T12:00:00+00:00",
+            "prepared": [
+                {"task_id": "GKT-PREPARED", "recommendation": "CREATE_NEW_ARTICLE", "version": 2},
+            ],
+            "failed": [{"task_id": "GKT-FAILED", "error": "private diagnostic"}],
+        }
+
+        html = self.client.get("/curator").get_data(as_text=True)
+
+        self.assertIn('id="assisted-resolution-batch"', html)
+        self.assertIn("Review package for GKT-PREPARED", html)
+        self.assertIn(
+            '/curator/tasks/GKT-PREPARED?origin=assisted_resolution_batch&amp;'
+            'return_to=/curator%23assisted-resolution-batch#assisted-resolution', html,
+        )
+        self.assertIn("Packages not prepared", html)
+        self.assertIn("GKT-FAILED", html)
+        self.assertNotIn("private diagnostic", html)
+        self.assertNotIn("Review package for GKT-FAILED", html)
+
+    @patch("app.app.CuratorBatchService")
+    @patch("app.app.CuratorDashboardService")
+    def test_dashboard_keeps_empty_batch_state_unchanged(self, dashboard_service, batch_service):
+        dashboard_service.return_value.dashboard.return_value = self.dashboard
+        batch_service.return_value.latest.return_value = {}
+        html = self.client.get("/curator").get_data(as_text=True)
+        self.assertIn("Prepare First Assisted Resolution Batch", html)
+        self.assertNotIn("Prepared packages", html)
+        self.assertNotIn("Packages not prepared", html)
+
+    @patch("app.app.CuratorBatchService")
+    def test_batch_preparation_still_redirects_to_dashboard(self, batch_service):
+        response = self.client.post("/curator/assisted-resolution/first-batch")
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.headers["Location"], "/curator?status=batch_completed")
+        batch_service.return_value.prepare_first_batch.assert_called_once_with()
+
     @patch("app.app.CuratorTaskService")
     def test_reasoning_disposition_route_records_calibration(self, service):
         response = self.client.post(

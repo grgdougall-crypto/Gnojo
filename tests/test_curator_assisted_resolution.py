@@ -1,18 +1,44 @@
 import json
 import tempfile
 import unittest
+from html.parser import HTMLParser
 from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
 from unittest.mock import patch
 
 from app.repositories.knowledge_repository import ArticleNotFoundError, KnowledgeRepository
 from app.services.assisted_resolution_validator import AssistedResolutionValidator
 from app.services.curator_batch_service import CuratorBatchService
+from app.services.curator_dashboard_service import CuratorDashboardService
 from app.services.curator_resolution_service import CuratorResolutionService
 from app.services.knowledge_publication_service import KnowledgePublicationService
 from app.services.workflow_draft_service import WorkflowDraftService
 from app.app import app as flask_app
 from curator.memory import CuratorMemoryStore
 from curator.resolution import ResolutionPackageError, ResolutionPackageRepository
+
+
+class LinkCollector(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.links = []
+        self._href = None
+        self._text = []
+
+    def handle_starttag(self, tag, attrs):
+        if tag == "a":
+            self._href = dict(attrs).get("href", "")
+            self._text = []
+
+    def handle_data(self, data):
+        if self._href is not None:
+            self._text.append(data)
+
+    def handle_endtag(self, tag):
+        if tag == "a" and self._href is not None:
+            self.links.append(("".join(self._text).strip(), self._href))
+            self._href = None
+            self._text = []
 
 
 class CuratorAssistedResolutionTests(unittest.TestCase):
@@ -233,6 +259,161 @@ class CuratorAssistedResolutionTests(unittest.TestCase):
         service.lock_path.write_text("running", encoding="utf-8")
         with self.assertRaises(ResolutionPackageError):
             service.prepare_first_batch()
+
+    def test_real_batch_dashboard_link_opens_matching_package_and_rejects_stale_entry(self):
+        batch_service = CuratorBatchService(self.root)
+        batch = batch_service.prepare_first_batch()
+        resolution_service = CuratorResolutionService(self.root)
+        self.assertTrue(batch["prepared"])
+        for item in batch["prepared"]:
+            self.assertIsNotNone(resolution_service.get(item["task_id"]))
+
+        latest_path = self.root / "curation_memory" / "resolution_batches" / "latest.json"
+        latest = json.loads(latest_path.read_text(encoding="utf-8"))
+        latest["prepared"].append({
+            "task_id": "GKT-STALE", "recommendation": "CREATE_NEW_ARTICLE", "version": 1,
+        })
+        latest_path.write_text(json.dumps(latest, indent=2) + "\n", encoding="utf-8")
+
+        report = {
+            "run_id": "RUN-TEST", "completed_at": "2026-08-24T12:00:00+00:00",
+            "summary": {"findings": 10, "findings_by_classification": {"defect": 0}},
+            "knowledge_debt": {"total": 10, "trend": "stable"},
+            "knowledge_health": {"overall_score": 90, "trend": "stable", "dimensions": {}},
+            "lessons_learned": {"lessons": []},
+        }
+        report_path = self.root / "curation_runs" / "RUN-TEST" / "audit_results.json"
+        report_path.parent.mkdir(parents=True)
+        report_path.write_text(json.dumps(report), encoding="utf-8")
+
+        projected = batch_service.latest()
+        self.assertEqual({item["task_id"] for item in projected["unavailable"]}, {"GKT-STALE"})
+        first_task_id = projected["prepared"][0]["task_id"]
+        tracked = [
+            self.root / "curation_memory" / "memory.json",
+            latest_path,
+            *sorted((self.root / "curation_memory" / "resolution_packages").glob("*.json")),
+            *sorted((self.root / "knowledge_base").rglob("*.json")),
+            *sorted((self.root / "app" / "workflow_drafts").glob("*.json")),
+        ]
+        before = {path: path.read_bytes() for path in tracked}
+
+        flask_app.config.update(TESTING=True)
+        with patch("app.app.CuratorBatchService", return_value=batch_service), \
+             patch("app.app.CuratorDashboardService",
+                   return_value=CuratorDashboardService(self.root)), \
+             patch("app.app.CuratorTaskService") as task_service_class, \
+             patch("app.app.CuratorResolutionService", return_value=resolution_service), \
+             patch("app.app.CuratorConfusingStepImprovementService.get", return_value=None):
+            from app.services.curator_task_service import CuratorTaskService
+            task_service_class.return_value = CuratorTaskService(self.root)
+            task_service_class.OWNERS = CuratorTaskService.OWNERS
+            task_service_class.PRIORITIES = CuratorTaskService.PRIORITIES
+            with flask_app.test_client() as client:
+                dashboard_response = client.get("/curator")
+                parser = LinkCollector()
+                parser.feed(dashboard_response.get_data(as_text=True))
+                prepared_links = {
+                    text.removeprefix("Review package for "): href
+                    for text, href in parser.links if text.startswith("Review package for GKT-")
+                }
+                task_links = [href for _, href in parser.links
+                              if href.startswith(f"/curator/tasks/{first_task_id}?")]
+
+                self.assertEqual(set(prepared_links), {
+                    item["task_id"] for item in projected["prepared"]
+                })
+                self.assertNotIn("GKT-STALE", prepared_links)
+                self.assertIn("GKT-STALE", dashboard_response.get_data(as_text=True))
+                self.assertIn("prepared package is no longer available",
+                              dashboard_response.get_data(as_text=True))
+                self.assertEqual(len(task_links), 2)
+                self.assertNotEqual(task_links[0], task_links[1])
+
+                href = prepared_links[first_task_id]
+                parsed = urlsplit(href)
+                query = parse_qs(parsed.query)
+                self.assertEqual(parsed.path, f"/curator/tasks/{first_task_id}")
+                self.assertEqual(query["origin"], ["assisted_resolution_batch"])
+                self.assertEqual(query["return_to"], ["/curator#assisted-resolution-batch"])
+                self.assertEqual(parsed.fragment, "assisted-resolution")
+                detail = client.get(parsed.path + "?" + parsed.query)
+
+        self.assertEqual(detail.status_code, 200)
+        package = resolution_service.get(first_task_id)
+        self.assertIn(b"Resolution Package", detail.data)
+        self.assertIn(package["proposed_article_title"].encode(), detail.data)
+        self.assertIn(b"Return to Assisted Resolution Batch", detail.data)
+        self.assertIn(b'href="/curator#assisted-resolution-batch"', detail.data)
+        self.assertEqual({path: path.read_bytes() for path in tracked}, before)
+
+    def test_prepared_package_page_preserves_batch_origin_without_mutation(self):
+        service = CuratorResolutionService(self.root)
+        package = service.prepare("GKT-TEST0")
+        package_path = self.root / "curation_memory" / "resolution_packages" / "GKT-TEST0.json"
+        memory_path = self.root / "curation_memory" / "memory.json"
+        before_package = package_path.read_bytes()
+        before_memory = memory_path.read_bytes()
+        task = {
+            "task_id": "GKT-TEST0", "status": "open", "title": "Article opportunity",
+            "finding_type": "article_candidate", "content_type": "workflow",
+            "content_identifier": "test_workflow:step_one", "evidence": [],
+            "classification": "Opportunity", "priority": "Medium", "owner": "Curator",
+            "knowledge_debt_score": 1, "confidence": "high", "explanation": "Review.",
+            "navigation": {"url": "/curator", "label": "Open affected content"},
+            "guidance": {"why": "Review.", "impact": "Opportunity.",
+                         "certainty": "Human decision."},
+            "recommended_action": "Review.", "original_evidence": [], "current_content": None,
+            "current_relationship_evidence": None, "relationship_repair_proposal": None,
+            "current_verification": None, "history": [], "related_workflows": [],
+            "related_articles": [], "related_commands": [], "related_scripts": [],
+            "related_tasks": [], "live_related_knowledge": {"articles": []},
+            "future_automated_fix": False, "affected_fingerprint": "",
+        }
+        flask_app.config.update(TESTING=True)
+        with patch("app.app.CuratorTaskService.get", return_value=task), \
+             patch("app.app.CuratorResolutionService", return_value=service), \
+             patch("app.app.CuratorConfusingStepImprovementService.get", return_value=None):
+            with flask_app.test_client() as client:
+                response = client.get(
+                    "/curator/tasks/GKT-TEST0?origin=assisted_resolution_batch"
+                    "&return_to=/curator%23assisted-resolution-batch#assisted-resolution"
+                )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Resolution Package", response.data)
+        self.assertIn(package["proposed_article_title"].encode(), response.data)
+        self.assertIn(b"Return to Assisted Resolution Batch", response.data)
+        self.assertIn(b'href="/curator#assisted-resolution-batch"', response.data)
+        self.assertEqual(package_path.read_bytes(), before_package)
+        self.assertEqual(memory_path.read_bytes(), before_memory)
+
+    def test_existing_assisted_resolution_actions_preserve_batch_origin(self):
+        service = CuratorResolutionService(self.root)
+        service.prepare("GKT-TEST0")
+        flask_app.config.update(TESTING=True)
+        context = {
+            "origin": "assisted_resolution_batch",
+            "return_to": "/curator#assisted-resolution-batch",
+        }
+        with patch("app.app.CuratorResolutionService", return_value=service):
+            with flask_app.test_client() as client:
+                refreshed = client.post(
+                    "/curator/tasks/GKT-TEST0/assisted-resolution",
+                    data={**context, "action": "prepare"},
+                )
+                created = client.post(
+                    "/curator/tasks/GKT-TEST0/assisted-resolution",
+                    data={**context, "action": "create_draft", "confirmed": "yes"},
+                )
+
+        self.assertEqual(refreshed.status_code, 302)
+        self.assertIn("origin=assisted_resolution_batch", refreshed.headers["Location"])
+        self.assertIn("return_to=/curator%23assisted-resolution-batch", refreshed.headers["Location"])
+        self.assertEqual(created.status_code, 302)
+        self.assertIn("/curator/tasks/GKT-TEST0/assisted-resolution/article?", created.headers["Location"])
+        self.assertIn("origin=assisted_resolution_batch", created.headers["Location"])
+        self.assertIn("return_to=/curator%23assisted-resolution-batch", created.headers["Location"])
 
     def test_validator_rejects_duplicate_id_and_missing_metadata(self):
         errors = AssistedResolutionValidator().validate({"proposed_article_id": "Bad ID"}, {"Bad ID"})

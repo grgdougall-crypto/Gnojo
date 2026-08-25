@@ -31,6 +31,51 @@ class CuratorFixWizardTests(unittest.TestCase):
         return {"counts": counts}
 
     @staticmethod
+    def empty_integrity_report():
+        return {
+            "broken_relationships": [], "duplicate_groups": [],
+            "inventory_mismatches": [], "orphaned_articles": [],
+            "missing_review_metadata": [], "counts": {},
+        }
+
+    def structural_task(self, **overrides):
+        task = {
+            "task_id": "GKT-STRUCTURAL", "finding_id": "CUR-STRUCTURAL",
+            "status": "open", "classification": "Risk",
+            "curator_rule": "CUR-WR-TERMINAL-EVIDENCE",
+            "finding_type": "workflow_reasoning_evidence_gap",
+            "content_type": "workflow_node",
+            "content_identifier": "network_diagnostics:dns_problem",
+            "priority": "Medium", "confidence": "high", "knowledge_debt_score": 11,
+            "title": "Terminal diagnosis may exceed collected evidence",
+            "recommended_action": "Review the governed structural repair.",
+            "structured_evidence": {
+                "requirement": "dns_resolution", "terminal": "dns_problem",
+                "missing": ["external_ip_reachability"], "affected_path_count": 1,
+                "affected_paths": [{
+                    "nodes": ["inspect_ip_configuration", "check_ip_address", "test_gateway",
+                              "gateway_result", "test_dns", "dns_result", "dns_problem"],
+                    "missing": ["external_ip_reachability"],
+                    "predecessor_edge": {
+                        "source": "dns_result", "route": "No", "destination": "dns_problem",
+                    },
+                }],
+                "predecessor_edges": [{
+                    "source": "dns_result", "route": "No", "destination": "dns_problem",
+                }],
+            },
+        }
+        task.update(overrides)
+        return task
+
+    def install_structural_draft(self):
+        destination = self.root / "app/workflow_drafts/network_diagnostics.json"
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        source = Path(__file__).resolve().parents[1] / "app/workflow_drafts/network_diagnostics.json"
+        destination.write_bytes(source.read_bytes())
+        return destination
+
+    @staticmethod
     def safe_relink(source="app/workflow_drafts/test.json"):
         return {"item_id": "FIX-000000000001", "finding_type": "broken_relationship",
                 "classification": "RELINK_EXISTING", "safe_automatic": True, "reversible": True,
@@ -464,6 +509,93 @@ class CuratorFixWizardTests(unittest.TestCase):
         self.assertEqual(queue[0]["confidence"], 65.0)
         self.assertEqual(queue[1]["confidence"], 90.0)
         self.assertTrue(all(not item["safe_automatic"] for item in queue))
+
+    def test_supervised_structural_risk_is_admitted_without_reclassification(self):
+        self.install_structural_draft()
+        store = CuratorMemoryStore(self.root / "curation_memory")
+        state = store.load()
+        task = self.structural_task()
+        state["tasks"] = {task["task_id"]: task}
+        store.save(state)
+        before = store.load()["tasks"][task["task_id"]]
+
+        queue = CuratorRepairPlanner(self.root).build(self.empty_integrity_report())
+
+        self.assertEqual(len(queue), 1)
+        item = queue[0]
+        self.assertEqual(item["finding_type"], "workflow_reasoning_evidence_gap")
+        self.assertEqual(item["classification"], "STRUCTURAL_REVIEW_REQUIRED")
+        self.assertEqual(item["affected_content"]["task_id"], task["task_id"])
+        self.assertEqual(item["affected_content"]["task_classification"], "Risk")
+        self.assertTrue(item["affected_content"]["structural_preview_eligible"])
+        self.assertEqual(item["affected_content"]["structural_adapter_id"],
+                         "missing_required_upstream_evidence")
+        self.assertFalse(item["safe_automatic"])
+        self.assertEqual(store.load()["tasks"][task["task_id"]], before)
+
+    def test_preview_ineligible_and_unsupported_structural_risks_remain_excluded(self):
+        self.install_structural_draft()
+        missing_spec = self.structural_task(task_id="GKT-NO-SPEC", finding_id="CUR-NO-SPEC")
+        missing_spec["structured_evidence"]["missing"] = ["unapproved_evidence"]
+        unsupported = self.structural_task(
+            task_id="GKT-UNSUPPORTED", finding_id="CUR-UNSUPPORTED",
+            curator_rule="CUR-UNSUPPORTED", finding_type="unsupported_risk",
+        )
+        store = CuratorMemoryStore(self.root / "curation_memory")
+        state = store.load()
+        state["tasks"] = {
+            missing_spec["task_id"]: missing_spec,
+            unsupported["task_id"]: unsupported,
+        }
+        store.save(state)
+
+        queue = CuratorRepairPlanner(self.root).build(self.empty_integrity_report())
+
+        self.assertEqual(queue, [])
+
+    def test_session_reconciliation_adds_new_structural_item_without_task_decisions(self):
+        self.install_structural_draft()
+        store = CuratorMemoryStore(self.root / "curation_memory")
+        state = store.load()
+        task = self.structural_task()
+        state["tasks"] = {task["task_id"]: task}
+        store.save(state)
+        task_memory_before = (self.root / "curation_memory/memory.json").read_bytes()
+        sessions = CuratorFixSessionService(self.root)
+        session = sessions.create(
+            started_by="Reviewer", originating_audit_id=None,
+            queue=[], baseline=self.empty_integrity_report(),
+        )
+        reconciler = CuratorSessionReconciliationService(self.root)
+        reconciler.integrity.report = Mock(return_value=self.empty_integrity_report())
+
+        reconciled = reconciler.reconcile(session["session_id"], trigger="test")
+
+        matches = [
+            item for item in reconciled["repair_queue"]
+            if item.get("affected_content", {}).get("task_id") == task["task_id"]
+        ]
+        self.assertEqual(len(matches), 1)
+        self.assertEqual(matches[0]["status"], "open")
+        self.assertTrue(matches[0]["introduced_after_start"])
+        self.assertEqual(reconciled["outcomes"]["completed"], [])
+        self.assertEqual(reconciled["outcomes"]["deferred"], [])
+        self.assertEqual(reconciled["outcomes"]["skipped"], [])
+        self.assertEqual(reconciled["outcomes"]["rejected"], [])
+        self.assertEqual((self.root / "curation_memory/memory.json").read_bytes(),
+                         task_memory_before)
+        current = store.load()["tasks"][task["task_id"]]
+        self.assertEqual(current["status"], "open")
+        self.assertEqual(current["classification"], "Risk")
+        self.assertEqual(current["priority"], "Medium")
+        self.assertNotIn("owner", current)
+
+    def test_structural_queue_admission_does_not_enable_generic_execution(self):
+        registration = CuratorRepairPlanner(self.root).structural_registry.lookup(
+            "CUR-WR-TERMINAL-EVIDENCE", "workflow_reasoning_evidence_gap"
+        )
+        self.assertFalse(registration.executable)
+        self.assertTrue(registration.supervised_apply_available)
 
     def test_current_repository_does_not_mark_unresolved_relationships_safe(self):
         workflow_path = self.root / "app" / "workflow_drafts" / "broken.json"

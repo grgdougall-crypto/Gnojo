@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import Any
 
 from app.services.knowledge_integrity_service import KnowledgeIntegrityService
+from app.services.curator_repair_adapter_registry import CuratorRepairAdapterRegistry
+from app.services.curator_workflow_lifecycle_service import CuratorWorkflowLifecycleService
 from curator.memory import CuratorMemoryError, CuratorMemoryStore
 
 
@@ -18,6 +20,7 @@ class CuratorRepairPlanner:
         "inventory_mismatch": 30,
         "orphaned_article": 40,
         "safety_risk": 50,
+        "workflow_reasoning_evidence_gap": 55,
         "legacy_provenance": 60,
         "editorial_opportunity": 70,
         "recommendation": 80,
@@ -26,6 +29,8 @@ class CuratorRepairPlanner:
     def __init__(self, repository_root: Path | None = None):
         self.root = (repository_root or Path(__file__).resolve().parents[2]).resolve()
         self.integrity = KnowledgeIntegrityService(self.root)
+        self.structural_registry = CuratorRepairAdapterRegistry()
+        self.workflow_lifecycle = CuratorWorkflowLifecycleService(self.root)
 
     def build(self, report: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         report = report or self.integrity.report()
@@ -82,7 +87,14 @@ class CuratorRepairPlanner:
                 continue
             if identifier.casefold() in existing_ids and classification == "Defect":
                 continue
-            if classification == "Risk" and finding_type == "missing_safety_guidance":
+            structural_preview = self._supervised_structural_preview(task)
+            if structural_preview:
+                wizard_type, wizard_class = finding_type, "STRUCTURAL_REVIEW_REQUIRED"
+                action = str(
+                    task.get("recommended_action")
+                    or "Review the exact governed structural repair before approving any draft change."
+                )
+            elif classification == "Risk" and finding_type == "missing_safety_guidance":
                 wizard_type, wizard_class, action = (
                     "safety_risk", "SAFETY_GUIDANCE_REVIEW",
                     "Review Curator's proportional safety guidance. No wording changes automatically.",
@@ -103,8 +115,11 @@ class CuratorRepairPlanner:
                 "content_type": task.get("content_type"), "evidence": task.get("evidence"),
                 "current_risk_level": task.get("safety_level"),
                 "recommended_safety_level": task.get("recommended_safety_level"),
+                "task_classification": classification,
                 "why": task.get("explanation"), "suggested_warning": task.get("suggested_warning"),
                 "related_content": task.get("related_content"),
+                "structural_adapter_id": structural_preview.get("adapter_id") if structural_preview else None,
+                "structural_preview_eligible": bool(structural_preview),
             }
             results.append(self._item(
                 wizard_type, wizard_class, evidence,
@@ -113,6 +128,29 @@ class CuratorRepairPlanner:
                 confidence=self._confidence_percent(task.get("confidence")), effort="Human review", safe=False,
             ))
         return results
+
+    def _supervised_structural_preview(self, task: dict[str, Any]) -> dict[str, Any] | None:
+        """Use the trusted registry projection; the planner grants no repair authority."""
+        if str(task.get("status") or "").casefold() not in {"open", "in_progress"}:
+            return None
+        registration = self.structural_registry.lookup(
+            task.get("curator_rule", ""), task.get("finding_type", "")
+        )
+        if (not registration or not registration.structural or registration.executable
+                or not registration.supervised_apply_available):
+            return None
+        workflow_id, separator, _ = str(task.get("content_identifier") or "").partition(":")
+        if not separator or not workflow_id:
+            return None
+        target = self.workflow_lifecycle.resolve(workflow_id)
+        if not target or target.lifecycle != "draft":
+            return None
+        preview = self.structural_registry.preview(task, target.workflow)
+        if (not preview.get("available") or not preview.get("preview_eligible")
+                or not preview.get("supervised_apply_available")
+                or preview.get("execution_eligible")):
+            return None
+        return preview
 
     @staticmethod
     def _confidence_percent(value: Any) -> float:

@@ -295,6 +295,7 @@ class CuratorStructuralRepairPreviewTests(unittest.TestCase):
         result = registry.preview(task, self.workflow())
         self.assertEqual(eligibility["status"], "preview_candidate")
         self.assertTrue(eligibility["capability_eligible"])
+        self.assertTrue(eligibility["supervised_apply_available"])
         self.assertFalse(result["available"])
         self.assertFalse(result["preview_eligible"])
         self.assertFalse(result["execution_eligible"])

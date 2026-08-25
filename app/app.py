@@ -1680,6 +1680,11 @@ def knowledge_draft_generation_reject(package_id):
 
 @app.route("/curator/tasks/<task_id>")
 def curator_task_detail(task_id):
+    from app.services.curator_structural_repair_review_service import (
+        CuratorStructuralRepairReviewService,
+    )
+
+    repository_root = _structural_repository_root()
     task_navigation = CuratorTaskNavigationService.resolve(
         request.args.get("origin", ""), request.args.get("return_to", ""), task_id=task_id
     )
@@ -1690,10 +1695,12 @@ def curator_task_detail(task_id):
     try:
         if request.args.get("verify") == "1":
             CuratorTargetedVerificationService().verify(task_id)
-        task = CuratorTaskService().get(task_id, session_id=session_id,
-                                        return_to=return_to, category=category, origin=origin)
+        task = CuratorTaskService(repository_root).get(
+            task_id, session_id=session_id,
+            return_to=return_to, category=category, origin=origin,
+        )
         session_task_actionable = (
-            CuratorFixSessionService().task_action_eligible(session_id, task_id)
+            CuratorFixSessionService(repository_root).task_action_eligible(session_id, task_id)
             if session_id else False
         )
     except (CuratorMemoryError, CuratorFixSessionError):
@@ -1718,12 +1725,15 @@ def curator_task_detail(task_id):
         "curator_task_detail.html", task=task,
         owners=CuratorTaskService.OWNERS, priorities=CuratorTaskService.PRIORITIES,
         status_kind=kind, status_message=message,
-        resolution_package=CuratorResolutionService().get(task_id),
-        confusing_step_proposal=CuratorConfusingStepImprovementService().get(task_id),
+        resolution_package=CuratorResolutionService(repository_root).get(task_id),
+        confusing_step_proposal=CuratorConfusingStepImprovementService(repository_root).get(task_id),
         verification_presentation=CuratorVerificationPresentationService.present(
             task.get("current_verification") if isinstance(task, dict) else task.current_verification
         ),
         task_review=CuratorTaskReviewPresentationService.present(task),
+        structural_repair_state=CuratorStructuralRepairReviewService(
+            repository_root
+        ).applied_state(task_id),
         session_task_actionable=session_task_actionable,
         return_to=return_to, curator_session=session_id, category=category,
         task_navigation=task_navigation, task_origin=origin,
@@ -1982,6 +1992,228 @@ def curator_assisted_resolution_batch():
     except ResolutionPackageError:
         status = "batch_failed"
     return redirect(url_for("curator_dashboard", status=status))
+
+
+def _structural_repository_root() -> Path:
+    configured = app.config.get("STRUCTURAL_REPAIR_REPOSITORY_ROOT")
+    return Path(configured).resolve() if configured else Path(app.root_path).parent.resolve()
+
+
+def _structural_csrf_token() -> str:
+    token = session.get("structural_repair_csrf")
+    if not isinstance(token, str) or len(token) < 32:
+        token = secrets.token_urlsafe(32)
+        session["structural_repair_csrf"] = token
+    return token
+
+
+def _require_structural_csrf() -> None:
+    supplied = str(request.form.get("csrf_token") or "")
+    expected = str(session.get("structural_repair_csrf") or "")
+    if not supplied or not expected or not secrets.compare_digest(supplied, expected):
+        abort(400)
+
+
+def _remember_structural_preview(task_id: str, fix_session_id: str, preview_token: str) -> None:
+    reviewed = dict(session.get("structural_repair_previews") or {})
+    reviewed[f"{fix_session_id}:{task_id}"] = str(preview_token or "")
+    session["structural_repair_previews"] = reviewed
+
+
+def _require_reviewed_structural_preview(task_id: str, fix_session_id: str,
+                                         preview_token: str) -> None:
+    reviewed = session.get("structural_repair_previews") or {}
+    expected = str(reviewed.get(f"{fix_session_id}:{task_id}") or "")
+    if not expected or not secrets.compare_digest(expected, str(preview_token or "")):
+        raise ValueError("The reviewed structural preview is stale.")
+
+
+def _structural_navigation(task_id: str, fix_session_id: str, item_id: str,
+                           origin: str, return_to: str):
+    navigation = CuratorTaskNavigationService.resolve(origin, return_to, task_id=task_id)
+    expected_prefix = f"/curator/fix/{fix_session_id}"
+    if navigation.origin != "maintenance" or not (
+            navigation.return_url == expected_prefix
+            or navigation.return_url.startswith(expected_prefix + "?")):
+        navigation = CuratorTaskNavigationService.resolve(
+            "maintenance",
+            url_for("curator_fix_session", session_id=fix_session_id, item=item_id),
+            task_id=task_id,
+        )
+    return navigation
+
+
+def _structural_failure(code: str) -> dict[str, str | bool]:
+    messages = {
+        "approval_missing": "This repair approval is unavailable. Generate and review a new preview.",
+        "approval_invalid": "This repair can no longer be applied from the preview you approved. Generate and review a new preview.",
+        "approval_expired": "This repair approval expired. Generate and review a new preview.",
+        "preview_unknown": "The governed preview or evidence specification changed. Generate and review a new preview.",
+        "plan_invalid": "The proposed workflow structure no longer matches the approved repair plan.",
+        "stale_workflow": "The editable workflow changed after approval. Generate and review a new preview.",
+        "lock_unavailable": "The editable draft is currently being edited. Retry while this approval remains valid.",
+        "validation_failed_prewrite": "The repair failed validation before the draft was changed.",
+        "persistence_failed": "The editable draft could not be updated. No successful application was recorded.",
+        "validation_failed_postwrite": "The persisted repair failed verification.",
+        "rollback_succeeded": "Application failed, but the editable draft was restored exactly. Application provenance may require administrator review.",
+        "rollback_failed": "Rollback could not restore the prior draft. Manual intervention is required before further repair attempts.",
+        "already_applied": "This approved repair was already applied; no second workflow write occurred.",
+        "context_invalid": "The Fix Wizard task context is no longer actionable.",
+        "preview_unavailable": "A governed structural repair preview is not currently available.",
+    }
+    return {
+        "code": code,
+        "message": messages.get(code, "The supervised structural repair could not be completed safely."),
+        "retry_allowed": code == "lock_unavailable",
+        "manual_intervention": code == "rollback_failed",
+        "restored": code == "rollback_succeeded",
+    }
+
+
+@app.get("/curator/tasks/<task_id>/structural-repair-preview")
+def curator_structural_repair_preview(task_id):
+    from app.services.curator_structural_repair_review_service import (
+        CuratorStructuralRepairReviewService,
+        StructuralRepairReviewError,
+    )
+
+    fix_session_id = request.args.get("curator_session", "")
+    try:
+        review = CuratorStructuralRepairReviewService(
+            _structural_repository_root()
+        ).preview(task_id, fix_session_id)
+    except StructuralRepairReviewError:
+        abort(404)
+    navigation = _structural_navigation(
+        task_id, fix_session_id, review["item"]["item_id"],
+        request.args.get("origin", ""), request.args.get("return_to", ""),
+    )
+    _remember_structural_preview(
+        task_id, fix_session_id, review["preview"].get("preview_token", "")
+    )
+    return render_template(
+        "curator_structural_repair_preview.html", review=review,
+        task_navigation=navigation, csrf_token=_structural_csrf_token(),
+    )
+
+
+@app.post("/curator/tasks/<task_id>/structural-repair-approve")
+def curator_structural_repair_approve(task_id):
+    from app.services.curator_structural_repair_approval_service import (
+        CuratorStructuralRepairApprovalService,
+    )
+    from app.services.curator_structural_repair_review_service import (
+        CuratorStructuralRepairReviewService,
+        StructuralRepairReviewError,
+    )
+
+    _require_structural_csrf()
+    if request.form.get("approved") != "yes":
+        abort(400)
+    root = _structural_repository_root()
+    fix_session_id = request.form.get("curator_session", "")
+    review = None
+    try:
+        review = CuratorStructuralRepairReviewService(root).preview(task_id, fix_session_id)
+        _require_reviewed_structural_preview(
+            task_id, fix_session_id, review["preview"].get("preview_token", "")
+        )
+        approval = CuratorStructuralRepairApprovalService(root).issue(
+            task_id=task_id,
+            workflow_filename=review["workflow_filename"],
+            reviewer_identity=review["fix_session"]["started_by"],
+            fix_session_id=fix_session_id,
+        )
+        reviewed = dict(session.get("structural_repair_previews") or {})
+        reviewed.pop(f"{fix_session_id}:{task_id}", None)
+        session["structural_repair_previews"] = reviewed
+    except (StructuralRepairReviewError, ValueError, OSError):
+        failure = _structural_failure("preview_unknown")
+        navigation = None
+        if review:
+            navigation = _structural_navigation(
+                task_id, fix_session_id, review["item"]["item_id"],
+                request.form.get("origin", ""), request.form.get("return_to", ""),
+            )
+        return render_template(
+            "curator_structural_repair_result.html", result=None, failure=failure,
+            approval=None, task_id=task_id, fix_session_id=fix_session_id,
+            task_navigation=navigation, csrf_token=_structural_csrf_token(),
+        ), 409
+    return redirect(url_for(
+        "curator_structural_repair_approved", approval_id=approval.approval_id,
+        curator_session=fix_session_id, origin=request.form.get("origin", ""),
+        return_to=request.form.get("return_to", ""),
+    ))
+
+
+@app.get("/curator/structural-repairs/<approval_id>")
+def curator_structural_repair_approved(approval_id):
+    from app.services.curator_structural_repair_review_service import (
+        CuratorStructuralRepairReviewService,
+        StructuralRepairReviewError,
+    )
+
+    fix_session_id = request.args.get("curator_session", "")
+    try:
+        review = CuratorStructuralRepairReviewService(
+            _structural_repository_root()
+        ).approved(approval_id, fix_session_id)
+    except StructuralRepairReviewError:
+        abort(404)
+    navigation = _structural_navigation(
+        review["task"]["task_id"], fix_session_id, review["item"]["item_id"],
+        request.args.get("origin", ""), request.args.get("return_to", ""),
+    )
+    return render_template(
+        "curator_structural_repair_approved.html", review=review,
+        task_navigation=navigation, csrf_token=_structural_csrf_token(),
+    )
+
+
+@app.post("/curator/structural-repairs/<approval_id>/apply")
+def curator_structural_repair_apply(approval_id):
+    from app.services.curator_structural_repair_apply_service import (
+        CuratorStructuralRepairApplyService,
+        StructuralRepairApplyError,
+    )
+    from app.services.curator_structural_repair_review_service import (
+        CuratorStructuralRepairReviewService,
+        StructuralRepairReviewError,
+    )
+
+    _require_structural_csrf()
+    root = _structural_repository_root()
+    fix_session_id = request.form.get("curator_session", "")
+    review = None
+    try:
+        review = CuratorStructuralRepairReviewService(root).approved(approval_id, fix_session_id)
+        result = CuratorStructuralRepairApplyService(root).apply(
+            approval_id,
+            reviewer_identity=review["fix_session"]["started_by"],
+            fix_session_id=fix_session_id,
+        )
+        failure = None
+    except StructuralRepairReviewError as error:
+        result, failure = None, _structural_failure(error.code)
+    except StructuralRepairApplyError as error:
+        result, failure = None, _structural_failure(error.code)
+    navigation = None
+    task_id = review["task"]["task_id"] if review else ""
+    if review:
+        navigation = _structural_navigation(
+            task_id, fix_session_id, review["item"]["item_id"],
+            request.form.get("origin", ""), request.form.get("return_to", ""),
+        )
+    status_code = 200 if result else (409 if failure and failure["retry_allowed"] else 422)
+    return render_template(
+        "curator_structural_repair_result.html", result=result, failure=failure,
+        approval=review["approval"] if review else None, task_id=task_id,
+        fix_session_id=fix_session_id, task_navigation=navigation,
+        route_changes=(CuratorStructuralRepairReviewService.route_changes(review["preview"])
+                       if result and review else ()),
+        csrf_token=_structural_csrf_token(),
+    ), status_code
 
 
 @app.route("/curator/tasks/<task_id>/repair-preview", methods=["GET", "POST"])

@@ -14,6 +14,7 @@ class RepairAdapterRegistration:
     executable: bool
     structural: bool = False
     preview_enabled: bool | None = None
+    supervised_apply_available: bool = False
 
     @property
     def can_preview(self) -> bool:
@@ -38,6 +39,7 @@ class CuratorRepairAdapterRegistry:
             executable=False,
             structural=True,
             preview_enabled=True,
+            supervised_apply_available=True,
         ),
     )
 
@@ -140,5 +142,8 @@ class CuratorRepairAdapterRegistry:
             "adapter_id": registration.adapter_id if registration else None,
             "structural": bool(registration and registration.structural),
             "execution_eligible": bool(registration and registration.executable),
+            "supervised_apply_available": bool(
+                registration and registration.supervised_apply_available
+            ),
             **extra,
         }

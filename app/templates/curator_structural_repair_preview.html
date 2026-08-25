@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Repair Preview | {{ review.task.task_id }} | Gnojo{% endblock %}
+{% block content %}
+<main class="container curator-task-page" aria-labelledby="structuralPreviewTitle">
+  {% with curator_active='maintenance' %}{% include 'partials/_curator_nav.html' %}{% endwith %}
+  <nav class="curator-breadcrumb" aria-label="Repair navigation"><a href="{{ url_for('curator_task_detail', task_id=review.task.task_id, curator_session=review.fix_session.session_id, origin=task_navigation.origin, return_to=task_navigation.return_url) }}"><i class="bi bi-arrow-left" aria-hidden="true"></i> Return to Knowledge Task</a></nav>
+  <header class="curator-task-heading"><div><span class="section-eyebrow">Fix Wizard · Repair Preview</span><h1 id="structuralPreviewTitle">Review Structural Repair</h1><p>This authoritative preview is read-only. Reviewing it does not change the editable workflow draft.</p></div></header>
+
+  {% set preview = review.preview %}
+  <section class="quality-section" aria-labelledby="targetTitle">
+    <h2 id="targetTitle">Target</h2>
+    <dl class="curator-definition-list">
+      <div><dt>Workflow</dt><dd>{{ review.workflow_name }} (<code>{{ review.workflow_id }}</code>)</dd></div>
+      <div><dt>Editable draft</dt><dd><code>{{ review.workflow_filename }}</code></dd></div>
+      <div><dt>Knowledge Task</dt><dd><code>{{ review.task.task_id }}</code> · {{ review.task.title }}</dd></div>
+      <div><dt>Finding</dt><dd><code>{{ review.task.finding_id }}</code></dd></div>
+      <div><dt>Evidence specification</dt><dd><code>{{ preview.specification.specification_id }}</code> · Version {{ preview.specification.version }}</dd></div>
+    </dl>
+  </section>
+
+  <div class="row g-4">
+    <div class="col-lg-6"><section class="quality-section h-100"><h2>Current structure</h2><ul>{% for edge in preview.proposed.changed_predecessor_edges %}<li><code>{{ edge.before.source }} / {{ edge.before.route }} → {{ edge.before.destination }}</code></li>{% endfor %}</ul></section></div>
+    <div class="col-lg-6"><section class="quality-section h-100"><h2>Proposed structure</h2><ul>{% for edge in preview.proposed.changed_predecessor_edges %}<li><code>{{ edge.after.source }} / {{ edge.after.route }} → {{ edge.after.destination }}</code></li>{% endfor %}{% for edge in preview.proposed.new_edges %}<li><code>{{ edge.source }}{% if edge.route != 'next' %} / {{ edge.route }}{% endif %} → {{ edge.destination }}</code></li>{% endfor %}</ul></section></div>
+  </div>
+
+  <section class="quality-section mt-4" aria-labelledby="nodesTitle"><h2 id="nodesTitle">Nodes being added</h2><div class="d-grid gap-3">{% for node in preview.proposed.inserted_nodes %}<article class="integrity-record"><h3 class="h5">{{ node.content.title or node.content.question or node.node_id }}</h3><p><code>{{ node.node_id }}</code> · {{ node.content.type }}</p><p>{{ node.content.instruction or node.content.question or node.content.message }}</p></article>{% endfor %}</div></section>
+
+  <section class="quality-section mt-4" aria-labelledby="preservedTitle"><h2 id="preservedTitle">Preserved content</h2><p>Only the approved predecessor route and the listed new nodes and routes will change. {{ preview.proposed.preserved_existing_nodes|length }} existing nodes and all unaffected routes remain unchanged.</p><details><summary>View unaffected routes</summary><ul>{% for edge in preview.proposed.unaffected_routes %}<li><code>{{ edge.source }} / {{ edge.route }} → {{ edge.destination }}</code></li>{% endfor %}</ul></details></section>
+
+  <section class="quality-section mt-4" aria-labelledby="validationTitle"><h2 id="validationTitle">Simulated validation</h2><ul class="list-unstyled"><li>{{ '✓' if review.validation.schema_valid else '✕' }} Schema valid</li><li>{{ '✓' if review.validation.routes_resolved else '✕' }} Routes resolved</li><li>{{ '✓' if review.validation.no_cycles else '✕' }} No cycles</li><li>{{ '✓' if review.validation.all_paths_terminate else '✕' }} All paths terminate</li><li>{{ '✓' if review.validation.reasoning_defect_corrected else '✕' }} Original reasoning defect corrected</li><li>{{ '✓' if review.validation.no_new_reasoning_findings else '✕' }} No new reasoning finding introduced</li></ul>{% if not review.validation.passed %}<div class="alert alert-danger" role="alert">This preview is not eligible for approval because simulated validation did not pass.</div>{% endif %}</section>
+
+  {% if review.validation.passed %}<section class="quality-section mt-4" aria-labelledby="approvalTitle"><h2 id="approvalTitle">Human approval</h2><form method="post" action="{{ url_for('curator_structural_repair_approve', task_id=review.task.task_id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="curator_session" value="{{ review.fix_session.session_id }}"><input type="hidden" name="origin" value="{{ task_navigation.origin }}"><input type="hidden" name="return_to" value="{{ task_navigation.return_url }}"><div class="form-check mb-3"><input class="form-check-input" id="approveStructuralRepair" name="approved" value="yes" type="checkbox" required><label class="form-check-label" for="approveStructuralRepair">I reviewed this repair preview and approve this exact proposed change.</label></div><button class="btn btn-primary" type="submit">Approve Repair</button><p class="form-text">Approval does not apply or publish the repair. A separate confirmation is required.</p></form></section>{% endif %}
+</main>
+{% endblock %}

@@ -40,10 +40,10 @@
     </section>
 
     <section class="quality-section" aria-labelledby="healthTitle">
-        <div class="quality-section__heading"><div><span class="section-eyebrow">Workflow health</span><h2 id="healthTitle">Library Overview</h2></div></div>
+        <div class="quality-section__heading"><div><span class="section-eyebrow">Workflow health</span><h2 id="healthTitle">Library Overview</h2><p>Knowledge and Learning are content-derived coverage measures. Solved and Clarity appear only after users submit runtime feedback.</p></div></div>
         <div class="quality-table-wrap">
             <table class="quality-table">
-                <thead><tr><th>Workflow</th><th>Usage</th><th>Solved</th><th>Clarity</th><th>Knowledge</th><th>Learning</th><th></th></tr></thead>
+                <thead><tr><th>Workflow</th><th>Usage</th><th>Solved</th><th>Clarity</th><th title="Percentage of instructional steps linked to supporting articles">Knowledge coverage</th><th title="Percentage of questions and instructions with specific help text">Learning coverage</th><th>Action</th></tr></thead>
                 <tbody>{% for workflow in report.workflows %}<tr>
                     <td><strong>{{ workflow.name }}</strong><span>{{ workflow.category }} · {{ workflow.platform }}</span></td>
                     <td>{{ workflow.sessions }} session{% if workflow.sessions != 1 %}s{% endif %}</td>
@@ -51,7 +51,7 @@
                     <td>{{ workflow.clarity ~ '/5' if workflow.clarity is not none else '—' }}</td>
                     <td><span class="coverage-value {% if workflow.knowledge_coverage < 25 %}coverage-value--low{% endif %}">{{ workflow.knowledge_coverage }}%</span></td>
                     <td><span class="coverage-value {% if workflow.learning_coverage < 50 %}coverage-value--low{% endif %}">{{ workflow.learning_coverage }}%</span></td>
-                    <td>{% if workflow.filename %}<a href="{{ url_for('workflow_editor', filename=workflow.filename, return_to=request.full_path.rstrip('?')) }}" aria-label="Open {{ workflow.name }} in Workflow Studio">Open</a>{% else %}<a href="{{ url_for('wizard', workflow=workflow.workflow_id, restart='1') }}" aria-label="Run {{ workflow.name }} workflow">Run</a>{% endif %}</td>
+                    <td>{% if workflow.filename %}<a href="{{ url_for('workflow_editor', filename=workflow.filename, return_to=request.full_path.rstrip('?')) }}" aria-label="Open {{ workflow.name }} in Workflow Studio">Open in Workflow Studio</a>{% else %}<a href="{{ url_for('wizard', workflow=workflow.workflow_id, restart='1') }}" aria-label="Run {{ workflow.name }} workflow">Run workflow</a>{% endif %}</td>
                 </tr>{% endfor %}</tbody>
             </table>
         </div>

@@ -189,7 +189,7 @@ class CuratorTaskLifecycleTests(unittest.TestCase):
                     follow_redirects=True)
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Add a resolution note", response.data)
-        self.assertIn(b"Return to Maintenance", response.data)
+        self.assertIn(b"Return to Fix Wizard", response.data)
 
     def test_successful_route_resolution_triggers_session_reconciliation_once(self):
         reconciler = Mock()

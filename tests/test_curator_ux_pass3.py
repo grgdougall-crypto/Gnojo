@@ -50,6 +50,16 @@ class CuratorUxPassThreeTests(unittest.TestCase):
             self.assertIn(f'value="{action}"', source)
         for required in ["curator_task_verify", "curator_task_action", "curator_task_repair_preview", "_curator_resolution_package.html", "return_to", "curator_session"]:
             self.assertIn(required, source)
+        self.assertIn("task.repair_eligibility is defined", source)
+        self.assertIn("Structural repair preview available", source)
+        self.assertIn("no structural repair has been applied", source)
+
+    def test_dashboard_distinguishes_broad_curator_defects_from_knowledge_integrity(self):
+        source = (TEMPLATES / "curator_dashboard.html").read_text(encoding="utf-8")
+        self.assertIn("Curator defects", source)
+        self.assertIn("Across all Curator rule families", source)
+        self.assertIn("Deterministic Knowledge Integrity", source)
+        self.assertIn("distinct from the broader Curator finding count", source)
 
     def test_every_targeted_verification_state_retains_specialized_presentation(self):
         states = [

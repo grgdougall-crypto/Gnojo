@@ -170,6 +170,10 @@ class ContentQualityPageTests(unittest.TestCase):
         self.assertIn("Open Workflow Studio", html)
         self.assertIn("Computer Running Slowly", html)
         self.assertIn("Knowledge coverage is thin", html)
+        self.assertIn("Knowledge and Learning are content-derived coverage measures", html)
+        self.assertIn("Percentage of instructional steps linked to supporting articles", html)
+        self.assertIn("Percentage of questions and instructions with specific help text", html)
+        self.assertIn("Open in Workflow Studio", html)
         self.assertIn("Run workflow", html)
         self.assertTrue(
             'aria-label="Run Higher-Layer Connectivity Diagnostics workflow"' in html

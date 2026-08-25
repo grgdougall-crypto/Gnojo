@@ -17,7 +17,7 @@ class CuratorTaskNavigationService:
     ORIGINS = {
         "knowledge_tasks": "Return to Knowledge Tasks",
         "relationship_proposals": "Return to Relationship Proposals",
-        "maintenance": "Return to Maintenance",
+        "maintenance": "Return to Fix Wizard",
         "assisted_resolution": "Return to Assisted Resolution",
         "assisted_resolution_batch": "Return to Assisted Resolution Batch",
     }

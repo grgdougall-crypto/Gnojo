@@ -42,9 +42,9 @@ class CuratorUxPassTwoTests(unittest.TestCase):
 
     def test_fix_wizard_groups_navigation_item_and_session_actions(self):
         source = (TEMPLATES / "curator_fix_wizard.html").read_text(encoding="utf-8")
-        for label in ["Session navigation", "Actions for this finding", "Session actions", "Entire maintenance session"]:
+        for label in ["Session navigation", "Actions for this finding", "Session actions", "Entire Fix Wizard session"]:
             self.assertIn(label, source)
-        for action in ['value="deferred"', 'value="skipped"', 'value="rejected"', "Open Curator Task", "Repair All Safe Items", "Finish Maintenance Session"]:
+        for action in ['value="deferred"', 'value="skipped"', 'value="rejected"', "Open Curator Task", "Repair All Safe Items", "Finish Fix Wizard Session"]:
             self.assertIn(action, source)
         self.assertLess(source.index("Actions for this finding"), source.index("Repair All Safe Items"))
 

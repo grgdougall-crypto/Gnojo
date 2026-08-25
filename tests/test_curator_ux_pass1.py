@@ -12,7 +12,7 @@ TEMPLATES = ROOT / "app" / "templates"
 class CuratorUxPassOneTests(unittest.TestCase):
     def test_shared_navigation_has_all_destinations_and_task_anchor(self):
         nav = (TEMPLATES / "partials" / "_curator_nav.html").read_text(encoding="utf-8")
-        for label in ["Overview", "Knowledge Tasks", "Integrity", "Maintenance", "Growth"]:
+        for label in ["Overview", "Knowledge Tasks", "Integrity", "Maintenance: Fix Wizard", "Growth"]:
             self.assertIn(label, nav)
         self.assertIn("#knowledge-tasks", nav)
         self.assertIn('id="knowledge-tasks"', (TEMPLATES / "curator_dashboard.html").read_text(encoding="utf-8"))
@@ -80,8 +80,27 @@ class CuratorUxPassOneTests(unittest.TestCase):
         for label in ["Ready to address now", "Repairs applied in this session", "Resolved outside this maintenance session", "Remaining review items", "Deferred for later", "Current knowledge debt"]:
             self.assertIn(label, wizard)
         complete = (TEMPLATES / "curator_fix_complete.html").read_text(encoding="utf-8")
-        for action in ["Run Full Curator Audit", "View Remaining Work", "Return to Curator Dashboard", "Start Another Session"]:
+        for action in ["Run Full Curator Audit", "View Remaining Work", "Return to Curator Dashboard", "Start Another Fix Wizard Session"]:
             self.assertIn(action, complete)
+
+    def test_fix_wizard_entry_and_session_labels_use_one_capability_name(self):
+        dashboard = (TEMPLATES / "curator_dashboard.html").read_text(encoding="utf-8")
+        integrity = (TEMPLATES / "knowledge_integrity.html").read_text(encoding="utf-8")
+        start = (TEMPLATES / "curator_fix_start.html").read_text(encoding="utf-8")
+        wizard = (TEMPLATES / "curator_fix_wizard.html").read_text(encoding="utf-8")
+
+        self.assertIn("Open Fix Wizard", dashboard)
+        self.assertIn("Open Fix Wizard", integrity)
+        for label in ["<h1>Fix Wizard</h1>", "Start Fix Wizard Session",
+                      "Resume Fix Wizard Session", "Resume a Fix Wizard Session"]:
+            self.assertIn(label, start)
+        for label in ["<h1>Fix Wizard</h1>", "Fix Wizard session navigation",
+                      "Leave Fix Wizard", "Finish Fix Wizard Session"]:
+            self.assertIn(label, wizard)
+
+        for obsolete in ["Start Fix Wizard</a>", "Resume Maintenance Session",
+                         "Create Maintenance Session"]:
+            self.assertNotIn(obsolete, dashboard + integrity + start)
 
 
 if __name__ == "__main__":

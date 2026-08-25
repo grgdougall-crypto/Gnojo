@@ -1,15 +1,15 @@
 {% extends "base.html" %}
-{% block title %}Maintenance Complete | Gnojo{% endblock %}
+{% block title %}Fix Wizard Complete | Gnojo{% endblock %}
 {% block content %}
 <main class="container curator-page" id="main-content">
 {% with curator_active='maintenance' %}{% include 'partials/_curator_nav.html' %}{% endwith %}
-<header class="curator-heading"><div><span class="section-eyebrow">Maintenance Session</span><h1>Maintenance Complete</h1><p>{{ session.session_id }} preserves every decision and verification result.</p></div></header>
+<header class="curator-heading"><div><span class="section-eyebrow">Curator maintenance session</span><h1>Fix Wizard Complete</h1><p>{{ session.session_id }} preserves every decision and verification result.</p></div></header>
 <section class="curator-metrics"><article><span>Starting findings</span><strong>{{ session.finding_count }}</strong></article><article><span>Resolved</span><strong>{{ session.outcomes.completed|length }}</strong></article><article><span>Deferred for later</span><strong>{{ session.outcomes.deferred|length }}</strong></article><article><span>Skipped during review</span><strong>{{ session.outcomes.skipped|length }}</strong></article><article><span>Human review remains</span><strong>{{ session.finding_count - session.outcomes.completed|length }}</strong></article><article><span>Knowledge debt reduced</span><strong>{{ session.debt_reduced }}</strong></article></section>
 <section class="quality-section"><h2>Integrity comparison</h2><table class="table"><thead><tr><th>Measure</th><th>Before</th><th>After</th></tr></thead><tbody>{% for key in ['broken_relationships','duplicate_groups','inventory_mismatches','orphaned_articles','missing_review_metadata'] %}<tr><th>{{ key|replace('_',' ')|title }}</th><td>{{ session.starting_integrity.counts[key] }}</td><td>{{ session.current_integrity.counts[key] }}</td></tr>{% endfor %}</tbody></table></section>
 <section class="quality-section" aria-labelledby="nextMaintenanceActions"><h2 id="nextMaintenanceActions">Choose what happens next</h2><div class="row g-3">
 <div class="col-md-6"><article class="integrity-record"><h3 class="h5">Refresh the full picture</h3><p>Run a complete audit to discover current findings across the knowledge system.</p><form method="post" action="{{ url_for('run_curator_audit') }}"><button class="btn btn-primary">Run Full Curator Audit</button></form></article></div>
 <div class="col-md-6"><article class="integrity-record"><h3 class="h5">Continue this session</h3><p>Return to work that was deferred, skipped, or still requires review.</p><a class="btn btn-outline-primary" href="{{ url_for('curator_fix_session', session_id=session.session_id) }}">View Remaining Work</a></article></div>
 <div class="col-md-6"><article class="integrity-record"><h3 class="h5">Review Curator operations</h3><p>Return to the overview, audit controls, and Knowledge Tasks.</p><a class="btn btn-outline-primary" href="{{ url_for('curator_dashboard') }}">Return to Curator Dashboard</a></article></div>
-<div class="col-md-6"><article class="integrity-record"><h3 class="h5">Begin a separate maintenance pass</h3><p>Start a new supervised session from current repository evidence.</p><a class="btn btn-outline-info" href="{{ url_for('curator_fix_start') }}">Start Another Session</a></article></div>
+<div class="col-md-6"><article class="integrity-record"><h3 class="h5">Begin another Fix Wizard session</h3><p>Start a new supervised maintenance session from current repository evidence.</p><a class="btn btn-outline-info" href="{{ url_for('curator_fix_start') }}">Start Another Fix Wizard Session</a></article></div>
 </div></section></main>
 {% endblock %}

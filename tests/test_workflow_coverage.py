@@ -94,7 +94,18 @@ class WorkflowCoverageServiceTests(unittest.TestCase):
         })
 
         self.assertIn("Did the default gateway respond", question_help)
+        self.assertIn("matches the evidence you observed", question_help)
+        self.assertNotIn("uncertainty option", question_help)
         self.assertIn("name resolution failed", resolution_help)
+
+    def test_question_help_mentions_uncertainty_only_when_the_option_exists(self):
+        help_text = WorkflowCoverageService().generate_help_text({
+            "type": "question",
+            "question": "Did the test return an address?",
+            "answers": {"yes": "done", "no": "failed", "unsure": "gather_evidence"},
+        })
+
+        self.assertIn("choose the uncertainty option", help_text)
 
     def test_article_generation_rejects_non_instruction_node(self):
         workflow = coverage_workflow()

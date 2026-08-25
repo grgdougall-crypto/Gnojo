@@ -17,7 +17,7 @@ class CuratorTaskNavigationServiceTests(unittest.TestCase):
              "/curator/relationship-proposals?outcome=add_reciprocal&status=open",
              "Return to Relationship Proposals"),
             ("maintenance", "/curator/fix/CFX-123?category=safety_risk&item=FIX-1",
-             "Return to Maintenance"),
+             "Return to Fix Wizard"),
             ("assisted_resolution", "/curator/tasks/GKT-TEST#assisted-resolution",
              "Return to Assisted Resolution"),
             ("assisted_resolution_batch", "/curator#assisted-resolution-batch",

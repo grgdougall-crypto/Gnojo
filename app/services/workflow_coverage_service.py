@@ -62,9 +62,21 @@ class WorkflowCoverageService:
         node_type = node["type"]
         subject = self._subject(node)
         if node_type == "question":
+            answers = node.get("answers")
+            answer_values = answers.keys() if isinstance(answers, dict) else answers or []
+            has_uncertainty_option = any(
+                str(value).strip().lower().replace("’", "'") in
+                {"unsure", "not sure", "i'm not sure", "unknown"}
+                for value in answer_values
+            )
+            response_guidance = (
+                "If you are unsure, choose the uncertainty option so the workflow can gather more evidence."
+                if has_uncertainty_option else
+                "Choose the response that matches the evidence you observed."
+            )
             return (
                 f"Use direct evidence to answer: {subject}. "
-                "If you are unsure, choose the safest uncertainty option so the workflow can gather more evidence."
+                f"{response_guidance}"
             )
         if node_type == "instruction":
             return self._instruction_help(node, subject)

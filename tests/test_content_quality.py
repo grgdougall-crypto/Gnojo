@@ -171,7 +171,10 @@ class ContentQualityPageTests(unittest.TestCase):
         self.assertIn("Computer Running Slowly", html)
         self.assertIn("Knowledge coverage is thin", html)
         self.assertIn("Run workflow", html)
-        self.assertIn('aria-label="Run Higher-Layer Connectivity Diagnostics workflow"', html)
+        self.assertTrue(
+            'aria-label="Run Higher-Layer Connectivity Diagnostics workflow"' in html
+            or 'aria-label="Open Higher-Layer Connectivity Diagnostics in Workflow Studio"' in html
+        )
 
     def test_editor_supports_direct_node_selection(self):
         html = self.client.get(

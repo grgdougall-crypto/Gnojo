@@ -8,6 +8,7 @@ from app.repositories.knowledge_repository import KnowledgeRepository
 from app.services.curator_fix_session_service import CuratorFixSessionService
 from app.services.curator_session_reconciliation_service import CuratorSessionReconciliationService
 from app.services.curator_targeted_verification_service import CuratorTargetedVerificationService
+from app.services.curator_resolution_service import CuratorResolutionService
 from app.services.curator_task_service import CuratorTaskService
 from app.services.curator_workflow_lifecycle_service import CuratorWorkflowLifecycleService
 from app.services.workflow_publication_service import WorkflowPublicationService
@@ -80,6 +81,17 @@ class CuratorLifecycleConsistencyTests(unittest.TestCase):
         }
         store.save(state)
         return task_id
+
+    def save_package(self, task_id):
+        return ResolutionPackageRepository(self.root / "curation_memory").save({
+            "task_id": task_id,
+            "status": "draft_created",
+            "draft_article_id": self.article_id,
+            "proposed_article_id": self.article_id,
+            "workflow_id": "flow",
+            "node_id": "step",
+            "proposed_relationship": {"target_article_id": self.article_id},
+        })
 
     def test_shadowed_built_in_candidate_is_suppressed_when_draft_is_satisfied(self):
         self.write("app/decision_trees/flow.json", self.workflow())
@@ -156,7 +168,7 @@ class CuratorLifecycleConsistencyTests(unittest.TestCase):
         self.assertTrue(result["human_approval_required"])
         self.assertEqual(before, (self.root / "app/workflow_drafts/flow.json").read_bytes())
 
-    def test_satisfied_verification_reconciles_without_repair_and_is_idempotent(self):
+    def test_satisfied_verification_records_evidence_without_resolving(self):
         self.write("app/workflow_drafts/flow.json", self.workflow(self.article_id))
         task_id = self.save_task()
         service = CuratorTargetedVerificationService(self.root)
@@ -167,11 +179,84 @@ class CuratorLifecycleConsistencyTests(unittest.TestCase):
         self.assertEqual(first["status"], "relationship_satisfied")
         self.assertEqual(second["status"], "relationship_satisfied")
         self.assertTrue(first["no_action_required"])
-        self.assertEqual(task["status"], "resolved")
-        self.assertFalse(task["resolution_metadata"]["repair_performed"])
+        self.assertTrue(first["human_approval_required"])
+        self.assertEqual(task["status"], "open")
         self.assertEqual(sum(event.get("event") == "relationship_satisfied_no_action_required"
-                             for event in task["history"]), 1)
+                             for event in task["history"]), 0)
         self.assertEqual(before, (self.root / "app/workflow_drafts/flow.json").read_bytes())
+
+    def test_human_closure_after_corrected_verification_resolves_once(self):
+        self.write("app/workflow_drafts/flow.json", self.workflow(self.article_id))
+        task_id = self.save_task()
+        CuratorTargetedVerificationService(self.root).verify(task_id)
+        tasks = CuratorTaskService(self.root)
+
+        first = tasks.update(task_id, action="resolve", note="Verified the published relationship.")
+        second = tasks.update(task_id, action="resolve", note="Duplicate submission.")
+
+        self.assertEqual(first["status"], "resolved")
+        self.assertEqual(second["status"], "resolved")
+        self.assertEqual(sum(event.get("event") == "resolve" for event in second["history"]), 1)
+
+    def test_package_completes_once_from_published_article_and_relationship(self):
+        task_id = self.save_task()
+        self.save_package(task_id)
+        WorkflowPublicationService(self.root / "app/workflow_publications").publish(
+            self.workflow(self.article_id), "flow.json"
+        )
+        service = CuratorTargetedVerificationService(self.root)
+
+        first = service.verify(task_id)
+        second = service.verify(task_id)
+        package = CuratorResolutionService(self.root).get(task_id)
+        task = CuratorMemoryStore(self.root / "curation_memory").load()["tasks"][task_id]
+
+        self.assertEqual(first["status"], "relationship_satisfied")
+        self.assertEqual(second["status"], "relationship_satisfied")
+        self.assertEqual(package["status"], "completed")
+        self.assertEqual(package["completion"]["article_id"], self.article_id)
+        self.assertEqual(package["completion"]["workflow_version"], 1)
+        self.assertEqual(sum(event.get("event") == "publication_relationship_completed"
+                             for event in package["history"]), 1)
+        self.assertEqual(task["status"], "open")
+
+    def test_package_does_not_complete_from_draft_or_incomplete_publication(self):
+        task_id = self.save_task()
+        self.save_package(task_id)
+        packages = CuratorResolutionService(self.root)
+
+        self.write("app/workflow_drafts/flow.json", self.workflow(self.article_id))
+        self.assertEqual(packages.complete_if_authoritative(task_id)["status"], "draft_created")
+
+        WorkflowPublicationService(self.root / "app/workflow_publications").publish(
+            self.workflow(), "flow.json"
+        )
+        self.assertEqual(packages.complete_if_authoritative(task_id)["status"], "draft_created")
+        self.assertFalse(any(event.get("event") == "publication_relationship_completed"
+                             for event in packages.get(task_id)["history"]))
+
+    def test_verification_preserves_resolved_legacy_task_without_duplicate_events(self):
+        task_id = self.save_task()
+        self.save_package(task_id)
+        WorkflowPublicationService(self.root / "app/workflow_publications").publish(
+            self.workflow(self.article_id), "flow.json"
+        )
+        store = CuratorMemoryStore(self.root / "curation_memory")
+        store.update_task(task_id, status="resolved", note="Legacy human review.", event_name="resolve")
+
+        service = CuratorTargetedVerificationService(self.root)
+        service.verify(task_id)
+        service.verify(task_id)
+        task = store.load()["tasks"][task_id]
+        package = CuratorResolutionService(self.root).get(task_id)
+
+        self.assertEqual(task["status"], "resolved")
+        self.assertEqual(sum(event.get("event") == "resolve" for event in task["history"]), 1)
+        self.assertFalse(any(event.get("event") == "relationship_satisfied_no_action_required"
+                             for event in task["history"]))
+        self.assertEqual(package["status"], "completed")
+        self.assertEqual(sum(event.get("event") == "publication_relationship_completed"
+                             for event in package["history"]), 1)
 
     def test_related_knowledge_uses_live_truth_not_historical_array(self):
         self.write("app/workflow_drafts/flow.json", self.workflow(self.article_id))
@@ -188,7 +273,7 @@ class CuratorLifecycleConsistencyTests(unittest.TestCase):
         self.assertNotIn("provenance", task)
         self.assertEqual(task["current_content"]["lifecycle"], "draft")
 
-    def test_fix_wizard_marks_satisfaction_external_without_counting_repair(self):
+    def test_fix_wizard_keeps_verified_satisfaction_actionable_until_human_closure(self):
         self.write("app/workflow_drafts/flow.json", self.workflow(self.article_id))
         task_id = self.save_task()
         item = {"item_id": "FIX-LIFECYCLE", "status": "open", "knowledge_debt": 5,
@@ -205,9 +290,9 @@ class CuratorLifecycleConsistencyTests(unittest.TestCase):
         second = reconciler.reconcile(session["session_id"], trigger="refresh")
         first_progress = sessions.progress(first)
         second_progress = sessions.progress(second)
-        self.assertEqual(first["repair_queue"][0]["status"], "resolved_external")
-        self.assertEqual(first_progress["current_actionable"], 0)
-        self.assertEqual(first_progress["remaining"], 0)
+        self.assertEqual(first["repair_queue"][0]["status"], "open")
+        self.assertEqual(first_progress["current_actionable"], 1)
+        self.assertEqual(first_progress["remaining"], 1)
         self.assertEqual(first_progress["session_repairs"], 0)
         self.assertEqual(second_progress, first_progress)
 

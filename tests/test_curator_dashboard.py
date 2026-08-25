@@ -212,6 +212,31 @@ class CuratorDashboardPageTests(unittest.TestCase):
             self.assertNotIn(label, resolved)
             self.assertIn(label, opened)
 
+    def test_completed_resolution_package_status_is_visible(self):
+        package = {
+            "task_id": "GKT-COMPLETE", "version": 3, "status": "completed",
+            "recommendation": "CREATE_NEW_ARTICLE", "confidence": "high",
+            "source_status": "reviewed", "validation_status": "passed",
+            "recommendation_reason": "Published evidence is authoritative.",
+            "workflow_id": "flow", "node_id": "step",
+            "proposed_article_title": "Canonical Guidance",
+            "proposed_article_id": "canonical-guidance",
+            "platform": "Windows", "category": "Networking", "subcategory": "Evidence",
+            "proposed_relationship": {"target_article_id": "canonical-guidance"},
+            "purpose": "Explain the evidence.", "steps": [], "warnings": [],
+            "human_decisions": [], "history": [], "draft_article_id": "canonical-guidance",
+            "evidence_boundaries": {}, "validation_errors": [],
+        }
+        with app.test_request_context():
+            rendered = render_template(
+                "_curator_resolution_package.html", resolution_package=package,
+                task={"task_id": "GKT-COMPLETE"}, task_origin="knowledge_tasks",
+                task_navigation={"return_url": "/curator#knowledge-tasks"},
+            )
+
+        self.assertIn("v3 · Completed", rendered)
+        self.assertNotIn("Open article draft", rendered)
+
     @patch("app.app.CuratorDashboardService")
     def test_inventory_dropdowns_render_actual_options(self, service):
         service.return_value.dashboard.return_value = self.dashboard

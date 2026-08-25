@@ -15,6 +15,8 @@ from app.services.article_candidate_analyzer import ArticleCandidateAnalyzer, CR
 from app.services.article_identity_resolver import ArticleIdentityResolver
 from app.services.article_tag_service import ArticleTagService
 from app.services.assisted_resolution_validator import AssistedResolutionValidator
+from app.services.knowledge_identity_service import KnowledgeIdentityError, KnowledgeIdentityService
+from app.services.workflow_publication_service import WorkflowPublicationError, WorkflowPublicationService
 from curator.memory import CuratorMemoryStore
 from curator.resolution import ResolutionPackageError, ResolutionPackageRepository
 
@@ -59,6 +61,76 @@ class CuratorResolutionService:
                     "The package article could not be found in draft or published knowledge."
                 ) from error
 
+    def complete_if_authoritative(self, task_id: str) -> dict[str, Any] | None:
+        """Complete a package only from immutable article and workflow evidence."""
+        package = self.get(task_id)
+        if not package or package.get("status") == "completed":
+            return package
+        article_id = str(package.get("draft_article_id") or "").strip()
+        workflow_id = str(package.get("workflow_id") or "").strip()
+        node_id = str(package.get("node_id") or "").strip()
+        if not article_id or not workflow_id or not node_id:
+            return package
+        try:
+            article = self.knowledge.get_published_article(article_id)
+            canonical_article = KnowledgeIdentityService.canonical_id(article)
+            snapshot = WorkflowPublicationService(
+                self.root / "app" / "workflow_publications"
+            ).load_current(workflow_id)
+        except (ArticleNotFoundError, KnowledgeIdentityError, WorkflowPublicationError):
+            return package
+        if not snapshot:
+            return package
+        workflow = snapshot.get("workflow") or {}
+        node = (workflow.get("nodes") or {}).get(node_id)
+        if not isinstance(node, dict):
+            return package
+        try:
+            relationship = KnowledgeIdentityService.canonical_id(
+                str(node.get("knowledge_article") or "")
+            )
+        except KnowledgeIdentityError:
+            return package
+        expected = str(
+            package.get("canonical_recommendation")
+            or package.get("proposed_article_id")
+            or package.get("proposed_relationship", {}).get("target_article_id")
+            or article_id
+        ).strip()
+        try:
+            expected = KnowledgeIdentityService.canonical_id(expected)
+        except KnowledgeIdentityError:
+            return package
+        if relationship != canonical_article or relationship != expected:
+            return package
+
+        publication = snapshot.get("publication") or {}
+        completed_at = datetime.now(timezone.utc).isoformat()
+        package["status"] = "completed"
+        package["completion"] = {
+            "completed_at": completed_at,
+            "article_id": canonical_article,
+            "article_published_at": article.get("published_at"),
+            "workflow_id": workflow_id,
+            "workflow_node_id": node_id,
+            "workflow_version": publication.get("version"),
+            "workflow_published_at": publication.get("published_at"),
+            "relationship": relationship,
+        }
+        self.packages.save(package)
+        return self.packages.record_event(
+            task_id,
+            "publication_relationship_completed",
+            completed_at=completed_at,
+            article_id=canonical_article,
+            article_published_at=article.get("published_at"),
+            workflow_id=workflow_id,
+            workflow_node_id=node_id,
+            workflow_version=publication.get("version"),
+            workflow_published_at=publication.get("published_at"),
+            relationship=relationship,
+        )
+
     def prepare(self, task_id: str) -> dict[str, Any]:
         task = self.memory.load().get("tasks", {}).get(task_id)
         if not task:
@@ -72,7 +144,9 @@ class CuratorResolutionService:
             # either lifecycle state so the package can always reopen it.
             self.article_location(task_id)
             retained_article_id = previous["draft_article_id"]
-            retained_status = "draft_created"
+            retained_status = (
+                "completed" if previous.get("status") == "completed" else "draft_created"
+            )
         analysis = self.analyzer.analyze(task)
         instruction = analysis["instruction"]
         facts = [instruction, *[str(item) for item in task.get("evidence", [])]]
@@ -96,6 +170,8 @@ class CuratorResolutionService:
             "status": retained_status, "source_status": "requires_review",
             "draft_article_id": retained_article_id,
         }
+        if retained_status == "completed" and previous.get("completion"):
+            package["completion"] = previous["completion"]
         ids = [article.get("id") for article in self.knowledge.get_drafts() + self.knowledge.get_published()]
         package["validation_errors"] = self.validator.validate(package, ids)
         package["validation_status"] = "passed" if not package["validation_errors"] else "failed"

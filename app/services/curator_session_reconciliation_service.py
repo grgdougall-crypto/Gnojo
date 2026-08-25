@@ -64,6 +64,19 @@ class CuratorSessionReconciliationService:
                     previous = item.get("classification")
                     item["latest_snapshot"] = deepcopy(self._snapshot(item))
                     task = task_records.get(task_id, {}) if task_id else {}
+                    if str(task.get("status") or "").casefold() in {"open", "in_progress"}:
+                        # Repository evidence may show that a finding is corrected, but
+                        # the governed Knowledge Task remains actionable until a human
+                        # reviewer explicitly closes it.
+                        item["last_reconciled_at"] = now
+                        item["verification_evidence"] = {
+                            "reason": "The finding is no longer detected; human task closure is still required.",
+                            "verified": True,
+                            "trigger": trigger,
+                            "task_id": task_id,
+                            "task_status": task.get("status"),
+                        }
+                        continue
                     resolution_session = str(task.get("resolution_metadata", {}).get("maintenance_session_id") or "")
                     resolved_in_session = task.get("status") == "resolved" and resolution_session == session_id
                     resolved_status = "completed" if resolved_in_session else "resolved_external"

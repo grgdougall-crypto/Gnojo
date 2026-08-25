@@ -8,6 +8,7 @@ from typing import Any
 
 from app.services.workflow_draft_service import WorkflowDraftService
 from app.services.curator_workflow_lifecycle_service import CuratorWorkflowLifecycleService
+from app.services.curator_resolution_service import CuratorResolutionService
 from app.repositories.knowledge_repository import KnowledgeRepository
 from app.services.article_identity_resolver import ArticleIdentityResolver
 from curator.checks import CuratorChecks
@@ -190,10 +191,13 @@ class CuratorTargetedVerificationService:
             }
             result = {**base, **{key: value for key, value in relationship.items() if key != "node"},
                       "status": semantic, "message": messages[semantic],
-                      "human_approval_required": semantic != "relationship_satisfied",
+                      "human_approval_required": True,
                       "no_action_required": semantic == "relationship_satisfied",
                       "affected_fingerprint": relationship.get("content_fingerprint", "")}
-            return self._record(task_id, result, reconcile_satisfied=True)
+            recorded = self._record(task_id, result)
+            if semantic == "relationship_satisfied":
+                CuratorResolutionService(self.root).complete_if_authoritative(task_id)
+            return recorded
         drafts = self._drafts()
         if drafts is None:
             return self._record(task_id, {**base, "status": "not_found",
@@ -270,16 +274,6 @@ class CuratorTargetedVerificationService:
         payload = json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
         return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
-    def _record(self, task_id: str, value: dict[str, Any], *, reconcile_satisfied: bool = False) -> dict[str, Any]:
+    def _record(self, task_id: str, value: dict[str, Any]) -> dict[str, Any]:
         self.store.record_verification(task_id, value)
-        if reconcile_satisfied and value.get("status") == "relationship_satisfied":
-            task = self.store.load().get("tasks", {}).get(task_id, {})
-            if task.get("status") not in {"resolved", "ignored", "superseded"}:
-                self.store.update_task(
-                    task_id, status="resolved", actor="Curator targeted verification",
-                    note="Relationship already satisfied on authoritative lifecycle copy; no repair was performed.",
-                    event_name="relationship_satisfied_no_action_required",
-                    metadata={"resolution_kind": "no_action_required", "repair_performed": False,
-                              "source_path": value.get("source_path"), "lifecycle": value.get("lifecycle")},
-                )
         return value

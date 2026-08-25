@@ -150,6 +150,17 @@ class CuratorAssistedResolutionTests(unittest.TestCase):
         self.assertEqual(state, "published")
         self.assertEqual(located["id"], article["id"])
 
+    def test_article_draft_alone_does_not_complete_package(self):
+        service = CuratorResolutionService(self.root)
+        service.prepare("GKT-TEST0")
+        service.create_article_draft("GKT-TEST0", confirmed=True)
+
+        package = service.complete_if_authoritative("GKT-TEST0")
+
+        self.assertEqual(package["status"], "draft_created")
+        self.assertFalse(any(event.get("event") == "publication_relationship_completed"
+                             for event in package["history"]))
+
     def test_state_aware_open_route_reaches_draft_and_preserves_session_return(self):
         service = CuratorResolutionService(self.root)
         service.prepare("GKT-TEST0")

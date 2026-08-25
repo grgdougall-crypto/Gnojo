@@ -9,6 +9,7 @@ from app.repositories.knowledge_repository import KnowledgeRepository
 from app.services.workflow_draft_service import WorkflowDraftService
 from app.services.workflow_metadata_service import workflow_category, workflow_platform
 from app.services.article_identity_resolver import ArticleIdentityResolver
+from app.services.curator_workflow_lifecycle_service import CuratorWorkflowLifecycleService
 
 
 CREATE_NEW_ARTICLE = "CREATE_NEW_ARTICLE"
@@ -26,11 +27,12 @@ class ArticleCandidateAnalyzer:
         self.workflows = WorkflowDraftService(self.root / "app" / "workflow_drafts")
         self.knowledge = KnowledgeRepository(self.root / "knowledge_base")
         self.identities = ArticleIdentityResolver(self.knowledge)
+        self.lifecycle = CuratorWorkflowLifecycleService(self.root)
 
     def analyze(self, task: dict[str, Any]) -> dict[str, Any]:
         if task.get("finding_type") not in self.ELIGIBLE_TYPES:
             raise ValueError("This Knowledge Task is not eligible for assisted resolution.")
-        workflow, filename, node_id, node = self._resolve_node(task)
+        workflow, filename, lifecycle, source_path, node_id, node = self._resolve_node(task)
         existing = self.knowledge.get_drafts() + self.knowledge.get_published()
         missing_identifier = task.get("evidence", [None])[0] if task.get("finding_type") in {"malformed_relationship", "duplicate_knowledge_candidate"} else None
         article_title = self._article_title(node, missing_identifier)
@@ -60,6 +62,7 @@ class ArticleCandidateAnalyzer:
         platform = workflow_platform(workflow)
         return {
             "workflow_id": workflow.get("workflow_id"), "workflow_filename": filename,
+            "workflow_lifecycle": lifecycle, "workflow_source_path": source_path,
             "workflow_name": workflow.get("name") or workflow.get("workflow_id"),
             "node_id": node_id, "node_type": node.get("type", "instruction"),
             "node_title": node.get("title") or node.get("question") or node_id.replace("_", " ").title(),
@@ -85,35 +88,19 @@ class ArticleCandidateAnalyzer:
         content = str(task.get("content_identifier", ""))
         workflow_hint, _, node_hint = content.partition(":")
         missing = task.get("evidence", [None])[0] if task.get("finding_type") in {"malformed_relationship", "duplicate_knowledge_candidate"} else None
-        for item in self.workflows.list_drafts():
-            if item.get("is_damaged"):
-                continue
-            filename = item["filename"]
-            workflow = self.workflows.get_draft(filename)
-            if workflow.get("workflow_id") != workflow_hint:
-                continue
+        target = self.lifecycle.resolve(workflow_hint)
+        if target:
+            workflow = target.workflow
             nodes = workflow.get("nodes", {})
             if node_hint and node_hint in nodes:
-                return workflow, filename, node_hint, nodes[node_hint]
-            matches = [(node_id, node) for node_id, node in nodes.items() if node.get("knowledge_article") == missing]
+                return (workflow, target.filename, target.lifecycle, target.source_path,
+                        node_hint, nodes[node_hint])
+            matches = [(node_id, node) for node_id, node in nodes.items()
+                       if node.get("knowledge_article") == missing]
             if len(matches) == 1:
                 node_id, node = matches[0]
-                return workflow, filename, node_id, node
-        for path in sorted((self.root / "app" / "decision_trees").glob("*.json")):
-            try:
-                import json
-                workflow = json.loads(path.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError):
-                continue
-            if workflow.get("workflow_id") != workflow_hint:
-                continue
-            nodes = workflow.get("nodes", {})
-            if node_hint and node_hint in nodes:
-                return workflow, "", node_hint, nodes[node_hint]
-            matches = [(node_id, node) for node_id, node in nodes.items() if node.get("knowledge_article") == missing]
-            if len(matches) == 1:
-                node_id, node = matches[0]
-                return workflow, "", node_id, node
+                return (workflow, target.filename, target.lifecycle, target.source_path,
+                        node_id, node)
         raise ValueError("The affected workflow node could not be resolved unambiguously.")
 
     @staticmethod

@@ -2306,32 +2306,18 @@ def copy_builtin_workflow(workflow_id):
         abort(404)
 
     draft_service = WorkflowDraftService()
-    existing = next(
-        (
-            item for item in draft_service.list_drafts()
-            if item.get("workflow_id") == workflow_id and not item.get("is_damaged")
-        ),
-        None,
-    )
-    if existing:
-        return redirect(url_for("workflow_editor", filename=existing["filename"]))
-
     engine = DecisionEngine()
     engine.load_workflow(workflow_id)
-    workflow = deepcopy(engine.workflow)
-    workflow["status"] = "Editable Copy"
-    workflow["draft_origin"] = {
-        "type": "built_in",
-        "workflow_id": workflow_id,
-    }
-    validation = WorkflowValidationService().validate(workflow)
-    if not validation["is_valid"]:
+    try:
+        filename = draft_service.ensure_editable_copy(
+            workflow_id, engine.workflow, source_type="built_in"
+        )
+    except WorkflowDraftError:
         return error_response(
             400,
             "This workflow cannot be copied yet",
             "The built-in workflow must pass validation before an editable copy can be created.",
         )
-    filename = draft_service.save_draft(workflow)
     return redirect(url_for("workflow_editor", filename=filename))
 
 @app.route("/workflow-editor/<filename>")

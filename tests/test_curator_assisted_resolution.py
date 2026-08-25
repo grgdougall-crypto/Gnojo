@@ -11,7 +11,7 @@ from app.services.assisted_resolution_validator import AssistedResolutionValidat
 from app.services.curator_batch_service import CuratorBatchService
 from app.services.curator_dashboard_service import CuratorDashboardService
 from app.services.curator_resolution_service import CuratorResolutionService
-from app.services.knowledge_publication_service import KnowledgePublicationService
+from app.services.knowledge_publication_service import KnowledgePublicationError, KnowledgePublicationService
 from app.services.workflow_draft_service import WorkflowDraftService
 from app.app import app as flask_app
 from curator.memory import CuratorMemoryStore
@@ -48,6 +48,7 @@ class CuratorAssistedResolutionTests(unittest.TestCase):
         (self.root / "app" / "workflow_drafts").mkdir(parents=True)
         workflow = {
             "workflow_id": "test_workflow", "name": "Test Workflow", "category": "Networking", "platform": "Windows",
+            "start_node": "step_one", "estimated_steps": 2,
             "nodes": {
                 "step_one": {"type": "instruction", "title": "Inspect the Adapter", "instruction": "Open the approved network settings and record the active adapter status.", "next": "done"},
                 "done": {"type": "resolution", "title": "Done", "message": "Complete."},
@@ -67,6 +68,15 @@ class CuratorAssistedResolutionTests(unittest.TestCase):
 
     def tearDown(self):
         self.temporary.cleanup()
+
+    def make_workflow_builtin_only(self):
+        draft_path = self.root / "app" / "workflow_drafts" / "test_workflow.json"
+        workflow = json.loads(draft_path.read_text(encoding="utf-8"))
+        builtin_path = self.root / "app" / "decision_trees" / "test_workflow.json"
+        builtin_path.parent.mkdir(parents=True, exist_ok=True)
+        builtin_path.write_text(json.dumps(workflow, indent=2) + "\n", encoding="utf-8")
+        draft_path.unlink()
+        return builtin_path
 
     def test_package_is_persistent_versioned_and_complete(self):
         service = CuratorResolutionService(self.root)
@@ -188,6 +198,101 @@ class CuratorAssistedResolutionTests(unittest.TestCase):
         self.assertEqual(service.article_location("GKT-TEST0")[0], "published")
         with self.assertRaises(ArticleNotFoundError):
             service.knowledge.get_draft(article["id"])
+
+    def test_builtin_publication_creates_one_editable_copy_and_normalizes_legacy_retry(self):
+        builtin_path = self.make_workflow_builtin_only()
+        builtin_before = builtin_path.read_bytes()
+        service = CuratorResolutionService(self.root)
+        package = service.prepare("GKT-TEST0")
+        self.assertEqual(package["workflow_filename"], "test_workflow.json")
+        self.assertEqual(package["workflow_lifecycle"], "built_in")
+        article = service.create_article_draft("GKT-TEST0", confirmed=True)
+        article["workflow_origin"]["filename"] = ""  # Legacy failed-attempt provenance.
+        article["workflow_origin"].pop("workflow_lifecycle", None)
+        article.update({
+            "version": 1, "published_at": "2026-08-24T00:00:00+00:00",
+            "version_history": [{"version": 1, "published_at": "2026-08-24T00:00:00+00:00"}],
+        })
+        article["review"].update({
+            "status": "approved", "reviewed_by": "Reviewer",
+            "checks": {"technical_accuracy": True, "user_safety": True,
+                       "sources_verified": True, "commands_reviewed": True},
+        })
+        service.knowledge.save_draft(article, overwrite=True)
+        package_before = (self.root / "curation_memory" / "resolution_packages" /
+                          "GKT-TEST0.json").read_bytes()
+        memory_before = (self.root / "curation_memory" / "memory.json").read_bytes()
+
+        published = KnowledgePublicationService(
+            service.knowledge, WorkflowDraftService(self.root / "app" / "workflow_drafts")
+        ).publish(article["id"], reviewer="Reviewer")
+
+        editable_path = self.root / "app" / "workflow_drafts" / "test_workflow.json"
+        editable = json.loads(editable_path.read_text(encoding="utf-8"))
+        self.assertEqual(builtin_path.read_bytes(), builtin_before)
+        self.assertEqual(editable["draft_origin"], {
+            "type": "built_in", "workflow_id": "test_workflow",
+        })
+        self.assertEqual(editable["nodes"]["step_one"]["knowledge_article"], article["id"])
+        self.assertEqual(published["workflow_origin"]["filename"], "test_workflow.json")
+        self.assertEqual(published["workflow_origin"]["workflow_lifecycle"], "built_in")
+        self.assertEqual(published["version"], 1)
+        self.assertEqual(len(published["version_history"]), 1)
+        self.assertEqual(len(list((self.root / "app" / "workflow_drafts").glob("*.json"))), 1)
+        self.assertEqual(len(list((self.root / "knowledge_base" / "published").glob(
+            f"{article['id']}.json"))), 1)
+        self.assertEqual((self.root / "curation_memory" / "resolution_packages" /
+                          "GKT-TEST0.json").read_bytes(), package_before)
+        self.assertEqual((self.root / "curation_memory" / "memory.json").read_bytes(), memory_before)
+
+    def test_publication_failure_after_builtin_relationship_restores_every_file(self):
+        builtin_path = self.make_workflow_builtin_only()
+        service = CuratorResolutionService(self.root)
+        service.prepare("GKT-TEST0")
+        article = service.create_article_draft("GKT-TEST0", confirmed=True)
+        article["review"].update({"status": "approved", "reviewed_by": "Reviewer"})
+        service.knowledge.save_draft(article, overwrite=True)
+        draft_path = self.root / "knowledge_base" / "drafts" / f"{article['id']}.json"
+        published_path = self.root / "knowledge_base" / "published" / f"{article['id']}.json"
+        inventory_path = self.root / "knowledge_base" / "inventory.json"
+        inventory_path.write_text('{"sentinel": true}\n', encoding="utf-8")
+        package_path = self.root / "curation_memory" / "resolution_packages" / "GKT-TEST0.json"
+        memory_path = self.root / "curation_memory" / "memory.json"
+        before = {path: path.read_bytes() for path in (
+            builtin_path, draft_path, inventory_path, package_path, memory_path,
+        )}
+        publisher = KnowledgePublicationService(
+            service.knowledge, WorkflowDraftService(self.root / "app" / "workflow_drafts")
+        )
+
+        with patch.object(service.knowledge, "publish_article", side_effect=OSError("injected")):
+            with self.assertRaisesRegex(KnowledgePublicationError, "rolled back"):
+                publisher.publish(article["id"], reviewer="Reviewer")
+
+        self.assertEqual({path: path.read_bytes() for path in before}, before)
+        self.assertFalse(published_path.exists())
+        self.assertFalse((self.root / "app" / "workflow_drafts" / "test_workflow.json").exists())
+        restored = json.loads(draft_path.read_text(encoding="utf-8"))
+        self.assertNotIn("published_at", restored)
+        self.assertNotIn("version_history", restored)
+
+    def test_existing_editable_workflow_is_reused_without_replacing_origin(self):
+        draft_path = self.root / "app" / "workflow_drafts" / "test_workflow.json"
+        workflow = json.loads(draft_path.read_text(encoding="utf-8"))
+        workflow["draft_origin"] = {"type": "human_authored", "workflow_id": "test_workflow"}
+        draft_path.write_text(json.dumps(workflow, indent=2) + "\n", encoding="utf-8")
+        service = CuratorResolutionService(self.root)
+        service.prepare("GKT-TEST0")
+        article = service.create_article_draft("GKT-TEST0", confirmed=True)
+
+        KnowledgePublicationService(
+            service.knowledge, WorkflowDraftService(self.root / "app" / "workflow_drafts")
+        ).publish(article["id"], reviewer="Reviewer")
+
+        updated = json.loads(draft_path.read_text(encoding="utf-8"))
+        self.assertEqual(updated["draft_origin"], workflow["draft_origin"])
+        self.assertEqual(updated["nodes"]["step_one"]["knowledge_article"], article["id"])
+        self.assertEqual(len(list((self.root / "app" / "workflow_drafts").glob("*.json"))), 1)
 
     def test_existing_article_is_recommended_for_link_not_duplicated(self):
         repository = KnowledgeRepository(self.root / "knowledge_base")

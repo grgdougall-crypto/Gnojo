@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "generated_at": "2026-08-21T06:26:22.259371+00:00",
+  "generated_at": "2026-08-25T00:47:05.488014+00:00",
   "articles": [
     {
       "id": "ethernet-connection-check",
@@ -83,6 +83,12 @@
     {
       "id": "vpn-connectivity-win-instr-search-error-code-kb",
       "title": "How to Identify and Research the VPN Error",
+      "category": "Networking",
+      "version": 1
+    },
+    {
+      "id": "how-to-inspect-security-and-filtering-evidence",
+      "title": "How to Inspect Security and Filtering Evidence",
       "category": "Networking",
       "version": 1
     },
@@ -178,17 +184,18 @@
     }
   ],
   "integrity": {
-    "published_articles": 29,
+    "published_articles": 30,
     "draft_articles": 2,
     "broken_relationships": 0,
     "duplicate_groups": 0,
     "missing_review_metadata": 0,
     "orphaned_articles": 0,
-    "inventory_mismatches": 0,
+    "inventory_mismatches": 1,
     "duplicate_articles": 0,
     "merge_candidates": 0,
     "archived_articles": 2,
     "knowledge_debt_reduction_potential": 0,
-    "estimated_cleanup_minutes": 0
+    "estimated_cleanup_minutes": 0,
+    "command_relationship_defects": 0
   }
 }

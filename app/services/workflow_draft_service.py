@@ -2,6 +2,7 @@ import json
 import os
 from pathlib import Path
 import tempfile
+from copy import deepcopy
 
 from app.services.workflow_metadata_service import workflow_category, workflow_platform
 
@@ -39,7 +40,7 @@ class WorkflowDraftService:
             "untitled_workflow",
         )
 
-        filename = f"{workflow_id}.json"
+        filename = self.filename_for(workflow_id)
 
         file_path = (
             self.drafts_path
@@ -58,6 +59,32 @@ class WorkflowDraftService:
             )
 
         return filename
+
+    @staticmethod
+    def filename_for(workflow_id):
+        filename = f"{workflow_id}.json"
+        if (not isinstance(workflow_id, str) or not workflow_id.strip()
+                or Path(filename).name != filename):
+            raise WorkflowDraftError("The workflow ID cannot form a safe draft filename.")
+        return filename
+
+    def ensure_editable_copy(self, workflow_id, workflow, *, source_type):
+        """Return one validated editable draft without mutating its source lifecycle."""
+        for item in self.list_drafts():
+            if item.get("workflow_id") == workflow_id and not item.get("is_damaged"):
+                return item["filename"]
+        if not isinstance(workflow, dict) or workflow.get("workflow_id") != workflow_id:
+            raise WorkflowDraftError("The canonical workflow identity is invalid.")
+        from app.services.workflow_validation_service import WorkflowValidationService
+        editable = deepcopy(workflow)
+        editable["status"] = "Editable Copy"
+        editable["draft_origin"] = {"type": source_type, "workflow_id": workflow_id}
+        validation = WorkflowValidationService().validate(editable)
+        if not validation["is_valid"]:
+            raise WorkflowDraftError(
+                "The workflow must pass validation before an editable copy can be created."
+            )
+        return self.save_draft(editable)
 
     def list_drafts(self):
         """

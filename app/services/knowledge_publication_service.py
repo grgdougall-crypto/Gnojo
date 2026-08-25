@@ -8,6 +8,7 @@ from app.services.article_tag_service import ArticleTagService
 from app.services.knowledge_identity_service import KnowledgeIdentityService
 from app.services.article_identity_resolver import ArticleIdentityResolver
 from app.services.workflow_draft_service import WorkflowDraftError, WorkflowDraftService
+from app.services.curator_workflow_lifecycle_service import ActionableWorkflow, CuratorWorkflowLifecycleService
 
 
 class KnowledgePublicationError(RuntimeError):
@@ -24,6 +25,8 @@ class KnowledgePublicationService:
     def publish(self, article_id: str, *, reviewer: str = "Gnojo reviewer") -> dict[str, Any]:
         article = KnowledgeIdentityService.normalize(self.repository.get_draft(article_id))
         canonical = article["canonical_id"]
+        draft_path = self.repository.draft_directory / f"{canonical}.json"
+        draft_before = draft_path.read_bytes()
         equivalent = ArticleIdentityResolver(self.repository).resolve(candidate=article)
         if equivalent and equivalent.article.get("id") != canonical:
             raise KnowledgePublicationError(
@@ -35,15 +38,13 @@ class KnowledgePublicationService:
         review.update({"status": "approved", "reviewed_by": reviewer, "reviewed_at": now})
         article["review"] = review
         article["tags"] = ArticleTagService.normalize(article.get("tags") or ArticleTagService.generate(article))
-        history = list(article.get("version_history") or [])
         previous = None
         try:
             previous = self.repository.get_published_article(canonical)
         except Exception:
             pass
-        version = int((previous or article).get("version") or 0) + (1 if previous else 0)
-        if version < 1:
-            version = 1
+        history = list((previous or {}).get("version_history") or [])
+        version = int((previous or {}).get("version") or 0) + 1
         article.update({"version": version, "published_at": now})
         history.append({"version": version, "published_at": now, "reviewed_by": reviewer})
         article["version_history"] = history
@@ -51,20 +52,58 @@ class KnowledgePublicationService:
         origin = article.get("workflow_origin") if isinstance(article.get("workflow_origin"), dict) else None
         workflow_before = None
         workflow_path = None
-        if origin and origin.get("filename") and origin.get("node_id"):
-            workflow_path = self.workflows.drafts_path / Path(str(origin["filename"])).name
-            workflow_before = workflow_path.read_bytes() if workflow_path.exists() else None
+        workflow_target = None
+        if origin:
+            workflow_id = str(origin.get("workflow_id") or "").strip()
+            legacy_filename = str(origin.get("filename") or "").strip()
+            try:
+                legacy_workflow = self.workflows.get_draft(legacy_filename) if legacy_filename else None
+            except WorkflowDraftError:
+                legacy_workflow = None
+            if isinstance(legacy_workflow, dict):
+                workflow_id = str(legacy_workflow.get("workflow_id") or workflow_id).strip()
+                legacy_path = self.workflows.drafts_path / legacy_filename
+                workflow_target = ActionableWorkflow(
+                    workflow_id, legacy_filename, str(legacy_path), "draft", legacy_workflow,
+                )
+            if not workflow_target:
+                workflow_target = CuratorWorkflowLifecycleService(
+                    self.repository.knowledge_base_directory.parent
+                ).resolve(workflow_id)
+            if workflow_target:
+                editable_filename = (
+                    workflow_target.filename if workflow_target.lifecycle == "draft"
+                    else self.workflows.filename_for(workflow_target.workflow_id)
+                )
+                workflow_path = self.workflows.drafts_path / editable_filename
+            workflow_before = (
+                workflow_path.read_bytes() if workflow_path and workflow_path.exists() else None
+            )
 
         published_path = self.repository.published_directory / f"{canonical}.json"
         published_before = published_path.read_bytes() if published_path.exists() else None
-        draft_path = self.repository.draft_directory / f"{canonical}.json"
         inventory_path = self.repository.knowledge_base_directory / "inventory.json"
         inventory_before = inventory_path.read_bytes() if inventory_path.exists() else None
         try:
             self.repository.save_draft(article, overwrite=True)
             if origin:
+                if not workflow_target:
+                    raise WorkflowDraftError("The originating workflow could not be resolved.")
+                filename = self.workflows.ensure_editable_copy(
+                    workflow_target.workflow_id,
+                    workflow_target.workflow,
+                    source_type=workflow_target.lifecycle,
+                )
+                article["workflow_origin"] = {
+                    **origin,
+                    "filename": filename,
+                    "workflow_id": workflow_target.workflow_id,
+                    "workflow_lifecycle": workflow_target.lifecycle,
+                    "workflow_source_path": workflow_target.source_path,
+                }
+                self.repository.save_draft(article, overwrite=True)
                 self.workflows.update_node(
-                    str(origin["filename"]), str(origin["node_id"]),
+                    filename, str(origin["node_id"]),
                     {"knowledge_article": canonical},
                 )
             self.repository.publish_article(canonical, overwrite=True)
@@ -76,8 +115,7 @@ class KnowledgePublicationService:
             self._restore(published_path, published_before)
             self._restore(workflow_path, workflow_before)
             self._restore(inventory_path, inventory_before)
-            if not draft_path.exists():
-                self.repository.save_draft(article, overwrite=True)
+            self._restore(draft_path, draft_before)
             raise KnowledgePublicationError(
                 f"Publication was rolled back because one required update failed: {error}"
             ) from error

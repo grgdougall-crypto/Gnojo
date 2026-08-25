@@ -153,7 +153,13 @@ class CuratorResolutionService:
             "sources": [],
             "generation": {"provider": "Gnojo Curator", "model": "deterministic-assisted-resolution", "generated_at": datetime.now(timezone.utc).isoformat()},
             "review": {"status": "draft", "reviewed_by": None, "reviewed_at": None, "notes": [f"Originating Curator task: {task_id}", "Authoritative sources require human review before publication."]},
-            "workflow_origin": {"filename": package["workflow_filename"], "workflow_id": package["workflow_id"], "node_id": package["node_id"], "curator_task_id": task_id},
+            "workflow_origin": {
+                "filename": package["workflow_filename"],
+                "workflow_id": package["workflow_id"],
+                "workflow_lifecycle": package.get("workflow_lifecycle"),
+                "workflow_source_path": package.get("workflow_source_path"),
+                "node_id": package["node_id"], "curator_task_id": task_id,
+            },
         })
         article["tags"] = ArticleTagService.generate(article)
         errors = ArticleValidator.validate(article)

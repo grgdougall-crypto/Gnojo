@@ -2,6 +2,8 @@ import copy
 import json
 import tempfile
 import unittest
+import inspect
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -15,7 +17,7 @@ from app.services.curator_evidence_specification_catalog import (
     CuratorEvidenceSpecificationCatalog,
     PRODUCTION_EVIDENCE_SPECIFICATIONS,
 )
-from app.services.curator_structural_repair_contracts import to_plain_data
+from app.services.curator_structural_repair_contracts import StructuralRepairPlan, to_plain_data
 from app.services.curator_structural_repair_apply_service import (
     CuratorStructuralRepairApplyService,
     StructuralRepairApplyError,
@@ -23,7 +25,10 @@ from app.services.curator_structural_repair_apply_service import (
 from app.services.curator_structural_repair_approval_service import (
     CuratorStructuralRepairApprovalService,
 )
-from app.services.curator_structural_repair_governance import StructuralRepairFingerprint
+from app.services.curator_structural_repair_governance import (
+    StructuralRepairApproval,
+    StructuralRepairFingerprint,
+)
 from app.services.curator_structural_repair_preview_service import CuratorStructuralRepairPreviewService
 from app.services.workflow_draft_persistence import LockedWorkflowDraft, WorkflowDraftPersistence
 from app.services.workflow_draft_persistence import WorkflowDraftPersistenceError
@@ -73,24 +78,82 @@ class StructuralRepairStage32Tests(unittest.TestCase):
         return result
 
     def issue(self, **changes):
-        persistence = WorkflowDraftPersistence(self.drafts)
-        with persistence.locked(self.filename) as draft:
-            snapshot = draft.read()
         values = {
-            "task": self.task, "preview": self.preview(), "snapshot": snapshot,
+            "task_id": self.task["task_id"], "workflow_filename": self.filename,
             "reviewer_identity": "Reviewer", "fix_session_id": "CFX-STAGE32",
-            "adapter_id": "missing_required_upstream_evidence",
         }
         values.update(changes)
-        return CuratorStructuralRepairApprovalService(
-            self.root, now=lambda: self.clock
+        return CuratorStructuralRepairApprovalService._for_test(
+            self.root, task_loader=lambda _: copy.deepcopy(self.task), now=lambda: self.clock
         ).issue(**values)
 
     def service(self, **changes):
         values = {"task_loader": lambda _task_id: copy.deepcopy(self.task),
                   "now": lambda: self.clock + timedelta(minutes=1)}
         values.update(changes)
-        return CuratorStructuralRepairApplyService(self.root, **values)
+        return CuratorStructuralRepairApplyService._for_test(self.root, **values)
+
+    def test_production_constructors_do_not_accept_authority_substitution(self):
+        apply_parameters = inspect.signature(CuratorStructuralRepairApplyService).parameters
+        approval_parameters = inspect.signature(CuratorStructuralRepairApprovalService).parameters
+        for forbidden in ("task_loader", "specification_catalog", "validator", "persistence"):
+            self.assertNotIn(forbidden, apply_parameters)
+            self.assertNotIn(forbidden, approval_parameters)
+
+    def test_approval_lifetime_is_bounded(self):
+        service = CuratorStructuralRepairApprovalService._for_test(
+            self.root, task_loader=lambda _: copy.deepcopy(self.task), now=lambda: self.clock
+        )
+        default = service.issue(task_id=self.task["task_id"], workflow_filename=self.filename,
+                                reviewer_identity="Reviewer", fix_session_id="CFX-DEFAULT")
+        self.assertEqual(datetime.fromisoformat(default.expires_at) - datetime.fromisoformat(default.created_at),
+                         timedelta(minutes=15))
+        for minutes in (1, 30):
+            self.tearDown(); self.setUp()
+            value = CuratorStructuralRepairApprovalService._for_test(
+                self.root, task_loader=lambda _: copy.deepcopy(self.task), now=lambda: self.clock
+            ).issue(task_id=self.task["task_id"], workflow_filename=self.filename,
+                    reviewer_identity="Reviewer", fix_session_id=f"CFX-{minutes}",
+                    lifetime=timedelta(minutes=minutes))
+            self.assertEqual(datetime.fromisoformat(value.expires_at) - datetime.fromisoformat(value.created_at),
+                             timedelta(minutes=minutes))
+        self.tearDown(); self.setUp()
+        with self.assertRaises(ValueError):
+            CuratorStructuralRepairApprovalService._for_test(
+                self.root, task_loader=lambda _: copy.deepcopy(self.task), now=lambda: self.clock
+            ).issue(task_id=self.task["task_id"], workflow_filename=self.filename,
+                    reviewer_identity="Reviewer", fix_session_id="CFX-LONG",
+                    lifetime=timedelta(minutes=31))
+
+    def test_approval_issuance_derives_adapter_and_rejects_caller_semantics(self):
+        service = CuratorStructuralRepairApprovalService._for_test(
+            self.root, task_loader=lambda _: copy.deepcopy(self.task), now=lambda: self.clock
+        )
+        with self.assertRaises(TypeError):
+            service.issue(task_id=self.task["task_id"], workflow_filename=self.filename,
+                          reviewer_identity="Reviewer", fix_session_id="CFX-ADAPTER",
+                          adapter_id="caller-controlled")
+        approval = service.issue(task_id=self.task["task_id"], workflow_filename=self.filename,
+                                 reviewer_identity="Reviewer", fix_session_id="CFX-DERIVED")
+        self.assertEqual(approval.adapter_id, "missing_required_upstream_evidence")
+
+    def test_apply_rejects_repository_record_with_mismatched_adapter(self):
+        legitimate = self.issue()
+        stored = self.service().approvals.get(legitimate.approval_id)
+        forged = legitimate.to_dict()
+        forged.update({
+            "approval_id": "SRA-AAAAAAAAAAAAAAAA",
+            "application_id": "SRX-AAAAAAAAAAAAAAAA",
+            "adapter_id": "caller-controlled",
+        })
+        forged_approval = StructuralRepairApproval.from_dict(forged)
+        self.service().approvals.issue(forged_approval, stored["preview"])
+        with self.assertRaises(StructuralRepairApplyError) as error:
+            self.service().apply(forged_approval.approval_id, reviewer_identity="Reviewer",
+                                 fix_session_id="CFX-STAGE32")
+        self.assertEqual(error.exception.code, "approval_invalid")
+        self.assertEqual(self.service().approvals.get(forged_approval.approval_id)["state"],
+                         "invalidated")
 
     def test_real_preview_approval_and_temporary_draft_apply_exactly_once(self):
         approval = self.issue()
@@ -212,6 +275,18 @@ class StructuralRepairStage32Tests(unittest.TestCase):
         self.assertEqual(changed_preview.exception.code, "preview_unknown")
         self.assertEqual(self.service().approvals.get(approval.approval_id)["state"], "invalidated")
 
+    def test_new_latest_specification_after_approval_fails_closed(self):
+        approval = self.issue()
+        v2 = to_plain_data(asdict(PRODUCTION_EVIDENCE_SPECIFICATIONS.lookup(
+            "external_ip_reachability", 2)))
+        v3 = copy.deepcopy(v2); v3["version"] = 3
+        v3["specification_id"] = "external-ip-reachability-windows-v3"
+        catalog = CuratorEvidenceSpecificationCatalog([v2, v3])
+        with self.assertRaises(StructuralRepairApplyError) as error:
+            self.service(specification_catalog=catalog).apply(
+                approval.approval_id, reviewer_identity="Reviewer", fix_session_id="CFX-STAGE32")
+        self.assertEqual(error.exception.code, "preview_unknown")
+
     def test_cas_stale_and_persistence_failures_are_journaled(self):
         for code, expected in (("stale_workflow", "stale_workflow"),
                                ("persistence_failed", "persistence_failed")):
@@ -262,6 +337,107 @@ class StructuralRepairStage32Tests(unittest.TestCase):
         self.assertEqual(history[-1].failure_category, "rollback_failed")
         self.assertEqual(history[-1].rollback_status, "failed")
         self.assertEqual(self.service().approvals.get(approval.approval_id)["state"], "invalidated")
+
+    def test_final_applied_journal_failure_restores_workflow_once(self):
+        approval = self.issue()
+        before = (self.drafts / self.filename).read_bytes()
+        service = self.service(validator=lambda *_: {"passed": True})
+        original_append = service.applications.append
+        calls = {"count": 0}
+        def append(value):
+            calls["count"] += 1
+            if calls["count"] > 1:
+                raise OSError("journal unavailable")
+            return original_append(value)
+        with patch.object(service.applications, "append", side_effect=append):
+            with self.assertRaises(StructuralRepairApplyError) as error:
+                service.apply(approval.approval_id, reviewer_identity="Reviewer",
+                              fix_session_id="CFX-STAGE32")
+        self.assertEqual(error.exception.code, "rollback_succeeded")
+        self.assertEqual((self.drafts / self.filename).read_bytes(), before)
+        # One failed applied event and one meaningful rollback-provenance attempt; no retry loop.
+        self.assertEqual(calls["count"], 3)
+        self.assertEqual(service.approvals.get(approval.approval_id)["state"], "invalidated")
+
+    def test_approval_consumption_failure_is_idempotently_recovered(self):
+        approval = self.issue()
+        service = self.service(validator=lambda *_: {"passed": True})
+        original_transition = service.approvals.transition
+        def transition(approval_id, state, reason):
+            if state == "consumed":
+                raise OSError("approval state unavailable")
+            return original_transition(approval_id, state, reason)
+        with patch.object(service.approvals, "transition", side_effect=transition):
+            result = service.apply(approval.approval_id, reviewer_identity="Reviewer",
+                                   fix_session_id="CFX-STAGE32")
+        self.assertEqual(result["status"], "applied")
+        self.assertEqual(result["approval_finalization"], "pending_recovery")
+        replay = self.service().apply(approval.approval_id, reviewer_identity="Reviewer",
+                                      fix_session_id="CFX-STAGE32")
+        self.assertEqual(replay["status"], "already_applied")
+        self.assertEqual(replay["approval_finalization"], "consumed")
+
+    def test_concurrent_submission_writes_once_without_transition_conflict(self):
+        approval = self.issue()
+        def apply_once(_):
+            return self.service(validator=lambda *_: {"passed": True}).apply(
+                approval.approval_id, reviewer_identity="Reviewer", fix_session_id="CFX-STAGE32")
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(pool.map(apply_once, range(2)))
+        self.assertEqual(sorted(item["status"] for item in results), ["already_applied", "applied"])
+        workflow = json.loads((self.drafts / self.filename).read_text(encoding="utf-8"))
+        self.assertEqual(list(workflow["nodes"]).count("test_external_ip_reachability"), 1)
+        history = self.service().applications.get(approval.application_id)
+        self.assertEqual([item.outcome for item in history], ["pending", "applied"])
+
+    def test_replay_after_external_edit_requires_review_without_write(self):
+        approval = self.issue()
+        self.service(validator=lambda *_: {"passed": True}).apply(
+            approval.approval_id, reviewer_identity="Reviewer", fix_session_id="CFX-STAGE32")
+        path = self.drafts / self.filename
+        path.write_bytes(path.read_bytes() + b" ")
+        edited = path.read_bytes()
+        with self.assertRaises(StructuralRepairApplyError) as error:
+            self.service().apply(approval.approval_id, reviewer_identity="Reviewer",
+                                 fix_session_id="CFX-STAGE32")
+        self.assertEqual(error.exception.code, "approval_invalid")
+        self.assertEqual(path.read_bytes(), edited)
+
+    def test_third_state_prevents_rollback_overwrite(self):
+        approval = self.issue()
+        path = self.drafts / self.filename
+        calls = {"count": 0}
+        def validator(*_):
+            calls["count"] += 1
+            return {"passed": calls["count"] == 1}
+        def third_state(draft, expected, backup):
+            path.write_bytes(path.read_bytes() + b" ")
+            return original_restore(draft, expected, backup)
+        original_restore = LockedWorkflowDraft.restore
+        with patch.object(LockedWorkflowDraft, "restore", autospec=True, side_effect=third_state):
+            with self.assertRaises(StructuralRepairApplyError) as error:
+                self.service(validator=validator).apply(
+                    approval.approval_id, reviewer_identity="Reviewer",
+                    fix_session_id="CFX-STAGE32")
+        self.assertEqual(error.exception.code, "rollback_failed")
+        self.assertTrue(path.read_bytes().endswith(b" "))
+
+    def test_reasoning_and_graph_delta_gates_reject_unapproved_changes(self):
+        workflow = json.loads((self.drafts / self.filename).read_text(encoding="utf-8"))
+        preview = self.preview()
+        plan = StructuralRepairPlan.from_dict(preview["plan"])
+        candidate = CuratorStructuralRepairPreviewService().simulate(workflow, preview)
+        candidate["nodes"]["dns_result"]["answers"]["yes"]["next"] = "dns_problem"
+        with self.assertRaises(StructuralRepairApplyError) as graph_error:
+            self.service()._assert_exact_graph(workflow, candidate, preview, plan)
+        self.assertEqual(graph_error.exception.code, "plan_invalid")
+        repaired = CuratorStructuralRepairPreviewService().simulate(workflow, preview)
+        repaired["progress_mode"] = "static"; repaired["estimated_steps"] = 1
+        validation = self.service()._validate_candidate(
+            repaired, self.task, self.service()._reasoning_findings(workflow)
+        )
+        self.assertFalse(validation["passed"])
+        self.assertTrue(validation["new_reasoning_findings"])
 
     def test_pending_recovery_classifies_before_after_and_unexpected_states(self):
         approval = self.issue()

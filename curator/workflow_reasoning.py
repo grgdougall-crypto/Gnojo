@@ -433,6 +433,8 @@ class WorkflowReasoningAuditor:
         return {"source": source, "route": routes[0], "destination": terminal_id}
 
     def _progress(self, graph: WorkflowGraph) -> ReasoningObservation | None:
+        if graph.workflow.get("progress_mode") == "branch_aware":
+            return None
         configured = int(graph.workflow.get("estimated_steps") or 0)
         visible = graph.max_user_visible_path()
         if not configured or visible <= configured + 2:

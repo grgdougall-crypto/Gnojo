@@ -224,6 +224,32 @@ class StructuralRepairStage30ContractTests(unittest.TestCase):
             with self.assertRaises(StructuralRepairApplicationRepositoryError):
                 repository.get(first.application_id)
 
+    def test_history_rejects_changes_to_every_transaction_identity_field(self):
+        mutable_examples = {
+            "finding_id": "CUR-OTHER", "fix_session_id": "CFX-OTHER",
+            "reviewer_identity": "Other Reviewer", "workflow_id": "other_workflow",
+            "workflow_path": "app/workflow_drafts/other.json", "adapter_id": "other_adapter",
+            "specification_id": "other-specification", "specification_version": 3,
+            "preview_digest": "1" * 64, "plan_digest": "2" * 64,
+            "workflow_raw_sha256_before": "3" * 64,
+            "workflow_semantic_sha256_before": "4" * 64,
+            "proposed_node_ids": ["different_node"],
+            "changed_edges": [{"source": "other", "route": "No", "destination": "terminal"}],
+            "new_edges": [{"source": "new", "route": "next", "destination": "terminal"}],
+        }
+        for field, replacement in mutable_examples.items():
+            with self.subTest(field=field), tempfile.TemporaryDirectory() as directory:
+                repository = StructuralRepairApplicationRepository(Path(directory) / "curation_memory")
+                first = StructuralRepairApplicationRecord.from_dict(self.record_data())
+                repository.append(first)
+                changed = self.record_data(
+                    revision=2, event_id="SRE-FEDCBA9876543210", previous=first.event_digest,
+                    outcome="applied",
+                )
+                changed[field] = replacement
+                with self.assertRaises(StructuralRepairApplicationRepositoryError):
+                    repository.append(changed)
+
     def test_stage30_has_no_workflow_or_execution_authority(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

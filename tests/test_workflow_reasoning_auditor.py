@@ -433,6 +433,18 @@ class WorkflowReasoningAuditorTests(unittest.TestCase):
         }, steps=2)
         self.assertIn("CUR-WR-PROGRESS", self.rules(self.auditor.analyze(workflow)))
 
+    def test_branch_aware_progress_does_not_emit_static_progress_finding(self):
+        workflow = self.workflow({
+            "q": {"type": "instruction", "title": "One", "next": "two"},
+            "two": {"type": "instruction", "title": "Two", "next": "three"},
+            "three": {"type": "question", "question": "Three?",
+                      "answers": {"yes": {"next": "four"}}},
+            "four": {"type": "instruction", "title": "Four", "next": "done"},
+            "done": {"type": "resolution", "title": "Done"},
+        }, steps=2)
+        workflow["progress_mode"] = "branch_aware"
+        self.assertNotIn("CUR-WR-PROGRESS", self.rules(self.auditor.analyze(workflow)))
+
 
 if __name__ == "__main__":
     unittest.main()

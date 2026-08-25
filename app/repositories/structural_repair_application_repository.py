@@ -19,6 +19,14 @@ class StructuralRepairApplicationRepositoryError(RuntimeError):
 class StructuralRepairApplicationRepository:
     """Append-only provenance journal. This repository has no workflow-write authority."""
 
+    IMMUTABLE_TRANSACTION_FIELDS = (
+        "application_id", "approval_id", "task_id", "finding_id", "fix_session_id",
+        "reviewer_identity", "reviewer_identity_assurance", "workflow_id", "workflow_path",
+        "workflow_raw_sha256_before", "workflow_semantic_sha256_before", "preview_digest",
+        "plan_digest", "adapter_id", "specification_id", "specification_version",
+        "specification_digest", "proposed_node_ids", "changed_edges", "new_edges",
+    )
+
     def __init__(self, curator_root: Path):
         self.root = curator_root.resolve() / "structural_repair_applications"
 
@@ -40,9 +48,12 @@ class StructuralRepairApplicationRepository:
                 raise StructuralRepairApplicationRepositoryError(
                     "Application revision does not reference the current journal event."
                 )
-            if value.approval_id != previous.approval_id or value.task_id != previous.task_id:
+            changed_identity = [field for field in self.IMMUTABLE_TRANSACTION_FIELDS
+                                if getattr(value, field) != getattr(previous, field)]
+            if changed_identity:
                 raise StructuralRepairApplicationRepositoryError(
-                    "Application identity cannot change between journal revisions."
+                    "Application identity cannot change between journal revisions: "
+                    + ", ".join(changed_identity)
                 )
         elif value.revision != 1:
             raise StructuralRepairApplicationRepositoryError(

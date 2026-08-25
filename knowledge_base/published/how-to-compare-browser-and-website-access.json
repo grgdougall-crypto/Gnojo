@@ -1,0 +1,90 @@
+{
+  "schema_version": "1.0",
+  "id": "how-to-compare-browser-and-website-access",
+  "title": "How to Compare Browser and Website Access",
+  "category": "Networking",
+  "difficulty": "Beginner",
+  "estimated_time": "5 to 10 minutes",
+  "overview": "Help a reviewer support the Compare Browser and Website Access step without changing the workflow automatically.",
+  "tags": [
+    "networking",
+    "compare",
+    "browser",
+    "website",
+    "access"
+  ],
+  "checklist": [
+    "Try the affected website in a private browsing window and in another available browser. Then try a second known working website. Record whether the failure follows one website, one browser, or all browser traffic."
+  ],
+  "common_indicators": [
+    "Record the observed result and return to the originating workflow."
+  ],
+  "commands": [],
+  "related_topics": [
+    "Higher-Layer Connectivity Diagnostics",
+    "Networking"
+  ],
+  "quiz": [
+    {
+      "question": "What should you do after completing this support step?",
+      "answers": [
+        "Record the result and return to the workflow",
+        "Make unrelated changes",
+        "Ignore the result"
+      ],
+      "correct_answer": "Record the result and return to the workflow"
+    }
+  ],
+  "sources": [
+    {
+      "title": "Browse in Incognito mode - Computer - Google Chrome Help",
+      "url": "https://support.google.com/chrome/answer/95464/browse-in-private-computer?hl=en-GB"
+    },
+    {
+      "title": "Websites look wrong or appear differently than they should | Firefox Help",
+      "url": "https://support.mozilla.org/en-US/kb/websites-look-wrong-or-appear-differently"
+    },
+    {
+      "title": "Get help with common error messages in Chrome - Google Chrome Help",
+      "url": "https://support.google.com/chrome/answer/95669?hl=en"
+    }
+  ],
+  "generation": {
+    "provider": "Gnojo Curator",
+    "model": "deterministic-assisted-resolution",
+    "generated_at": "2026-08-25T03:25:01.423942+00:00"
+  },
+  "review": {
+    "status": "approved",
+    "reviewed_by": "Gnojo reviewer",
+    "reviewed_at": "2026-08-25T03:31:00.338803+00:00",
+    "notes": [
+      "Originating Curator task: GKT-28D5D263F7A7",
+      "Authoritative sources require human review before publication."
+    ],
+    "checks": {
+      "technical_accuracy": true,
+      "user_safety": true,
+      "sources_verified": true,
+      "commands_reviewed": true
+    }
+  },
+  "workflow_origin": {
+    "filename": "higher_layer_connectivity.json",
+    "workflow_id": "higher_layer_connectivity",
+    "workflow_lifecycle": "draft",
+    "workflow_source_path": "app/workflow_drafts/higher_layer_connectivity.json",
+    "node_id": "compare_browser_access",
+    "curator_task_id": "GKT-28D5D263F7A7"
+  },
+  "canonical_id": "how-to-compare-browser-and-website-access",
+  "version": 1,
+  "published_at": "2026-08-25T03:31:00.338803+00:00",
+  "version_history": [
+    {
+      "version": 1,
+      "published_at": "2026-08-25T03:31:00.338803+00:00",
+      "reviewed_by": "Gnojo reviewer"
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "generated_at": "2026-08-25T02:15:54.802260+00:00",
+  "generated_at": "2026-08-25T03:31:02.226018+00:00",
   "articles": [
     {
       "id": "ethernet-connection-check",
@@ -60,6 +60,12 @@
       "id": "how-to-clear-the-printer-warning",
       "title": "How to Clear the Printer Warning",
       "category": "Desktop Support",
+      "version": 1
+    },
+    {
+      "id": "how-to-compare-browser-and-website-access",
+      "title": "How to Compare Browser and Website Access",
+      "category": "Networking",
       "version": 1
     },
     {
@@ -190,7 +196,7 @@
     }
   ],
   "integrity": {
-    "published_articles": 31,
+    "published_articles": 32,
     "draft_articles": 2,
     "broken_relationships": 0,
     "duplicate_groups": 0,

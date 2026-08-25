@@ -278,6 +278,50 @@ class WorkflowReasoningAuditorTests(unittest.TestCase):
         findings = [item for item in self.auditor.analyze(self.dns_workflow(False)) if item.rule == "CUR-WR-TERMINAL-EVIDENCE"]
         self.assertEqual(len(findings), 1)
         self.assertIn("external_ip_reachability", findings[0].structural["missing"])
+        self.assertEqual(findings[0].structural["affected_paths"], [{
+            "nodes": ["q", "gateway", "dns", "dns_result", "dns_problem"],
+            "missing": ["external_ip_reachability"],
+            "predecessor_edge": {
+                "source": "dns_result", "route": "no", "destination": "dns_problem",
+            },
+        }])
+        self.assertEqual(findings[0].structural["predecessor_edges"], [{
+            "source": "dns_result", "route": "no", "destination": "dns_problem",
+        }])
+
+    def test_terminal_evidence_finding_and_task_identity_ignore_enriched_evidence(self):
+        workflow = self.dns_workflow(False)
+        record = InventoryRecord(
+            "workflow", "fixture", "Fixture", "app/workflow_drafts/fixture.json",
+            "Networking", "Windows", "draft", workflow,
+        )
+        first = next(item for item in CuratorChecks().run_record(record)
+                     if item.rule == "CUR-WR-TERMINAL-EVIDENCE")
+        second = next(item for item in CuratorChecks().run_record(record)
+                      if item.rule == "CUR-WR-TERMINAL-EVIDENCE")
+
+        self.assertEqual(first.identifier, second.identifier)
+        self.assertEqual(
+            KnowledgeTaskService.task_id(KnowledgeTaskService.durable_identity(first)),
+            KnowledgeTaskService.task_id(KnowledgeTaskService.durable_identity(second)),
+        )
+        self.assertEqual(first.structured_evidence["terminal"], "dns_problem")
+        state = {"tasks": {}}
+        service = KnowledgeTaskService()
+        first_result = service.reconcile(
+            state, [first], [record], run_id="AUD-1", observed_at="2026-08-24T00:00:00+00:00",
+            filters=AuditFilter(),
+        )
+        second_result = service.reconcile(
+            state, [second], [record], run_id="AUD-2", observed_at="2026-08-24T01:00:00+00:00",
+            filters=AuditFilter(),
+        )
+        task_id = first_result["created"][0]
+        self.assertEqual(second_result["created"], [])
+        self.assertEqual(list(state["tasks"]), [task_id])
+        self.assertEqual(state["tasks"][task_id]["structured_evidence"]["predecessor_edges"], [{
+            "source": "dns_result", "route": "no", "destination": "dns_problem",
+        }])
 
     def test_registered_terminal_requirement_passes_with_evidence(self):
         self.assertNotIn("CUR-WR-TERMINAL-EVIDENCE", self.rules(self.auditor.analyze(self.dns_workflow(True))))

@@ -392,6 +392,17 @@ class WorkflowReasoningAuditor:
                 if not missing_by_path:
                     continue
                 missing = sorted({item for _, values in missing_by_path for item in values})
+                affected_paths = []
+                predecessor_edges = []
+                for path, path_missing in missing_by_path:
+                    predecessor = self._path_predecessor_edge(graph, path, terminal_id)
+                    affected_paths.append({
+                        "nodes": list(path),
+                        "missing": sorted(path_missing),
+                        "predecessor_edge": predecessor,
+                    })
+                    if predecessor and predecessor not in predecessor_edges:
+                        predecessor_edges.append(predecessor)
                 found.append(ReasoningObservation(
                     rule="CUR-WR-TERMINAL-EVIDENCE", finding_type="workflow_reasoning_evidence_gap",
                     classification="risk", node_id=terminal_id,
@@ -400,9 +411,26 @@ class WorkflowReasoningAuditor:
                     evidence=(f"Requirement: {requirement_name}", f"Terminal: {terminal_id}", f"Missing evidence: {', '.join(missing)}", f"Affected paths: {len(missing_by_path)} of {len(paths)}"),
                     action="Review whether the workflow should collect the missing evidence or soften the terminal claim.",
                     severity="medium", confidence="high",
-                    structural={"requirement": requirement_name, "terminal": terminal_id, "missing": missing, "affected_path_count": len(missing_by_path)},
+                    structural={
+                        "requirement": requirement_name,
+                        "terminal": terminal_id,
+                        "missing": missing,
+                        "affected_path_count": len(missing_by_path),
+                        "affected_paths": affected_paths,
+                        "predecessor_edges": predecessor_edges,
+                    },
                 ))
         return found
+
+    @staticmethod
+    def _path_predecessor_edge(graph: WorkflowGraph, path: list[str], terminal_id: str) -> dict[str, str] | None:
+        if len(path) < 2 or path[-1] != terminal_id:
+            return None
+        source = path[-2]
+        routes = [label for label, destination in graph.transitions(source) if destination == terminal_id]
+        if len(routes) != 1:
+            return None
+        return {"source": source, "route": routes[0], "destination": terminal_id}
 
     def _progress(self, graph: WorkflowGraph) -> ReasoningObservation | None:
         configured = int(graph.workflow.get("estimated_steps") or 0)

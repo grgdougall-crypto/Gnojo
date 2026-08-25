@@ -57,7 +57,8 @@ class FindingFactory:
     def create(*, finding_type: str, severity: str, confidence: str, record: InventoryRecord,
                title: str, explanation: str, evidence: Iterable[str], rule: str,
                action: str, domain: str, future_fix: bool = False,
-               classification: str | None = None, safety_level: int | None = None) -> Finding:
+               classification: str | None = None, safety_level: int | None = None,
+               structured_evidence: dict[str, Any] | None = None) -> Finding:
         classification = classification or (
             "defect" if finding_type in DEFECT_TYPES else
             "risk" if finding_type in RISK_TYPES else
@@ -83,6 +84,7 @@ class FindingFactory:
                         "workflow_id": workflow_id if record.content_type in {"workflow", "workflow_node"} else None,
                         "node_id": (node_id if record.content_type == "workflow_node" and node_id else None),
                         "content_fingerprint": CuratorWorkflowLifecycleService.fingerprint(record.raw)},
+            structured_evidence=dict(structured_evidence or {}),
         )
 
 
@@ -270,6 +272,7 @@ class CuratorChecks:
                     domain="workflow",
                     classification=observation.classification,
                     future_fix=False,
+                    structured_evidence=observation.structural,
                 ))
         return findings
 

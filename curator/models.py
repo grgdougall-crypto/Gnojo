@@ -60,6 +60,7 @@ class Finding:
     future_automated_fix: bool = False
     safety_level: int | None = None
     provenance: dict[str, Any] = field(default_factory=dict)
+    structured_evidence: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

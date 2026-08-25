@@ -44,6 +44,8 @@ class CuratorTaskService:
         value["audit_history"] = self._audit_history(value, state.get("audits", []))
         value["guidance"] = self._guidance(value)
         value["repair_preview"] = self._repair_preview(value)
+        from app.services.curator_repair_adapter_registry import CuratorRepairAdapterRegistry
+        value["repair_eligibility"] = CuratorRepairAdapterRegistry().eligibility(value)
         value["original_evidence"] = self._original_evidence(value)
         value["current_content"] = self._current_content(value)
         from app.services.curator_targeted_verification_service import CuratorTargetedVerificationService

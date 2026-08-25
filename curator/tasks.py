@@ -66,6 +66,7 @@ class KnowledgeTaskService:
                 task["future_automated_fix"] = finding.future_automated_fix
                 task["safety_level"] = finding.safety_level
                 task["provenance"] = dict(finding.provenance)
+                task["structured_evidence"] = dict(finding.structured_evidence)
                 task["knowledge_debt_score"] = 0.0
             task.setdefault("history", []).append({
                 "event": "observed",
@@ -180,6 +181,7 @@ class KnowledgeTaskService:
             "future_automated_fix": finding.future_automated_fix,
             "safety_level": finding.safety_level,
             "provenance": dict(finding.provenance),
+            "structured_evidence": dict(finding.structured_evidence),
             "confidence": finding.confidence,
             "evidence": list(finding.evidence),
             "current_evidence": list(finding.evidence),

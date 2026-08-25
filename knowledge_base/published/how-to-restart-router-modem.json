@@ -1,0 +1,83 @@
+{
+  "schema_version": "1.0",
+  "id": "how-to-restart-router-modem",
+  "title": "How to Restart Router/Modem",
+  "category": "Networking",
+  "difficulty": "Beginner",
+  "estimated_time": "5 to 10 minutes",
+  "overview": "Help a reviewer support the Restart Router/Modem step without changing the workflow automatically.",
+  "tags": [
+    "router",
+    "modem",
+    "networking",
+    "vpn",
+    "windows",
+    "restart"
+  ],
+  "checklist": [
+    "Please power off your router and modem (if separate devices). Wait for 30 seconds, then power them back on, starting with the modem, then the router. Wait for all lights to stabilize."
+  ],
+  "common_indicators": [
+    "Record the observed result and return to the originating workflow."
+  ],
+  "commands": [],
+  "related_topics": [
+    "VPN Connectivity Troubleshooting (Windows)",
+    "Networking"
+  ],
+  "quiz": [
+    {
+      "question": "What should you do after completing this support step?",
+      "answers": [
+        "Record the result and return to the workflow",
+        "Make unrelated changes",
+        "Ignore the result"
+      ],
+      "correct_answer": "Record the result and return to the workflow"
+    }
+  ],
+  "sources": [
+    {
+      "title": "How do I power cycle my home network? - NETGEAR Support | https://kb.netgear.com/19755/How-to-Power-Cycle-Your-Home-Network\\nTroubleshooting home WiFi issues - Linksys Support",
+      "url": "https://support.linksys.com/kb/article/417-en/"
+    }
+  ],
+  "generation": {
+    "provider": "Gnojo Curator",
+    "model": "deterministic-assisted-resolution",
+    "generated_at": "2026-08-25T01:49:35.373792+00:00"
+  },
+  "review": {
+    "status": "approved",
+    "reviewed_by": "Gnojo reviewer",
+    "reviewed_at": "2026-08-25T02:15:52.983566+00:00",
+    "notes": [
+      "Originating Curator task: GKT-231806FB9903",
+      "Authoritative sources require human review before publication."
+    ],
+    "checks": {
+      "technical_accuracy": true,
+      "user_safety": true,
+      "sources_verified": true,
+      "commands_reviewed": true
+    }
+  },
+  "workflow_origin": {
+    "filename": "vpn_connectivity_win.json",
+    "workflow_id": "vpn_connectivity_win",
+    "workflow_lifecycle": "draft",
+    "workflow_source_path": "C:\\SupportPilot\\app\\workflow_drafts\\vpn_connectivity_win.json",
+    "node_id": "instr_reboot_router_modem",
+    "curator_task_id": "GKT-231806FB9903"
+  },
+  "canonical_id": "how-to-restart-router-modem",
+  "version": 1,
+  "published_at": "2026-08-25T02:15:52.983566+00:00",
+  "version_history": [
+    {
+      "version": 1,
+      "published_at": "2026-08-25T02:15:52.983566+00:00",
+      "reviewed_by": "Gnojo reviewer"
+    }
+  ]
+}

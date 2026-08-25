@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "generated_at": "2026-08-25T00:47:05.488014+00:00",
+  "generated_at": "2026-08-25T02:15:54.802260+00:00",
   "articles": [
     {
       "id": "ethernet-connection-check",
@@ -117,6 +117,12 @@
       "version": 1
     },
     {
+      "id": "how-to-restart-router-modem",
+      "title": "How to Restart Router/Modem",
+      "category": "Networking",
+      "version": 1
+    },
+    {
       "id": "internet-restart-network-equipment",
       "title": "How to Restart the Network Equipment",
       "category": "Networking",
@@ -184,7 +190,7 @@
     }
   ],
   "integrity": {
-    "published_articles": 30,
+    "published_articles": 31,
     "draft_articles": 2,
     "broken_relationships": 0,
     "duplicate_groups": 0,

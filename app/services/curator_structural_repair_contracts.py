@@ -194,6 +194,11 @@ class EvidenceProbeSpecification:
             )
         answers = result_node.content.get("answers")
         routes = value.get("result_routes")
+        if isinstance(routes, list):
+            try:
+                routes = dict(routes)
+            except (TypeError, ValueError):
+                routes = None
         if not isinstance(answers, Mapping) or not isinstance(routes, dict) or len(routes) < 2:
             raise StructuralRepairContractError(
                 "A result decision requires at least two explicit answer routes."
@@ -387,7 +392,10 @@ class StructuralRepairPlan:
             raise StructuralRepairContractError("Affected and unaffected routes cannot overlap.")
         expected = value.get("expected_post_repair")
         if not isinstance(expected, dict):
-            raise StructuralRepairContractError("Expected post-repair reasoning result is required.")
+            expected = {
+                "rule": value.get("expected_post_repair_rule"),
+                "status": value.get("expected_post_repair_status"),
+            }
         rule = _text(expected.get("rule"), "Expected post-repair rule")
         status = _text(expected.get("status"), "Expected post-repair status")
         if rule != "CUR-WR-TERMINAL-EVIDENCE" or status != "finding_absent":

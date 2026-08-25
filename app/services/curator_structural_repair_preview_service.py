@@ -136,6 +136,7 @@ class CuratorStructuralRepairPreviewService:
             "available": True,
             "read_only": True,
             "plan": plan_data,
+            "specification": self._specification_payload(specification),
             "preview_token": self._hash(fingerprint_payload),
             "before": {
                 "predecessor_edges": before_edges,

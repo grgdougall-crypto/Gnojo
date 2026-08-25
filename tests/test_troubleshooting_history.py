@@ -285,6 +285,11 @@ class TroubleshootingHistoryPageTests(unittest.TestCase):
         self.assertIn("Clear filters", filtered)
         self.assertNotIn("No Troubleshooting History Yet", filtered)
 
+    def test_analytics_discloses_unclassified_local_test_sessions(self):
+        html = self.client.get("/troubleshooting-history").get_data(as_text=True)
+        self.assertIn("Analytics scope", html)
+        self.assertIn("history records do not identify their environment", html)
+
 
 if __name__ == "__main__":
     unittest.main()

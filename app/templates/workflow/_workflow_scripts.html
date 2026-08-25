@@ -464,9 +464,9 @@
         badge.classList.toggle("workflow-status--draft", !publicationStatus.is_published);
         badge.classList.toggle("workflow-status--published", publicationStatus.is_published && !publicationStatus.has_unpublished_changes);
         badge.classList.toggle("workflow-status--changed", publicationStatus.is_published && publicationStatus.has_unpublished_changes);
-        if (!publicationStatus.is_published) badge.textContent = "Draft";
-        else if (publicationStatus.has_unpublished_changes) badge.textContent = `Draft changes · v${publicationStatus.current_version} published`;
-        else badge.textContent = `Published · v${publicationStatus.current_version}`;
+        if (!publicationStatus.is_published) badge.textContent = "Editable draft · Not published";
+        else if (publicationStatus.has_unpublished_changes) badge.textContent = `Editable draft changes · Published v${publicationStatus.current_version}`;
+        else badge.textContent = `Editable draft · Published v${publicationStatus.current_version}`;
     }
 
     function updatePublishAvailability() {

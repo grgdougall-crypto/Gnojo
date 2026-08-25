@@ -47,6 +47,17 @@ class WorkflowPublicationTests(unittest.TestCase):
         self.assertIn("validationPassed = false", scripts)
         self.assertIn("updatePublishAvailability();", scripts)
 
+    def test_editor_badge_identifies_editable_draft_and_published_relationship(self):
+        scripts = (Path(__file__).resolve().parents[1] / "app" / "templates" / "workflow"
+                   / "_workflow_scripts.html").read_text(encoding="utf-8")
+        self.assertIn('"Editable draft · Not published"', scripts)
+        self.assertIn("`Editable draft · Published v${publicationStatus.current_version}`", scripts)
+        self.assertIn(
+            "`Editable draft changes · Published v${publicationStatus.current_version}`",
+            scripts,
+        )
+        self.assertNotIn("`Published · v${publicationStatus.current_version}`", scripts)
+
     def test_publish_creates_immutable_numbered_versions(self):
         with tempfile.TemporaryDirectory() as directory:
             service = WorkflowPublicationService(directory)

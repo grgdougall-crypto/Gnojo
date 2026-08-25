@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from app.app import app
@@ -52,6 +53,15 @@ class DeviceProfileTests(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         with self.assertRaises(DeviceProfileError):
             self.service.get("../unsafe")
+
+    def test_empty_state_and_header_use_the_same_create_device_interaction(self):
+        html = self.client.get("/device-profiles").get_data(as_text=True)
+        scripts = (Path(__file__).resolve().parents[1] / "app" / "static" / "js"
+                   / "device_profiles.js").read_text(encoding="utf-8")
+        self.assertIn("Create First Device", html)
+        self.assertEqual(html.count("data-open-device-form"), 2)
+        self.assertIn('querySelectorAll("[data-open-device-form]")', scripts)
+        self.assertNotIn('byId("newDeviceProfileButton").addEventListener', scripts)
 
 
 if __name__ == "__main__":

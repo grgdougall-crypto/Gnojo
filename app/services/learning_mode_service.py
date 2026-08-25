@@ -35,18 +35,24 @@ class LearningModeService:
                 "explanation": "Good troubleshooting changes one meaningful variable at a time, observes the result, and uses that evidence to choose the next step.",
             })
 
+        specific_content = next((
+            str(value).strip()
+            for value in (node.question, node.instruction, node.message, node.title)
+            if str(value or "").strip()
+        ), "")
+
         if node.type == "question":
-            what = "This question narrows the problem space. Each answer selects a different evidence-based route through the workflow."
+            what = specific_content or "This question narrows the problem space. Each answer selects a different evidence-based route through the workflow."
             why = node.help_text or "Clear observations help distinguish symptoms from likely causes before changes are made."
         elif node.type == "instruction":
-            what = f"This action tests or changes one part of the system before Gnojo evaluates the next result."
+            what = specific_content or "This action tests or changes one part of the system before Gnojo evaluates the next result."
             why = node.help_text or "Performing a focused action provides evidence while limiting unnecessary changes."
         elif node.type == "resolution":
-            what = "This outcome records where the diagnostic path ended and what evidence led to the result."
-            why = "A documented outcome makes the solution repeatable and helps identify recurring patterns."
+            what = specific_content or "This outcome records where the diagnostic path ended and what evidence led to the result."
+            why = node.help_text or "A documented outcome makes the solution repeatable and helps identify recurring patterns."
         else:
-            what = "This transition moves the investigation into a more specialized diagnostic phase."
-            why = "Separating phases keeps the troubleshooting path understandable and easier to review."
+            what = specific_content or "This transition moves the investigation into a more specialized diagnostic phase."
+            why = node.help_text or "Separating phases keeps the troubleshooting path understandable and easier to review."
 
         return {
             "what_it_checks": what,

@@ -58,6 +58,7 @@
         <article><span>Average steps</span><strong>{{ analytics.average_steps }}</strong></article>
         <article><span>Currently active</span><strong>{{ analytics.active }}</strong></article>
     </section>
+    <p class="small text-muted mt-2" role="note"><strong>Analytics scope:</strong> Totals include all locally stored sessions. Older development or test sessions cannot be excluded reliably because history records do not identify their environment.</p>
 
     {% if analytics.feedback_count %}
     <section class="feedback-analytics" aria-labelledby="feedbackAnalyticsTitle">

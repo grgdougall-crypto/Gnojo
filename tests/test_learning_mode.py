@@ -33,7 +33,14 @@ class LearningModeTests(unittest.TestCase):
         node = Node(id="vpn", type="question", question="Can the VPN connect?", help_text="This narrows authentication failures.")
         content = LearningModeService().build(node, "VPN Test")
         self.assertEqual(content["concepts"][0]["title"], "VPN fundamentals")
+        self.assertEqual(content["what_it_checks"], "Can the VPN connect?")
         self.assertEqual(content["why_it_matters"], "This narrows authentication failures.")
+
+    def test_learning_content_keeps_generic_fallback_when_specific_content_is_missing(self):
+        node = Node(id="empty", type="question")
+        content = LearningModeService().build(node, "Fallback Test")
+        self.assertIn("narrows the problem space", content["what_it_checks"])
+        self.assertIn("Clear observations", content["why_it_matters"])
 
     def test_learning_mode_is_optional_and_can_toggle_during_workflow(self):
         normal = self.client.get("/wizard?workflow=learning_test")
@@ -43,6 +50,9 @@ class LearningModeTests(unittest.TestCase):
         self.assertIn("Understand This Step", html)
         self.assertIn("What This Checks", html)
         self.assertIn("Why This Matters", html)
+        self.assertIn("Can the VPN connect?", html)
+        self.assertIn("This separates tunnel failures from general access.", html)
+        self.assertNotIn("This question narrows the problem space", html)
         self.assertIn("VPN fundamentals", html)
         off = self.client.get("/wizard?workflow=learning_test&resume=1&learning=0")
         self.assertNotIn("Understand This Step", off.get_data(as_text=True))

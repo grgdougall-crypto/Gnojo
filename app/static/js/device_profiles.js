@@ -17,7 +17,6 @@ document.addEventListener("DOMContentLoaded", () => {
         dialog.showModal();
     };
     const close = () => dialog.close();
-    byId("newDeviceProfileButton").addEventListener("click", () => open());
     document.querySelectorAll("[data-open-device-form]").forEach((button) => button.addEventListener("click", () => open()));
     document.querySelectorAll(".edit-device").forEach((button) => button.addEventListener("click", () => open(JSON.parse(button.dataset.profile))));
     byId("closeDeviceProfileDialog").addEventListener("click", close);

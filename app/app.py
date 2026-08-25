@@ -2058,6 +2058,10 @@ def _structural_failure(code: str) -> dict[str, str | bool]:
         "rollback_succeeded": "Application failed, but the editable draft was restored exactly. Application provenance may require administrator review.",
         "rollback_failed": "Rollback could not restore the prior draft. Manual intervention is required before further repair attempts.",
         "already_applied": "This approved repair was already applied; no second workflow write occurred.",
+        "recovery_unavailable": "This applied repair is not eligible for supervised draft restoration.",
+        "recovery_invalid": "The retained recovery material does not match this applied repair.",
+        "recovery_failed": "The editable draft could not be restored safely. Manual intervention is required.",
+        "recovery_provenance_failed": "The editable draft was restored, but compensating provenance could not be finalized. Manual intervention is required.",
         "context_invalid": "The Fix Wizard task context is no longer actionable.",
         "preview_unavailable": "A governed structural repair preview is not currently available.",
     }
@@ -2065,8 +2069,8 @@ def _structural_failure(code: str) -> dict[str, str | bool]:
         "code": code,
         "message": messages.get(code, "The supervised structural repair could not be completed safely."),
         "retry_allowed": code == "lock_unavailable",
-        "manual_intervention": code == "rollback_failed",
-        "restored": code == "rollback_succeeded",
+        "manual_intervention": code in {"rollback_failed", "recovery_provenance_failed"},
+        "restored": code in {"rollback_succeeded", "recovery_provenance_failed"},
     }
 
 
@@ -2214,6 +2218,47 @@ def curator_structural_repair_apply(approval_id):
                        if result and review else ()),
         csrf_token=_structural_csrf_token(),
     ), status_code
+
+
+@app.route("/curator/structural-repairs/<application_id>/restore", methods=["GET", "POST"])
+def curator_structural_repair_restore(application_id):
+    from app.services.curator_structural_repair_recovery_service import (
+        CuratorStructuralRepairRecoveryService,
+        StructuralRepairRecoveryError,
+    )
+
+    root = _structural_repository_root()
+    fix_session_id = request.values.get("curator_session", "")
+    service = CuratorStructuralRepairRecoveryService(root)
+    try:
+        context = service.context(application_id, fix_session_id)
+    except StructuralRepairRecoveryError:
+        abort(404)
+    navigation = _structural_navigation(
+        context["task"]["task_id"], fix_session_id, context["item"]["item_id"],
+        request.values.get("origin", ""), request.values.get("return_to", ""),
+    )
+    result = None
+    failure = None
+    if request.method == "POST":
+        _require_structural_csrf()
+        if request.form.get("confirmed") != "yes":
+            abort(400)
+        try:
+            result = service.restore(
+                application_id,
+                reviewer_identity=context["fix_session"]["started_by"],
+                fix_session_id=fix_session_id,
+                reason=request.form.get("reason", ""),
+            )
+        except StructuralRepairRecoveryError as error:
+            failure = _structural_failure(error.code)
+    return render_template(
+        "curator_structural_repair_restore.html",
+        context=context, result=result, failure=failure,
+        fix_session_id=fix_session_id, task_navigation=navigation,
+        csrf_token=_structural_csrf_token(),
+    ), (200 if not failure else 422)
 
 
 @app.route("/curator/tasks/<task_id>/repair-preview", methods=["GET", "POST"])

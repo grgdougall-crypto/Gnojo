@@ -264,6 +264,7 @@ class StructuralRepairStage33BrowserTests(unittest.TestCase):
         self.assertIn(b"workflow was not published", task_page.data)
         self.assertNotIn(b"Structural repair preview available", task_page.data)
         self.assertNotIn(b"Review Repair Preview", task_page.data)
+        self.assertIn(b"Restore Pre-Repair Draft", task_page.data)
         self.assertEqual(self.store.load()["tasks"][self.task_id]["status"], "open")
 
         replay = self.apply(approval_id)

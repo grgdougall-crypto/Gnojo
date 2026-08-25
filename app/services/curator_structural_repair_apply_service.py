@@ -14,6 +14,10 @@ from app.repositories.structural_repair_approval_repository import (
     StructuralRepairApprovalRepository,
     StructuralRepairApprovalRepositoryError,
 )
+from app.repositories.structural_repair_recovery_repository import (
+    StructuralRepairRecoveryRepository,
+    StructuralRepairRecoveryRepositoryError,
+)
 from app.services.curator_evidence_specification_catalog import (
     PRODUCTION_EVIDENCE_SPECIFICATIONS,
 )
@@ -51,6 +55,7 @@ class CuratorStructuralRepairApplyService:
         self.root = Path(repository_root).resolve()
         self.approvals = StructuralRepairApprovalRepository(self.root / "curation_memory")
         self.applications = StructuralRepairApplicationRepository(self.root / "curation_memory")
+        self.recoveries = StructuralRepairRecoveryRepository(self.root / "curation_memory")
         self.persistence = WorkflowDraftPersistence(self.root / "app" / "workflow_drafts")
         self.task_loader = lambda task_id: CuratorTaskService(self.root).get(task_id)
         self.catalog = PRODUCTION_EVIDENCE_SPECIFICATIONS
@@ -70,6 +75,7 @@ class CuratorStructuralRepairApplyService:
         value.root = Path(repository_root).resolve()
         value.approvals = StructuralRepairApprovalRepository(value.root / "curation_memory")
         value.applications = StructuralRepairApplicationRepository(value.root / "curation_memory")
+        value.recoveries = StructuralRepairRecoveryRepository(value.root / "curation_memory")
         value.persistence = WorkflowDraftPersistence(value.root / "app" / "workflow_drafts")
         value.task_loader = task_loader
         value.catalog = specification_catalog
@@ -158,6 +164,30 @@ class CuratorStructuralRepairApplyService:
                 candidate_bytes = (json.dumps(candidate, indent=4, ensure_ascii=False) + "\n").encode("utf-8")
                 expected_raw = StructuralRepairFingerprint.raw_workflow(candidate_bytes)
                 expected_semantic = StructuralRepairFingerprint.semantic_workflow(candidate)
+                try:
+                    self.recoveries.capture(
+                        application_id=approval.application_id,
+                        approval_id=approval.approval_id, task_id=approval.task_id,
+                        finding_id=approval.finding_id,
+                        fix_session_id=approval.fix_session_id,
+                        reviewer_identity=approval.reviewer_identity,
+                        workflow_id=approval.workflow_id,
+                        workflow_path=approval.workflow_path,
+                        original_bytes=before.content,
+                        raw_before=before.raw_sha256,
+                        semantic_before=before.semantic_sha256,
+                        expected_raw_after=expected_raw,
+                        expected_semantic_after=expected_semantic,
+                        captured_at=self.now().isoformat(),
+                    )
+                except StructuralRepairRecoveryRepositoryError as error:
+                    self.approvals.transition(
+                        approval_id, "invalidated", "recovery_capture_failed"
+                    )
+                    raise StructuralRepairApplyError(
+                        "persistence_failed",
+                        "Exact-byte recovery material could not be retained; no draft write occurred.",
+                    ) from error
                 pending = self._append(approval, regenerated, validation, outcome="pending",
                                        expected_raw=expected_raw, expected_semantic=expected_semantic)
                 try:

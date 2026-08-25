@@ -10,6 +10,8 @@ from typing import Any
 from app.services.curator_repair_validator import CuratorRepairValidator
 from app.services.curator_task_reconciliation_service import CuratorTaskReconciliationService
 from app.services.knowledge_integrity_service import KnowledgeIntegrityService
+from app.services.workflow_draft_persistence import WorkflowDraftPersistence, WorkflowDraftPersistenceError
+from app.services.curator_structural_repair_governance import StructuralRepairFingerprint
 from curator.governance import CuratorGovernancePolicy
 from curator.memory import CuratorMemoryStore
 
@@ -102,6 +104,8 @@ class CuratorRepairExecutor:
         backup = self.root / "curation_memory" / "repair_backups" / item["item_id"] / path.name
         backup.parent.mkdir(parents=True, exist_ok=True)
         backup.write_bytes(before)
+        draft_root = (self.root / "app" / "workflow_drafts").resolve()
+        draft_replacement = None
         try:
             workflow = json.loads(before.decode("utf-8"))
             node = (workflow.get("nodes") or {}).get(evidence["node"])
@@ -112,7 +116,12 @@ class CuratorRepairExecutor:
             if not match or match.confidence != 1.0 or match.article["id"] != evidence["canonical_target"]:
                 raise CuratorRepairError("Canonical identity no longer resolves exactly; no change was applied.")
             node["knowledge_article"] = evidence["canonical_target"]
-            self._write_atomic(path, workflow)
+            if path.parent == draft_root:
+                draft_replacement = WorkflowDraftPersistence(draft_root).compare_and_swap(
+                    path.name, StructuralRepairFingerprint.raw_workflow(before), workflow,
+                )
+            else:
+                self._write_atomic(path, workflow)
             verification = self.validator.relationship(item)
             if not verification["verified"]:
                 raise CuratorRepairError("Targeted verification failed; the original workflow was restored.")
@@ -120,7 +129,15 @@ class CuratorRepairExecutor:
             verification["backup"] = str(backup.relative_to(self.root)).replace("\\", "/")
             return verification
         except Exception:
-            self._restore(path, before)
+            if draft_replacement is not None:
+                try:
+                    WorkflowDraftPersistence(draft_root).compare_and_swap(
+                        path.name, draft_replacement.after.raw_sha256, before,
+                    )
+                except WorkflowDraftPersistenceError:
+                    pass
+            else:
+                self._restore(path, before)
             raise
 
     @staticmethod

@@ -12,6 +12,11 @@ from app.services.curator_fix_session_service import CuratorFixSessionService
 from app.services.knowledge_identity_service import KnowledgeIdentityError, KnowledgeIdentityService
 from app.services.knowledge_integrity_service import KnowledgeIntegrityService
 from app.services.workflow_validation_service import WorkflowValidationService
+from app.services.workflow_draft_persistence import (
+    WorkflowDraftPersistence,
+    WorkflowDraftPersistenceError,
+)
+from app.services.curator_structural_repair_governance import StructuralRepairFingerprint
 from curator.memory import CuratorMemoryStore
 from curator.resolution import ResolutionPackageRepository
 
@@ -168,6 +173,7 @@ class CuratorArticleLinkRepairService:
                    self.root / "curation_memory" / "fix_sessions" / f"{session_id}.json",
                    self.root / "curation_memory" / "resolution_packages" / f"{task_id}.json"]
         snapshots = {path: path.read_bytes() if path.exists() else None for path in tracked}
+        persisted_replacement = None
         try:
             workflow = json.loads(workflow_path.read_text(encoding="utf-8"))
             node = workflow["nodes"][preview["node_id"]]
@@ -177,7 +183,11 @@ class CuratorArticleLinkRepairService:
             errors = WorkflowValidationService().validate(workflow).get("errors", [])
             if errors:
                 raise CuratorArticleLinkRepairError("Resulting workflow failed validation: " + "; ".join(errors))
-            self._write_json(workflow_path, workflow)
+            persisted_replacement = WorkflowDraftPersistence(workflow_path.parent).compare_and_swap(
+                workflow_path.name,
+                StructuralRepairFingerprint.raw_workflow(snapshots[workflow_path]),
+                workflow,
+            )
             verification = CuratorRepairRelationshipVerifier(self.root).verify(
                 package["workflow_filename"], preview["node_id"], preview["proposed_article_id"])
             if not verification["verified"]:
@@ -205,6 +215,13 @@ class CuratorArticleLinkRepairService:
             for path, content in snapshots.items():
                 if content is None:
                     path.unlink(missing_ok=True)
+                elif path == workflow_path and persisted_replacement is not None:
+                    try:
+                        WorkflowDraftPersistence(workflow_path.parent).compare_and_swap(
+                            workflow_path.name, persisted_replacement.after.raw_sha256, content,
+                        )
+                    except WorkflowDraftPersistenceError:
+                        pass
                 else:
                     path.parent.mkdir(parents=True, exist_ok=True)
                     path.write_bytes(content)

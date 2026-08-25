@@ -1,10 +1,13 @@
 import json
-import os
 from pathlib import Path
-import tempfile
 from copy import deepcopy
+from contextlib import contextmanager
 
 from app.services.workflow_metadata_service import workflow_category, workflow_platform
+from app.services.workflow_draft_persistence import (
+    WorkflowDraftPersistence,
+    WorkflowDraftPersistenceError,
+)
 
 
 class WorkflowDraftError(Exception):
@@ -24,6 +27,7 @@ class WorkflowDraftService:
         self.drafts_path.mkdir(
             exist_ok=True
         )
+        self.persistence = WorkflowDraftPersistence(self.drafts_path)
 
     def save_draft(
         self,
@@ -47,16 +51,10 @@ class WorkflowDraftService:
             / filename
         )
 
-        with open(
-            file_path,
-            "w",
-            encoding="utf-8",
-        ) as file:
-            json.dump(
-                workflow,
-                file,
-                indent=4,
-            )
+        try:
+            self.persistence.save(filename, workflow)
+        except WorkflowDraftPersistenceError as error:
+            raise WorkflowDraftError(str(error)) from error
 
         return filename
 
@@ -169,83 +167,74 @@ class WorkflowDraftService:
         if not isinstance(changes, dict):
             raise WorkflowDraftError("Node changes must be an object.")
 
-        file_path = self.drafts_path / filename
-        if not file_path.is_file():
-            raise FileNotFoundError(filename)
+        with self._locked(filename) as draft:
+            try:
+                snapshot = draft.read()
+            except WorkflowDraftPersistenceError as error:
+                if error.code == "draft_not_found":
+                    raise FileNotFoundError(filename) from error
+                raise WorkflowDraftError(str(error)) from error
+            workflow = snapshot.workflow
 
-        with file_path.open("r", encoding="utf-8") as file:
-            workflow = json.load(file)
+            nodes = workflow.get("nodes")
+            if not isinstance(nodes, dict) or node_id not in nodes:
+                raise KeyError(node_id)
+            allowed_fields = {
+                "title", "question", "instruction", "message", "help_text",
+                "knowledge_article", "next", "next_workflow", "button_label",
+                "answers", "conditions", "skip_to",
+            }
+            unexpected = set(changes) - allowed_fields
+            if unexpected:
+                raise WorkflowDraftError(f"Unsupported node field: {sorted(unexpected)[0]}")
+            node = nodes[node_id]
+            for field, value in changes.items():
+                if field == "conditions":
+                    from app.services.workflow_condition_service import CONDITION_FIELDS
+                    if not isinstance(value, dict):
+                        raise WorkflowDraftError("Node conditions must be an object.")
+                    unexpected_conditions = set(value) - set(CONDITION_FIELDS)
+                    if unexpected_conditions:
+                        raise WorkflowDraftError(f"Unsupported condition: {sorted(unexpected_conditions)[0]}")
+                    normalized_conditions = {}
+                    for condition_field, condition_value in value.items():
+                        if condition_value and condition_value not in CONDITION_FIELDS[condition_field]:
+                            raise WorkflowDraftError(f"Choose a valid {condition_field.replace('_', ' ')} condition.")
+                        if condition_value:
+                            normalized_conditions[condition_field] = condition_value
+                    if normalized_conditions:
+                        node[field] = normalized_conditions
+                    else:
+                        node.pop(field, None)
+                    continue
+                if field == "answers":
+                    if not isinstance(value, dict):
+                        raise WorkflowDraftError("Answers must be an object.")
+                    for answer_id, answer in value.items():
+                        if not isinstance(answer_id, str) or not answer_id.strip():
+                            raise WorkflowDraftError("Each answer needs an ID.")
+                        if not isinstance(answer, dict):
+                            raise WorkflowDraftError("Each answer must be an object.")
+                        if not isinstance(answer.get("label"), str) or not answer["label"].strip():
+                            raise WorkflowDraftError("Each answer needs a label.")
+                        if not isinstance(answer.get("next"), str) or not answer["next"].strip():
+                            raise WorkflowDraftError("Each answer needs a route.")
+                    node[field] = value
+                    continue
 
-        nodes = workflow.get("nodes")
-        if not isinstance(nodes, dict) or node_id not in nodes:
-            raise KeyError(node_id)
+                if value is not None and not isinstance(value, str):
+                    raise WorkflowDraftError(f"{field} must be text.")
 
-        allowed_fields = {
-            "title",
-            "question",
-            "instruction",
-            "message",
-            "help_text",
-            "knowledge_article",
-            "next",
-            "next_workflow",
-            "button_label",
-            "answers",
-            "conditions",
-            "skip_to",
-        }
-        unexpected = set(changes) - allowed_fields
-        if unexpected:
-            raise WorkflowDraftError(
-                f"Unsupported node field: {sorted(unexpected)[0]}"
-            )
-
-        node = nodes[node_id]
-        for field, value in changes.items():
-            if field == "conditions":
-                from app.services.workflow_condition_service import CONDITION_FIELDS
-                if not isinstance(value, dict):
-                    raise WorkflowDraftError("Node conditions must be an object.")
-                unexpected_conditions = set(value) - set(CONDITION_FIELDS)
-                if unexpected_conditions:
-                    raise WorkflowDraftError(f"Unsupported condition: {sorted(unexpected_conditions)[0]}")
-                normalized_conditions = {}
-                for condition_field, condition_value in value.items():
-                    if condition_value and condition_value not in CONDITION_FIELDS[condition_field]:
-                        raise WorkflowDraftError(f"Choose a valid {condition_field.replace('_', ' ')} condition.")
-                    if condition_value:
-                        normalized_conditions[condition_field] = condition_value
-                if normalized_conditions:
-                    node[field] = normalized_conditions
+                normalized = (value or "").strip()
+                if normalized:
+                    node[field] = normalized
                 else:
                     node.pop(field, None)
-                continue
-            if field == "answers":
-                if not isinstance(value, dict):
-                    raise WorkflowDraftError("Answers must be an object.")
-                for answer_id, answer in value.items():
-                    if not isinstance(answer_id, str) or not answer_id.strip():
-                        raise WorkflowDraftError("Each answer needs an ID.")
-                    if not isinstance(answer, dict):
-                        raise WorkflowDraftError("Each answer must be an object.")
-                    if not isinstance(answer.get("label"), str) or not answer["label"].strip():
-                        raise WorkflowDraftError("Each answer needs a label.")
-                    if not isinstance(answer.get("next"), str) or not answer["next"].strip():
-                        raise WorkflowDraftError("Each answer needs a route.")
-                node[field] = value
-                continue
 
-            if value is not None and not isinstance(value, str):
-                raise WorkflowDraftError(f"{field} must be text.")
-
-            normalized = (value or "").strip()
-            if normalized:
-                node[field] = normalized
-            else:
-                node.pop(field, None)
-
-        self._write_atomic(file_path, workflow)
-        return workflow
+            try:
+                return draft.replace(snapshot.raw_sha256, workflow).after.workflow
+            except WorkflowDraftPersistenceError as error:
+                raise WorkflowDraftError(str(error)) from error
 
     def update_settings(self, filename, changes):
         """Validate and persist editable workflow-level settings."""
@@ -262,76 +251,55 @@ class WorkflowDraftService:
                 f"Unsupported workflow setting: {sorted(unexpected)[0]}"
             )
 
-        file_path = self.drafts_path / filename
-        if not file_path.is_file():
-            raise FileNotFoundError(filename)
-        with file_path.open("r", encoding="utf-8") as file:
-            workflow = json.load(file)
-
-        name = changes.get("name")
-        if not isinstance(name, str) or not name.strip():
-            raise WorkflowDraftError("Workflow name is required.")
-
-        description = changes.get("description", "")
-        if not isinstance(description, str):
-            raise WorkflowDraftError("Description must be text.")
-
-        category = changes.get("category", workflow_category(workflow))
-        allowed_categories = {"Desktop Support", "Networking", "Servers & Identity", "Security", "Printers", "Other"}
-        if category not in allowed_categories:
-            raise WorkflowDraftError("Choose a valid workflow category.")
-
-        platform = changes.get("platform", workflow_platform(workflow))
-        allowed_platforms = {"Windows", "macOS", "Linux", "Cross-platform"}
-        if platform not in allowed_platforms:
-            raise WorkflowDraftError("Choose a valid workflow platform.")
-
-        estimated_steps = changes.get("estimated_steps")
-        if (
-            isinstance(estimated_steps, bool)
-            or not isinstance(estimated_steps, int)
-            or not 1 <= estimated_steps <= 999
-        ):
-            raise WorkflowDraftError("Estimated steps must be between 1 and 999.")
-
-        start_node = changes.get("start_node")
-        nodes = workflow.get("nodes")
-        if not isinstance(start_node, str) or not isinstance(nodes, dict) or start_node not in nodes:
-            raise WorkflowDraftError("Start node must reference an existing node.")
-
-        workflow["name"] = name.strip()
-        workflow["estimated_steps"] = estimated_steps
-        workflow["start_node"] = start_node
-        workflow["category"] = category
-        workflow["platform"] = platform
-        if description.strip():
-            workflow["description"] = description.strip()
-        else:
-            workflow.pop("description", None)
-
-        self._write_atomic(file_path, workflow)
-        return workflow
-
-    def _write_atomic(self, file_path, workflow):
-        """Write JSON beside the draft, then replace it in one operation."""
-
-        descriptor, temporary_name = tempfile.mkstemp(
-            prefix=f".{file_path.stem}-",
-            suffix=".tmp",
-            dir=self.drafts_path,
-            text=True,
-        )
-
-        try:
-            with os.fdopen(descriptor, "w", encoding="utf-8") as file:
-                json.dump(workflow, file, indent=4)
-                file.write("\n")
-                file.flush()
-                os.fsync(file.fileno())
-            os.replace(temporary_name, file_path)
-        except Exception:
+        with self._locked(filename) as draft:
             try:
-                os.unlink(temporary_name)
-            except FileNotFoundError:
-                pass
-            raise
+                snapshot = draft.read()
+            except WorkflowDraftPersistenceError as error:
+                if error.code == "draft_not_found":
+                    raise FileNotFoundError(filename) from error
+                raise WorkflowDraftError(str(error)) from error
+            workflow = snapshot.workflow
+            name = changes.get("name")
+            if not isinstance(name, str) or not name.strip():
+                raise WorkflowDraftError("Workflow name is required.")
+            description = changes.get("description", "")
+            if not isinstance(description, str):
+                raise WorkflowDraftError("Description must be text.")
+            category = changes.get("category", workflow_category(workflow))
+            allowed_categories = {"Desktop Support", "Networking", "Servers & Identity", "Security", "Printers", "Other"}
+            if category not in allowed_categories:
+                raise WorkflowDraftError("Choose a valid workflow category.")
+            platform = changes.get("platform", workflow_platform(workflow))
+            allowed_platforms = {"Windows", "macOS", "Linux", "Cross-platform"}
+            if platform not in allowed_platforms:
+                raise WorkflowDraftError("Choose a valid workflow platform.")
+            estimated_steps = changes.get("estimated_steps")
+            if (isinstance(estimated_steps, bool) or not isinstance(estimated_steps, int)
+                    or not 1 <= estimated_steps <= 999):
+                raise WorkflowDraftError("Estimated steps must be between 1 and 999.")
+            start_node = changes.get("start_node")
+            nodes = workflow.get("nodes")
+            if not isinstance(start_node, str) or not isinstance(nodes, dict) or start_node not in nodes:
+                raise WorkflowDraftError("Start node must reference an existing node.")
+
+            workflow["name"] = name.strip()
+            workflow["estimated_steps"] = estimated_steps
+            workflow["start_node"] = start_node
+            workflow["category"] = category
+            workflow["platform"] = platform
+            if description.strip():
+                workflow["description"] = description.strip()
+            else:
+                workflow.pop("description", None)
+            try:
+                return draft.replace(snapshot.raw_sha256, workflow).after.workflow
+            except WorkflowDraftPersistenceError as error:
+                raise WorkflowDraftError(str(error)) from error
+
+    @contextmanager
+    def _locked(self, filename):
+        try:
+            with self.persistence.locked(filename) as draft:
+                yield draft
+        except WorkflowDraftPersistenceError as error:
+            raise WorkflowDraftError(str(error)) from error

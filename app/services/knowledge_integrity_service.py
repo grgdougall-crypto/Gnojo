@@ -8,6 +8,8 @@ from typing import Any
 from app.repositories.knowledge_repository import KnowledgeRepository
 from app.services.knowledge_identity_service import KnowledgeIdentityError, KnowledgeIdentityService
 from app.services.article_identity_resolver import ArticleIdentityResolver
+from app.services.workflow_draft_persistence import WorkflowDraftPersistence
+from app.services.curator_structural_repair_governance import StructuralRepairFingerprint
 from curator.inventory import CuratorInventory
 from curator.checks import CuratorChecks
 
@@ -317,7 +319,8 @@ class KnowledgeIntegrityService:
 
     def _replace_workflow_references(self, path: Path, duplicate_ids: set[str], canonical_id: str) -> None:
         try:
-            document = json.loads(path.read_text(encoding="utf-8"))
+            original = path.read_bytes()
+            document = json.loads(original.decode("utf-8"))
         except (OSError, json.JSONDecodeError):
             return
         workflow = document
@@ -333,7 +336,13 @@ class KnowledgeIntegrityService:
                 node["knowledge_article"] = canonical_id
                 changed = True
         if changed:
-            self.repository._write_json_atomic(path, document)
+            draft_root = (self.root / "app" / "workflow_drafts").resolve()
+            if path.resolve().parent == draft_root:
+                WorkflowDraftPersistence(draft_root).compare_and_swap(
+                    path.name, StructuralRepairFingerprint.raw_workflow(original), document,
+                )
+            else:
+                self.repository._write_json_atomic(path, document)
 
     @staticmethod
     def _group(reason: str, key: str, items: list[Any]) -> dict[str, Any]:

@@ -20,11 +20,13 @@ class StructuralRepairApplicationRepository:
     """Append-only provenance journal. This repository has no workflow-write authority."""
 
     IMMUTABLE_TRANSACTION_FIELDS = (
-        "application_id", "approval_id", "task_id", "finding_id", "fix_session_id",
+        "schema_version", "application_id", "approval_id", "task_id", "finding_id", "fix_session_id",
         "reviewer_identity", "reviewer_identity_assurance", "workflow_id", "workflow_path",
-        "workflow_raw_sha256_before", "workflow_semantic_sha256_before", "preview_digest",
-        "plan_digest", "adapter_id", "specification_id", "specification_version",
-        "specification_digest", "proposed_node_ids", "changed_edges", "new_edges",
+        "workflow_raw_sha256_before", "workflow_semantic_sha256_before",
+        "expected_workflow_raw_sha256_after", "expected_workflow_semantic_sha256_after",
+        "preview_digest", "plan_digest", "adapter_id", "specification_id",
+        "specification_version", "specification_digest", "proposed_node_ids",
+        "changed_edges", "new_edges", "created_at",
     )
 
     def __init__(self, curator_root: Path):

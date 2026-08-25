@@ -226,6 +226,7 @@ class StructuralRepairStage30ContractTests(unittest.TestCase):
 
     def test_history_rejects_changes_to_every_transaction_identity_field(self):
         mutable_examples = {
+            "schema_version": "2.0",
             "finding_id": "CUR-OTHER", "fix_session_id": "CFX-OTHER",
             "reviewer_identity": "Other Reviewer", "workflow_id": "other_workflow",
             "workflow_path": "app/workflow_drafts/other.json", "adapter_id": "other_adapter",
@@ -233,9 +234,12 @@ class StructuralRepairStage30ContractTests(unittest.TestCase):
             "preview_digest": "1" * 64, "plan_digest": "2" * 64,
             "workflow_raw_sha256_before": "3" * 64,
             "workflow_semantic_sha256_before": "4" * 64,
+            "expected_workflow_raw_sha256_after": "5" * 64,
+            "expected_workflow_semantic_sha256_after": "6" * 64,
             "proposed_node_ids": ["different_node"],
             "changed_edges": [{"source": "other", "route": "No", "destination": "terminal"}],
             "new_edges": [{"source": "new", "route": "next", "destination": "terminal"}],
+            "created_at": "2026-08-24T22:01:00+00:00",
         }
         for field, replacement in mutable_examples.items():
             with self.subTest(field=field), tempfile.TemporaryDirectory() as directory:
@@ -249,6 +253,40 @@ class StructuralRepairStage30ContractTests(unittest.TestCase):
                 changed[field] = replacement
                 with self.assertRaises(StructuralRepairApplicationRepositoryError):
                     repository.append(changed)
+
+    def test_history_allows_legitimate_applied_and_rollback_event_revisions(self):
+        for outcome, failure, rollback in (
+                ("applied", "", "not_required"),
+                ("rolled_back", "rollback_succeeded", "succeeded")):
+            with self.subTest(outcome=outcome), tempfile.TemporaryDirectory() as directory:
+                repository = StructuralRepairApplicationRepository(Path(directory) / "curation_memory")
+                pending_data = self.record_data()
+                pending_data["expected_workflow_raw_sha256_after"] = "5" * 64
+                pending_data["expected_workflow_semantic_sha256_after"] = "6" * 64
+                pending = StructuralRepairApplicationRecord.from_dict(pending_data)
+                repository.append(pending)
+
+                final = copy.deepcopy(pending_data)
+                final.update({
+                    "event_id": "SRE-FEDCBA9876543210",
+                    "revision": 2,
+                    "previous_event_digest": pending.event_digest,
+                    "outcome": outcome,
+                    "failure_category": failure,
+                    "failure_reason": "bounded event detail" if failure else "",
+                    "applied_at": "2026-08-24T22:01:00+00:00" if outcome == "applied" else "",
+                    "finalized_at": "2026-08-24T22:02:00+00:00",
+                    "validation_summaries": {"schema": {"passed": True}, "phase": outcome},
+                    "rollback_status": rollback,
+                    "rollback_raw_sha256": "7" * 64 if rollback == "succeeded" else "",
+                    "rollback_semantic_sha256": "8" * 64 if rollback == "succeeded" else "",
+                })
+                repository.append(final)
+
+                history = repository.get(pending.application_id)
+                self.assertEqual([item.outcome for item in history], ["pending", outcome])
+                self.assertEqual(history[-1].expected_workflow_raw_sha256_after, "5" * 64)
+                self.assertEqual(history[-1].created_at, pending.created_at)
 
     def test_stage30_has_no_workflow_or_execution_authority(self):
         with tempfile.TemporaryDirectory() as directory:

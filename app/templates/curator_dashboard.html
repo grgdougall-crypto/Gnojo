@@ -14,6 +14,28 @@
     <aside class="curator-growth-distinction"><strong>Growth is separate governance.</strong><span>It supervises proposals intended to improve Curator itself; it is not the final stage of routine maintenance.</span><a href="{{ url_for('curator_growth_dashboard') }}">Open Growth</a></aside>
   </section>
   {% if status_message %}<div class="alert alert-{{ status_kind }}" role="status">{{ status_message }}</div>{% endif %}
+  {% set observations = dashboard.observations|default({'has_results': false, 'running_count': 0, 'overlap_count': 0, 'jobs': []}) %}
+  <section class="quality-section" id="curator-observations" aria-labelledby="curatorObservationsTitle">
+    <div class="quality-section__heading"><div><span class="section-eyebrow">Read-only operations</span><h2 id="curatorObservationsTitle">Recent Curator Observations</h2><p>Latest persisted Stage A results. Viewing this panel does not run a job or change Curator state.</p></div><div>{% if observations.running_count %}<span class="badge text-bg-info">{{ observations.running_count }} running</span>{% endif %}{% if observations.overlap_count %}<span class="badge text-bg-warning">{{ observations.overlap_count }} overlap skipped</span>{% endif %}</div></div>
+    <div class="curator-status-grid">
+      {% for job in observations.jobs %}
+      <article>
+        <div class="d-flex justify-content-between align-items-start gap-2"><span>{{ job.label }}</span>{% if job.has_result %}<span class="badge {% if job.status == 'SUCCEEDED' %}text-bg-success{% elif job.status == 'FAILED' %}text-bg-danger{% elif job.status == 'RUNNING' %}text-bg-info{% else %}text-bg-warning{% endif %}">{{ job.status|replace('_', ' ')|title }}</span>{% endif %}</div>
+        {% if not job.has_result %}<strong class="h6">No observation recorded yet</strong>
+        {% else %}
+          <small>Run <code>{{ job.run_id }}</code></small>
+          {% if job.duration_seconds is not none %}<small>Duration: {{ '%.2f'|format(job.duration_seconds) }} sec</small>{% else %}<small>Started: {{ job.started_at|friendly_datetime }}</small>{% endif %}
+          {% if job.counts %}<dl class="mb-0 mt-2">{% for count in job.counts %}<div class="d-flex justify-content-between gap-3"><dt class="fw-normal">{{ count.label }}</dt><dd class="mb-0"><strong>{{ count.value }}</strong></dd></div>{% endfor %}</dl>{% endif %}
+          <small>Last success: {{ job.last_successful_at|friendly_datetime if job.last_successful_at else 'None recorded' }}</small>
+          {% if job.last_failed_at %}<small>Last failure: {{ job.last_failed_at|friendly_datetime }}</small>{% endif %}
+          {% if job.warning_count or job.error_count %}<small class="{% if job.error_count %}text-danger{% else %}text-warning{% endif %}">{{ job.warning_count }} warning{{ '' if job.warning_count == 1 else 's' }} &middot; {{ job.error_count }} error{{ '' if job.error_count == 1 else 's' }}</small>{% endif %}
+        {% endif %}
+      </article>
+      {% else %}
+      {% for label in ['Health', 'Curator Audit', 'Knowledge Integrity', 'Progress Policy', 'Troubleshooting Analytics'] %}<article><span>{{ label }}</span><strong class="h6">No observation recorded yet</strong></article>{% endfor %}
+      {% endfor %}
+    </div>
+  </section>
   <section class="quality-section curator-assisted-batch" id="assisted-resolution-batch" aria-labelledby="assistedBatchTitle">
     <div><span class="section-eyebrow">Assisted resolution</span><h2 id="assistedBatchTitle">First Assisted Resolution Batch</h2><p>Prepare review packages without creating drafts, links, or publications.</p></div>
     <form method="post" action="{{ url_for('curator_assisted_resolution_batch') }}"><button class="btn btn-info"><i class="bi bi-stars me-2" aria-hidden="true"></i>Prepare First Assisted Resolution Batch</button></form>

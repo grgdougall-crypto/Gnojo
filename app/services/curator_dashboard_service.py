@@ -13,6 +13,9 @@ from curator.tasks import KnowledgeTaskService
 from app.services.curator_task_service import CuratorTaskService
 from app.services.curator_task_inventory_service import CuratorTaskInventoryService
 from app.services.curator_dashboard_presentation_service import CuratorDashboardPresentationService
+from app.services.curator_observation_dashboard_service import (
+    CuratorObservationDashboardService,
+)
 from app.services.knowledge_integrity_service import KnowledgeIntegrityService
 
 
@@ -75,6 +78,9 @@ class CuratorDashboardService:
             "memory_updated_at": state.get("updated_at"),
             "integrity": KnowledgeIntegrityService(self.repository_root).report(),
             "task_inventory": inventory,
+            "observations": CuratorObservationDashboardService(
+                self.repository_root
+            ).project(),
         }
 
     def _latest_report(self) -> dict[str, Any]:

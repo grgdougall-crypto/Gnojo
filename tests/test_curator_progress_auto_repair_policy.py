@@ -1,8 +1,10 @@
 import copy
+import hashlib
 import json
 import shutil
 import tempfile
 import unittest
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -13,6 +15,16 @@ from app.services.curator_progress_auto_repair_policy_service import (
     CuratorProgressAutoRepairPolicyService,
 )
 from app.services.curator_structural_repair_governance import StructuralRepairFingerprint
+from app.services.workflow_lifecycle_projection_service import (
+    AMBIGUOUS_STATE,
+    AUTHORED_OR_UNATTRIBUTED_CHANGES,
+    GOVERNED_CHANGES,
+    MIXED_CHANGES,
+    NO_ACTIVE_PUBLICATION,
+    NOT_READY,
+    SemanticDeltaOperation,
+    WorkflowRuntimeProjection,
+)
 from curator.memory import CuratorMemoryStore
 
 
@@ -125,11 +137,15 @@ class CuratorProgressAutoRepairPolicyTests(unittest.TestCase):
         (self.drafts / "policy_progress.json").write_bytes(self.encoded(workflow))
 
     def write_publication(self, workflow):
+        content_hash = hashlib.sha256(json.dumps(
+            workflow, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")).hexdigest()
         snapshot = {
             "publication": {
                 "version": 1,
                 "label": "Version 1",
                 "source_filename": "policy_progress.json",
+                "content_hash": content_hash,
             },
             "workflow": workflow,
         }
@@ -137,6 +153,7 @@ class CuratorProgressAutoRepairPolicyTests(unittest.TestCase):
         (self.publications / "current.json").write_bytes(self.encoded({
             "workflow_id": "policy_progress",
             "current_version": 1,
+            "content_hash": content_hash,
         }))
 
     def update_task(self, mutate):
@@ -178,8 +195,8 @@ class CuratorProgressAutoRepairPolicyTests(unittest.TestCase):
         self.assertEqual(result["status"], "ELIGIBLE")
         self.assertEqual(result["policy_id"],
                          "cur-wr-progress-draft-auto-apply-eligibility")
-        self.assertEqual(result["policy_version"], 1)
-        self.assertEqual(len(result["gate_results"]), 18)
+        self.assertEqual(result["policy_version"], 2)
+        self.assertEqual(len(result["gate_results"]), 21)
         self.assertTrue(all(item["passed"] for item in result["gate_results"]))
         self.assertEqual(result["failed_gate_reasons"], ())
         self.assertEqual(result["proposed_mutation"]["path"], "/progress_mode")
@@ -210,7 +227,7 @@ class CuratorProgressAutoRepairPolicyTests(unittest.TestCase):
         self.assertIn("/progress_mode", page)
         self.assertIn("absent", page)
         self.assertIn("branch_aware", page)
-        self.assertIn("18 passed", page)
+        self.assertIn("21 passed", page)
         self.assertIn("0 failed", page)
         self.assertIn("Observation only.", page)
         self.assertIn("No automatic repair authority is enabled.", page)
@@ -237,7 +254,7 @@ class CuratorProgressAutoRepairPolicyTests(unittest.TestCase):
             "A current still_detected verification with the exact draft fingerprint is unavailable.",
             page,
         )
-        self.assertIn("17 passed", page)
+        self.assertIn("20 passed", page)
         self.assertIn("1 failed", page)
 
         self.update_task(lambda task: task.update({
@@ -277,6 +294,7 @@ class CuratorProgressAutoRepairPolicyTests(unittest.TestCase):
         result = self.evaluator().evaluate(self.task_id).to_dict()
         self.assertFalse(result["eligible"])
         self.assertIn("06", self.failed_ids(result))
+        self.assertIn("08", self.failed_ids(result))
         self.assertFalse(publication_root.exists())
 
     def setUp_from_clean(self):
@@ -293,6 +311,7 @@ class CuratorProgressAutoRepairPolicyTests(unittest.TestCase):
         result = self.evaluator().evaluate(self.task_id).to_dict()
         self.assertFalse(result["eligible"])
         self.assertIn("06", self.failed_ids(result))
+        self.assertIn("08", self.failed_ids(result))
 
         self.setUp_from_clean()
         graph_drift = copy.deepcopy(self.workflow)
@@ -311,7 +330,138 @@ class CuratorProgressAutoRepairPolicyTests(unittest.TestCase):
                 self.set_workflow(workflow)
                 result = self.evaluator().evaluate(self.task_id).to_dict()
                 self.assertFalse(result["eligible"])
+                self.assertIn("09", self.failed_ids(result))
+
+    def test_every_nonbaseline_lifecycle_state_fails_closed(self):
+        evaluator = self.evaluator()
+        baseline = evaluator.lifecycle_projection.project("policy_progress")
+        for state in (
+            GOVERNED_CHANGES,
+            AUTHORED_OR_UNATTRIBUTED_CHANGES,
+            MIXED_CHANGES,
+            AMBIGUOUS_STATE,
+            NO_ACTIVE_PUBLICATION,
+        ):
+            with self.subTest(state=state), patch.object(
+                evaluator.lifecycle_projection,
+                "project",
+                return_value=replace(
+                    baseline,
+                    lifecycle_state=state,
+                    publication_review_state=NOT_READY,
+                ),
+            ):
+                result = evaluator.evaluate(self.task_id).to_dict()
+                self.assertFalse(result["eligible"])
+                self.assertIn("06", self.failed_ids(result))
+
+    def test_duplicate_draft_and_provenance_ambiguity_fail_closed(self):
+        (self.drafts / "duplicate.json").write_bytes(self.encoded(self.workflow))
+        result = self.evaluator().evaluate(self.task_id).to_dict()
+        self.assertFalse(result["eligible"])
+        self.assertIn("05", self.failed_ids(result))
+        self.assertIn("06", self.failed_ids(result))
+
+        (self.drafts / "duplicate.json").unlink()
+        evaluator = self.evaluator()
+        baseline = evaluator.lifecycle_projection.project("policy_progress")
+        with patch.object(
+            evaluator.lifecycle_projection,
+            "project",
+            return_value=replace(
+                baseline,
+                ambiguity_reasons=("Governed provenance is ambiguous.",),
+            ),
+        ):
+            result = evaluator.evaluate(self.task_id).to_dict()
+        self.assertFalse(result["eligible"])
+        self.assertIn("08", self.failed_ids(result))
+
+    def test_runtime_mismatch_and_compatibility_overlay_fail_closed(self):
+        evaluator = self.evaluator()
+        baseline = evaluator.lifecycle_projection.project("policy_progress")
+        for runtime in (
+            WorkflowRuntimeProjection(2, False, False),
+            WorkflowRuntimeProjection(1, True, True),
+        ):
+            with self.subTest(runtime=runtime), patch.object(
+                evaluator.lifecycle_projection,
+                "project",
+                return_value=replace(baseline, runtime=runtime),
+            ):
+                result = evaluator.evaluate(self.task_id).to_dict()
+                self.assertFalse(result["eligible"])
                 self.assertIn("07", self.failed_ids(result))
+
+    def test_projection_path_fingerprint_and_concurrent_draft_changes_fail_closed(self):
+        evaluator = self.evaluator()
+        baseline = evaluator.lifecycle_projection.project("policy_progress")
+        projections = (
+            replace(baseline, draft_path="app/workflow_drafts/other.json"),
+            replace(baseline, draft_raw_fingerprint="0" * 64),
+            replace(baseline, draft_semantic_fingerprint="1" * 64),
+            replace(baseline, published_semantic_fingerprint="2" * 64),
+        )
+        for projected in projections:
+            with self.subTest(projected=projected), patch.object(
+                evaluator.lifecycle_projection, "project", return_value=projected,
+            ):
+                result = evaluator.evaluate(self.task_id).to_dict()
+                self.assertFalse(result["eligible"])
+                self.assertTrue({"05", "08"} & self.failed_ids(result))
+
+        def change_after_projection(_workflow_id):
+            changed = copy.deepcopy(self.workflow)
+            changed["description"] = "Changed after lifecycle projection."
+            self.write_draft(changed)
+            return baseline
+
+        with patch.object(
+            evaluator.lifecycle_projection, "project", side_effect=change_after_projection,
+        ):
+            result = evaluator.evaluate(self.task_id).to_dict()
+        self.assertFalse(result["eligible"])
+        self.assertIn("05", self.failed_ids(result))
+
+    def test_semantic_and_provenance_delta_projection_fails_closed(self):
+        evaluator = self.evaluator()
+        baseline = evaluator.lifecycle_projection.project("policy_progress")
+        operation = SemanticDeltaOperation(
+            "replace", "/description", "before", "after", "a" * 64, "b" * 64,
+        )
+        projections = (
+            replace(baseline, semantic_delta=(operation,)),
+            replace(baseline, governed_delta_summary=("SRX: /progress_mode",)),
+            replace(
+                baseline,
+                authored_or_unattributed_delta_summary=("replace /description",),
+            ),
+        )
+        for projected in projections:
+            with self.subTest(projected=projected), patch.object(
+                evaluator.lifecycle_projection, "project", return_value=projected,
+            ):
+                result = evaluator.evaluate(self.task_id).to_dict()
+                self.assertFalse(result["eligible"])
+                self.assertIn("08", self.failed_ids(result))
+
+    def test_additional_projected_reasoning_defect_fails_closed(self):
+        evaluator = self.evaluator()
+        baseline = evaluator.lifecycle_projection.project("policy_progress")
+        validation = replace(
+            baseline.validation,
+            reasoning_findings=baseline.validation.reasoning_findings + (
+                "CUR-WR-TERMINAL-EVIDENCE:workflow_reasoning_evidence_gap:done",
+            ),
+        )
+        with patch.object(
+            evaluator.lifecycle_projection,
+            "project",
+            return_value=replace(baseline, validation=validation),
+        ):
+            result = evaluator.evaluate(self.task_id).to_dict()
+        self.assertFalse(result["eligible"])
+        self.assertIn("14", self.failed_ids(result))
 
     def test_preview_validation_and_new_finding_failures_fail_closed(self):
         evaluator = self.evaluator()
@@ -322,7 +472,7 @@ class CuratorProgressAutoRepairPolicyTests(unittest.TestCase):
         }):
             result = evaluator.evaluate(self.task_id).to_dict()
         self.assertFalse(result["eligible"])
-        self.assertIn("11", self.failed_ids(result))
+        self.assertIn("13", self.failed_ids(result))
 
         self.setUp_from_clean()
         invalid = copy.deepcopy(self.workflow)
@@ -332,7 +482,7 @@ class CuratorProgressAutoRepairPolicyTests(unittest.TestCase):
         self.set_workflow(invalid)
         result = self.evaluator().evaluate(self.task_id).to_dict()
         self.assertFalse(result["eligible"])
-        self.assertIn("12", self.failed_ids(result))
+        self.assertIn("14", self.failed_ids(result))
 
         self.setUp_from_clean()
         evaluator = self.evaluator()
@@ -348,7 +498,7 @@ class CuratorProgressAutoRepairPolicyTests(unittest.TestCase):
         with patch.object(evaluator.registry, "preview", return_value=preview):
             result = evaluator.evaluate(self.task_id).to_dict()
         self.assertFalse(result["eligible"])
-        self.assertIn("14", self.failed_ids(result))
+        self.assertIn("17", self.failed_ids(result))
 
     def test_ambiguous_application_and_wrong_policy_identity_fail_closed(self):
         record = SimpleNamespace(
@@ -361,7 +511,7 @@ class CuratorProgressAutoRepairPolicyTests(unittest.TestCase):
             application_repository=FakeApplicationRepository((record,))
         ).evaluate(self.task_id).to_dict()
         self.assertFalse(result["eligible"])
-        self.assertIn("17", self.failed_ids(result))
+        self.assertIn("20", self.failed_ids(result))
 
         for field, value in (
             ("curator_rule", "CUR-WR-OTHER"),
@@ -419,7 +569,7 @@ class CuratorProgressAutoRepairPolicyTests(unittest.TestCase):
         ):
             result = evaluator.evaluate(self.task_id).to_dict()
         self.assertFalse(result["eligible"])
-        self.assertIn("08", self.failed_ids(result))
+        self.assertIn("10", self.failed_ids(result))
 
 
 if __name__ == "__main__":

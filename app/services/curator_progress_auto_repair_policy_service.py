@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+import json
 import os
-import re
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -20,7 +20,11 @@ from app.services.curator_structural_repair_preview_service import (
     CuratorStructuralRepairPreviewService,
     StructuralRepairPreviewError,
 )
-from app.services.curator_workflow_lifecycle_service import CuratorWorkflowLifecycleService
+from app.services.workflow_lifecycle_projection_service import (
+    MATCHES_PUBLISHED,
+    NO_UNPUBLISHED_CHANGES,
+    WorkflowLifecycleProjectionService,
+)
 from app.services.workflow_validation_service import WorkflowValidationService
 from curator.memory import CuratorMemoryError, CuratorMemoryStore
 from curator.workflow_reasoning import WorkflowReasoningAuditor
@@ -62,7 +66,7 @@ class CuratorProgressAutoRepairPolicyService:
     """Read-only policy projection for one allowlisted progress metadata repair."""
 
     POLICY_ID = "cur-wr-progress-draft-auto-apply-eligibility"
-    POLICY_VERSION = 1
+    POLICY_VERSION = 2
     RULE = "CUR-WR-PROGRESS"
     FINDING_TYPE = "workflow_reasoning_progress_inconsistency"
     ADAPTER_ID = "branch_aware_progress_metadata"
@@ -79,17 +83,25 @@ class CuratorProgressAutoRepairPolicyService:
         *,
         now: Callable[[], datetime] | None = None,
         application_repository: StructuralRepairApplicationRepository | None = None,
+        lifecycle_projection_service: WorkflowLifecycleProjectionService | None = None,
     ):
         self.root = (repository_root or Path(__file__).resolve().parents[2]).resolve()
         self.curator_root = self.root / "curation_memory"
         self.store = CuratorMemoryStore(self.curator_root)
-        self.lifecycle = CuratorWorkflowLifecycleService(self.root)
         self.registry = CuratorRepairAdapterRegistry()
         self.preview_service = CuratorStructuralRepairPreviewService()
         self.applications = application_repository or StructuralRepairApplicationRepository(
             self.curator_root
         )
         self.recoveries = StructuralRepairRecoveryRepository(self.curator_root)
+        self.lifecycle_projection = (
+            lifecycle_projection_service
+            or WorkflowLifecycleProjectionService(
+                self.root,
+                application_repository=self.applications,
+                recovery_repository=self.recoveries,
+            )
+        )
         self.now = now or (lambda: datetime.now(timezone.utc))
 
     def evaluate(self, task_id: str) -> ProgressAutoRepairPolicyResult:
@@ -138,21 +150,27 @@ class CuratorProgressAutoRepairPolicyService:
             and getattr(specification, "approved", False) is True
         )
 
-        publication_root = self.root / "app" / "workflow_publications"
-        target = (
-            self.lifecycle.resolve(workflow_id)
-            if self._safe_id(workflow_id) and publication_root.is_dir()
-            else None
+        projection = None
+        try:
+            projection = self.lifecycle_projection.project(workflow_id)
+        except Exception:  # Projection is an authority boundary; unavailable evidence fails closed.
+            projection = None
+
+        projected_identity = bool(
+            projection and projection.workflow_id == workflow_id
         )
-        draft_path = self.root / str(target.source_path) if target else None
+        draft_path = self.root / str(projection.draft_path) if projection else None
         draft_raw = b""
         draft: dict[str, Any] | None = None
-        if (target and target.lifecycle == "draft" and draft_path
-                and draft_path.is_file() and self._within_drafts(draft_path)):
+        if (projected_identity and draft_path and draft_path.is_file()
+                and self._within_drafts(draft_path)):
             try:
                 draft_raw = draft_path.read_bytes()
-                draft = target.workflow
-            except OSError:
+                value = json.loads(draft_raw.decode("utf-8"))
+                if (isinstance(value, dict)
+                        and str(value.get("workflow_id") or draft_path.stem) == workflow_id):
+                    draft = value
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError):
                 draft = None
         draft_raw_sha = (
             StructuralRepairFingerprint.raw_workflow(draft_raw) if draft_raw else ""
@@ -161,9 +179,49 @@ class CuratorProgressAutoRepairPolicyService:
             StructuralRepairFingerprint.semantic_workflow(draft) if draft else ""
         )
 
-        publication, publication_version = self._active_publication(workflow_id)
+        publication_version = projection.active_published_version if projection else None
         publication_semantic_sha = (
-            StructuralRepairFingerprint.semantic_workflow(publication) if publication else ""
+            projection.published_semantic_fingerprint if projection else ""
+        )
+        projected_draft_sha = projection.draft_semantic_fingerprint if projection else ""
+        projected_draft_raw_sha = projection.draft_raw_fingerprint if projection else ""
+        projected_path_matches = bool(
+            projection and draft_path and projection.draft_path
+            and self._relative(draft_path) == projection.draft_path
+            and draft_path.name == projection.draft_filename
+        )
+        projected_fingerprints_match = bool(
+            draft
+            and projected_draft_raw_sha
+            and projected_draft_sha
+            and draft_raw_sha == projected_draft_raw_sha
+            and draft_semantic_sha == projected_draft_sha
+        )
+        lifecycle_baseline = bool(
+            projection
+            and projection.lifecycle_state == MATCHES_PUBLISHED
+            and projection.publication_review_state == NO_UNPUBLISHED_CHANGES
+            and projection.active_published_version is not None
+        )
+        runtime_aligned = bool(
+            projection
+            and projection.runtime.selected_version is not None
+            and projection.runtime.selected_version == projection.active_published_version
+            and projection.runtime.matches_active_publication
+            and not projection.runtime.runtime_overlay_present
+        )
+        delta_clean = bool(
+            projection
+            and not projection.semantic_delta
+            and not projection.governed_delta_summary
+            and not projection.authored_or_unattributed_delta_summary
+            and not projection.ambiguity_reasons
+        )
+        publication_fingerprints_match = bool(
+            projection
+            and projected_draft_sha
+            and publication_semantic_sha
+            and projected_draft_sha == publication_semantic_sha
         )
 
         verification = task.get("current_verification")
@@ -227,21 +285,29 @@ class CuratorProgressAutoRepairPolicyService:
             and candidate.get("nodes") == draft.get("nodes")
         )
 
-        pre_validation = WorkflowValidationService().validate(draft) if draft else {}
         post_validation = WorkflowValidationService().validate(candidate) if candidate else {}
-        pre_quality = pre_validation.get("quality") or {}
         post_quality = post_validation.get("quality") or {}
+        projected_quality = projection.validation if projection else None
         pre_quality_rules = {
-            str(item.get("rule") or "") for item in pre_quality.get("findings", [])
+            item.split(":", 2)[1]
+            for item in (projected_quality.quality_findings if projected_quality else ())
+            if item.count(":") >= 2
         }
+        pre_reasoning = set(
+            projected_quality.reasoning_findings if projected_quality else ()
+        )
+        expected_reasoning_prefix = f"{self.RULE}:{self.FINDING_TYPE}:"
         post_quality_rules = {
             str(item.get("rule") or "") for item in post_quality.get("findings", [])
         }
         pre_clean_except_target = bool(
-            pre_validation.get("is_valid")
-            and not pre_validation.get("unreachable_nodes")
+            projected_quality
+            and projected_quality.schema_valid
+            and projected_quality.graph_valid
             and pre_quality_rules
             and pre_quality_rules <= self.EXPECTED_PRE_QUALITY
+            and pre_reasoning
+            and all(item.startswith(expected_reasoning_prefix) for item in pre_reasoning)
         )
         post_clean = bool(
             post_validation.get("is_valid")
@@ -294,51 +360,60 @@ class CuratorProgressAutoRepairPolicyService:
         add("03", "Current deterministic verification", verification_current,
             "Current targeted verification is still_detected and matches the draft fingerprint.",
             "A current still_detected verification with the exact draft fingerprint is unavailable.")
-        add("04", "Canonical workflow resolution", bool(
-            target and target.workflow_id == workflow_id
-        ), "Canonical lifecycle resolution returned the exact workflow.",
-            "The exact workflow could not be resolved canonically.")
-        add("05", "Editable draft", bool(draft and target and target.lifecycle == "draft"),
-            "The canonical workflow target is an editable draft.",
-            "An authoritative editable draft is unavailable.")
-        add("06", "No unrelated draft drift", bool(
-            draft and publication and draft_semantic_sha == publication_semantic_sha
-        ), f"Draft semantically matches active publication v{publication_version}.",
-            "Draft does not exactly match an active publication or contains unrelated drift.")
-        add("07", "Supported current progress mode", allowed_mode,
+        add("04", "Lifecycle projection identity", projected_identity,
+            "Lifecycle projection resolved the exact workflow identity.",
+            "The authoritative lifecycle projection is unavailable or identifies another workflow.")
+        add("05", "Authoritative preview draft binding", bool(
+            draft and projected_path_matches and projected_fingerprints_match
+        ), "The preview draft path and re-read fingerprints match the lifecycle projection.",
+            "The projected draft is unavailable, moved, changed, or does not match its fingerprints.")
+        add("06", "Published lifecycle baseline", lifecycle_baseline,
+            f"Lifecycle is MATCHES_PUBLISHED with no unpublished changes at v{publication_version}.",
+            "Lifecycle does not exactly match an active publication with no unpublished changes.")
+        add("07", "Runtime alignment", runtime_aligned,
+            "Runtime selects the active publication without a compatibility overlay.",
+            "Runtime selection is missing, mismatched, or uses a compatibility overlay.")
+        add("08", "No lifecycle delta or provenance ambiguity", bool(
+            delta_clean and publication_fingerprints_match
+        ), "Semantic delta is empty and draft/publication fingerprints match without ambiguity.",
+            "Lifecycle delta, provenance ambiguity, or a draft/publication fingerprint mismatch exists.")
+        add("09", "Supported current progress mode", allowed_mode,
             "Current progress_mode is absent or explicitly static.",
             "Current progress_mode is missing ambiguously, already branch-aware, or unsupported.")
-        add("08", "Exact proposed value", proposed_exact,
+        add("10", "Exact proposed value", proposed_exact,
             "Approved specification proposes only branch_aware.",
             "The approved specification does not propose the exact allowlisted value.")
-        add("09", "Estimated steps preserved", estimated_unchanged,
+        add("11", "Estimated steps preserved", estimated_unchanged,
             "Simulation preserves estimated_steps exactly.",
             "Simulation is unavailable or changes estimated_steps.")
-        add("10", "Zero graph/content/other metadata delta", exact_delta,
+        add("12", "Zero graph/content/other metadata delta", exact_delta,
             "Simulation changes only /progress_mode and preserves the graph and all other content.",
             "Simulation is unavailable or contains a mutation outside /progress_mode.")
-        add("11", "Trusted preview generation", preview_available,
+        add("13", "Trusted preview generation", preview_available,
             "The registered typed read-only preview succeeds.",
             "The trusted typed preview is unavailable or has mismatched identity.")
-        add("12", "Clean pre/post validation", pre_clean_except_target and post_clean,
-            "Pre-state contains only the expected progress defect and post-state validates cleanly.",
-            "Pre-state has unrelated validation findings or post-state is not clean.")
-        add("13", "Progress finding removed", progress_absent,
+        add("14", "Projected pre-state validation", pre_clean_except_target,
+            "Projected pre-state contains only the allowlisted target progress defect.",
+            "Projected pre-state has an additional or ambiguous validation/reasoning defect.")
+        add("15", "Clean post-simulation validation", post_clean,
+            "Post-simulation schema, graph, and quality validation is clean.",
+            "Post-simulation validation is unavailable or not clean.")
+        add("16", "Progress finding removed", progress_absent,
             "CUR-WR-PROGRESS is absent after simulation.",
             "CUR-WR-PROGRESS remains or simulation is unavailable.")
-        add("14", "No new findings", no_new_findings,
+        add("17", "No new findings", no_new_findings,
             "Simulation introduces no new quality or reasoning findings.",
             "Simulation introduces or cannot exclude new quality/reasoning findings.")
-        add("15", "Recovery capture capability", recovery_available,
+        add("18", "Recovery capture capability", recovery_available,
             "Exact-byte recovery capture boundary is available.",
             "Exact-byte recovery capture capability is unavailable.")
-        add("16", "Application journal capability", journal_available,
+        add("19", "Application journal capability", journal_available,
             "Append-only application journal boundary is available and readable.",
             "Application journal capability is unavailable or malformed.")
-        add("17", "Unambiguous application state", not ambiguous_application,
+        add("20", "Unambiguous application state", not ambiguous_application,
             "No pending or applied transaction exists for this exact task/finding/workflow.",
             application_reason)
-        add("18", "Generic execution disabled", bool(
+        add("21", "Generic execution disabled", bool(
             registration and not registration.executable
         ), "Generic executable authority remains disabled.",
             "Generic execution is enabled or adapter authority is unavailable.")
@@ -385,25 +460,6 @@ class CuratorProgressAutoRepairPolicyService:
             timestamp=self.now().isoformat(),
         )
 
-    def _active_publication(self, workflow_id: str) -> tuple[dict[str, Any] | None, int | None]:
-        if not self._safe_id(workflow_id):
-            return None, None
-        directory = self.root / "app" / "workflow_publications" / workflow_id
-        try:
-            manifest = self._read_json(directory / "current.json")
-            version = manifest.get("current_version")
-            if isinstance(version, bool) or not isinstance(version, int) or version < 1:
-                return None, None
-            snapshot = self._read_json(directory / f"v{version:04d}.json")
-            workflow = snapshot.get("workflow")
-            if (not isinstance(workflow, dict)
-                    or workflow.get("workflow_id") != workflow_id
-                    or snapshot.get("publication", {}).get("version") != version):
-                return None, None
-            return workflow, version
-        except (OSError, ValueError):
-            return None, None
-
     def _application_state(
         self, task_id: str, finding_id: str, workflow_id: str,
     ) -> tuple[bool, bool, str]:
@@ -431,15 +487,8 @@ class CuratorProgressAutoRepairPolicyService:
         except ValueError:
             return False
 
-    @staticmethod
-    def _safe_id(value: str) -> bool:
-        return bool(re.fullmatch(r"[A-Za-z0-9_-]+", str(value or "")))
-
-    @staticmethod
-    def _read_json(path: Path) -> dict[str, Any]:
-        import json
-
-        value = json.loads(path.read_text(encoding="utf-8"))
-        if not isinstance(value, dict):
-            raise ValueError("JSON record must be an object.")
-        return value
+    def _relative(self, path: Path) -> str:
+        try:
+            return str(path.resolve().relative_to(self.root)).replace("\\", "/")
+        except ValueError:
+            return str(path.resolve())

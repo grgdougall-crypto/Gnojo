@@ -6,7 +6,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from app.services.workflow_draft_service import WorkflowDraftService
 from app.services.curator_workflow_lifecycle_service import CuratorWorkflowLifecycleService
 from app.services.curator_resolution_service import CuratorResolutionService
 from app.repositories.knowledge_repository import KnowledgeRepository
@@ -24,14 +23,8 @@ class CuratorTargetedVerificationService:
     def __init__(self, repository_root: Path | None = None):
         self.root = (repository_root or Path(__file__).resolve().parents[2]).resolve()
         self.store = CuratorMemoryStore(self.root / "curation_memory")
-        self.drafts_path = self.root / "app" / "workflow_drafts"
         self.checks = CuratorChecks(self.root)
         self.lifecycle = CuratorWorkflowLifecycleService(self.root)
-
-    def _drafts(self) -> WorkflowDraftService | None:
-        # Verification is read-only. Never create repository structure merely to
-        # discover that affected content is absent.
-        return WorkflowDraftService(self.drafts_path) if self.drafts_path.is_dir() else None
 
     def relationship_evidence(self, task: dict[str, Any]) -> dict[str, Any] | None:
         """Project current explicit declarations for deterministic relationship tasks."""
@@ -198,16 +191,13 @@ class CuratorTargetedVerificationService:
             if semantic == "relationship_satisfied":
                 CuratorResolutionService(self.root).complete_if_authoritative(task_id)
             return recorded
-        drafts = self._drafts()
-        if drafts is None:
-            return self._record(task_id, {**base, "status": "not_found",
-                "message": "The affected workflow can no longer be located."})
-        draft = next((item for item in drafts.list_drafts()
-                      if item.get("workflow_id") == workflow_id and not item.get("is_damaged")), None)
-        if not draft:
-            return self._record(task_id, {**base, "status": "not_found",
-                "message": "The affected workflow can no longer be located."})
-        workflow = drafts.get_draft(draft["filename"])
+        rule = str(task.get("curator_rule") or "")
+        target = self.lifecycle.resolve(workflow_id)
+        if not target:
+            status = "human_review_required" if rule == "CUR-WR-PROGRESS" else "not_found"
+            return self._record(task_id, {**base, "status": status,
+                "message": "The authoritative affected workflow can no longer be located."})
+        workflow = target.workflow
         node = (workflow or {}).get("nodes", {}).get(node_id) if node_id else None
         if node_id and not isinstance(node, dict):
             return self._record(task_id, {**base, "status": "not_found",
@@ -216,18 +206,17 @@ class CuratorTargetedVerificationService:
         fingerprint = self.fingerprint(affected)
         record = InventoryRecord(
             "workflow", workflow_id, str(workflow.get("name") or workflow_id),
-            str(self.root / "app" / "workflow_drafts" / draft["filename"]),
+            target.source_path,
             str(workflow.get("category") or ""), str(workflow.get("platform") or ""),
-            "draft", workflow,
+            target.lifecycle, workflow,
         )
         findings = self.checks.run_record(record)
         exact = [finding for finding in findings
                  if finding.rule == task.get("curator_rule")
                  and finding.content_identifier == task.get("content_identifier")
                  and finding.finding_type == task.get("finding_type")]
-        rule = str(task.get("curator_rule") or "")
         supported_rule = rule.startswith(("CUR-SAFE-", "CUR-META-", "CUR-TAX-", "CUR-CONTENT-",
-                                           "GNOJO-WORKFLOW-"))
+                                           "GNOJO-WORKFLOW-")) or rule == "CUR-WR-PROGRESS"
         if exact:
             result = {**base, "status": "still_detected",
                       "message": "The current workflow content still matches the Curator condition.",

@@ -7,7 +7,7 @@
             <div class="workflow-header__eyebrow">Workflow Designer</div>
             <div class="workflow-header__title-row">
                 <h1 id="workflow-title">{{ workflow.name }}</h1>
-                <button id="versionHistoryButton" class="workflow-status workflow-status--draft" type="button">Draft</button>
+                <button id="versionHistoryButton" class="workflow-status{% if lifecycle_projection.lifecycle_state == 'MATCHES_PUBLISHED' %} workflow-status--published{% elif lifecycle_projection.lifecycle_state == 'AMBIGUOUS_STATE' %} workflow-status--ambiguous{% else %} workflow-status--changed{% endif %}" type="button">{{ lifecycle_view.header_label }}</button>
             </div>
             <p>Build and review the support path your team will follow.</p>
         </div>

@@ -24,6 +24,7 @@
 .workflow-status--draft { color: #9a6700; background: #fff8c5; }
 .workflow-status--published { color: #067647; background: #ecfdf3; }
 .workflow-status--changed { color: #b54708; background: #fffaeb; }
+.workflow-status--ambiguous { color: #b42318; background: #fef3f2; }
 .workflow-header__actions { gap: .5rem; }
 .workflow-header__actions .btn { display: inline-flex; align-items: center; gap: .35rem; }
 
@@ -41,6 +42,31 @@
 .workflow-stat dd { margin: .15rem 0 0; font-size: 1.25rem; font-weight: 750; line-height: 1; }
 .workflow-metadata { margin: 1.1rem 0 0; padding-top: 1rem; display: grid; gap: .9rem; border-top: 1px solid var(--sp-border); }
 .workflow-metadata dd { margin: .15rem 0 0; overflow-wrap: anywhere; font-size: .82rem; font-weight: 650; }
+.workflow-lifecycle { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--sp-border); }
+.workflow-lifecycle__heading { display: flex; align-items: flex-start; justify-content: space-between; gap: .6rem; }
+.workflow-lifecycle__heading h3 { margin: .15rem 0 0; font-size: .9rem; }
+.workflow-lifecycle__review { max-width: 11rem; color: #475467; font-size: .64rem; line-height: 1.3; text-align: right; }
+.workflow-lifecycle__review.is-ready { color: #067647; }
+.workflow-lifecycle__review.is-blocked { color: #b42318; }
+.workflow-lifecycle__facts { margin: .75rem 0 0; display: grid; grid-template-columns: 1fr 1fr; gap: .55rem; }
+.workflow-lifecycle__facts div { min-width: 0; }
+.workflow-lifecycle__facts dt { color: var(--sp-muted); font-size: .68rem; }
+.workflow-lifecycle__facts dd { margin: .1rem 0 0; overflow-wrap: anywhere; font-size: .74rem; font-weight: 650; }
+.workflow-lifecycle__notice, .workflow-lifecycle__warning, .workflow-lifecycle__reasons { margin: .65rem 0 0; padding: .55rem .65rem; border-radius: .5rem; font-size: .7rem; line-height: 1.4; }
+.workflow-lifecycle__notice { color: #344054; background: #f2f4f7; }
+.workflow-lifecycle__warning { color: #912018; background: #fef3f2; }
+.workflow-lifecycle__reasons { color: #93370d; background: #fffaeb; }
+.workflow-lifecycle__warning ul, .workflow-lifecycle__reasons ul { margin: .35rem 0 0; padding-left: 1.1rem; }
+.workflow-lifecycle__changes { margin-top: .75rem; font-size: .72rem; }
+.workflow-lifecycle__changes summary { cursor: pointer; font-weight: 700; }
+.workflow-lifecycle__changes ul { margin: .55rem 0 0; padding: 0; display: grid; gap: .55rem; list-style: none; }
+.workflow-lifecycle__change { min-width: 0; padding: .55rem; border: 1px solid var(--sp-border); border-radius: .5rem; background: #fcfcfd; }
+.workflow-lifecycle__tag { margin: 0 .25rem .25rem 0; padding: .12rem .32rem; display: inline-block; border-radius: 999px; color: #344054; background: #f2f4f7; font-size: .6rem; font-weight: 700; }
+.workflow-lifecycle__tag--governed { color: #175cd3; background: #eff8ff; }
+.workflow-lifecycle__tag--authored { color: #93370d; background: #fffaeb; }
+.workflow-lifecycle__change code, .workflow-lifecycle__delta { display: block; overflow-wrap: anywhere; }
+.workflow-lifecycle__delta { margin-top: .2rem; color: var(--sp-muted); }
+.workflow-lifecycle__empty { margin: .65rem 0 0; color: var(--sp-muted); font-size: .72rem; }
 .workflow-summary__actions { margin-top: auto; display: grid; gap: .5rem; }
 
 .workflow-count { min-width: 1.8rem; height: 1.8rem; padding: 0 .4rem; display: inline-grid; place-items: center; border-radius: 999px; color: var(--sp-primary); background: var(--sp-primary-soft); font-size: .72rem; font-weight: 750; }
@@ -355,6 +381,7 @@ button.validation-issue:hover { border-color: var(--sp-primary); background: var
 [data-bs-theme="dark"] .workflow-status--draft { color: #fbd36a; background: #493614; }
 [data-bs-theme="dark"] .workflow-status--published { color: #75e0a7; background: #153f32; }
 [data-bs-theme="dark"] .workflow-status--changed { color: #fec84b; background: #493614; }
+[data-bs-theme="dark"] .workflow-status--ambiguous { color: #fda29b; background: #55160c; }
 [data-bs-theme="dark"] .workflow-publication-dialog { color: var(--sp-ink); background: var(--sp-surface); box-shadow: 0 24px 64px rgb(0 0 0 / 45%); }
 [data-bs-theme="dark"] .publication-dialog__footer,
 [data-bs-theme="dark"] .publication-version { background: #151e29; }

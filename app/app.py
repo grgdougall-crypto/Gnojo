@@ -65,6 +65,9 @@ from app.services.workflow_validation_service import (
 from app.services.workflow_runtime_compatibility_service import (
     apply_runtime_compatibility_handoffs,
 )
+from app.services.workflow_lifecycle_projection_service import (
+    WorkflowLifecycleProjectionService,
+)
 
 from app.services.workflow_draft_service import (
     WorkflowDraftError,
@@ -2629,6 +2632,11 @@ def workflow_editor(filename):
     if workflow is None:
         abort(404)
 
+    lifecycle_projection = WorkflowLifecycleProjectionService(
+        Path(__file__).resolve().parents[1]
+    ).project(str(workflow.get("workflow_id") or ""))
+    lifecycle_view = workflow_lifecycle_view(lifecycle_projection)
+
     statistics = (
         WorkflowStatisticsService()
         .build(workflow)
@@ -2659,6 +2667,8 @@ def workflow_editor(filename):
         curator_task=request.args.get("curator_task", ""),
         curator_return=curator_return,
         curator_category=request.args.get("category", "all"),
+        lifecycle_projection=lifecycle_projection,
+        lifecycle_view=lifecycle_view,
         return_to=return_to,
         return_label=(
             "Back to Content Quality"
@@ -2666,6 +2676,86 @@ def workflow_editor(filename):
             else "Back to Workflow Studio"
         ),
     )
+
+
+def workflow_lifecycle_view(projection):
+    lifecycle_labels = {
+        "MATCHES_PUBLISHED": "Matches published",
+        "GOVERNED_CHANGES": "Governed unpublished changes",
+        "AUTHORED_OR_UNATTRIBUTED_CHANGES": "Authored/unattributed changes",
+        "MIXED_CHANGES": "Mixed unpublished changes",
+        "AMBIGUOUS_STATE": "Ambiguous lifecycle state",
+        "NO_ACTIVE_PUBLICATION": "No active publication",
+    }
+    publication_labels = {
+        "READY_FOR_PUBLICATION_REVIEW": "READY FOR PUBLICATION REVIEW",
+        "NOT_READY": "NOT READY FOR PUBLICATION REVIEW",
+        "NO_UNPUBLISHED_CHANGES": "NO UNPUBLISHED CHANGES",
+    }
+    version = projection.active_published_version
+    header = lifecycle_labels.get(projection.lifecycle_state, projection.lifecycle_state)
+    if version is not None and projection.lifecycle_state != "AMBIGUOUS_STATE":
+        header += f" · Published v{version}"
+    governed_count = sum(item.provenance == "governed" for item in projection.semantic_delta)
+    authored_count = len(projection.semantic_delta) - governed_count
+    changes = []
+    for item in projection.semantic_delta:
+        if item.path.startswith("/nodes/") and "/knowledge_article" in item.path:
+            category = "Knowledge relationship"
+        elif item.path.startswith("/nodes/") and any(
+                marker in item.path for marker in ("/answers/", "/next", "/skip_to")):
+            category = "Route/transition"
+        elif item.path.startswith("/nodes/"):
+            category = "Node"
+        elif item.path.count("/") == 1:
+            category = "Workflow metadata"
+        else:
+            category = "Other workflow field"
+        changes.append({
+            "category": category,
+            "operation": item.operation,
+            "path": item.path,
+            "before": item.before_summary,
+            "after": item.after_summary,
+            "provenance": item.provenance,
+        })
+    return {
+        "header_label": header,
+        "lifecycle_state": projection.lifecycle_state,
+        "lifecycle_label": lifecycle_labels.get(
+            projection.lifecycle_state, projection.lifecycle_state
+        ),
+        "review_label": publication_labels.get(
+            projection.publication_review_state, projection.publication_review_state
+        ),
+        "review_state": projection.publication_review_state,
+        "active_version": version,
+        "runtime_version": projection.runtime.selected_version,
+        "runtime_aligned": projection.runtime.matches_active_publication,
+        "runtime_overlay_present": projection.runtime.runtime_overlay_present,
+        "change_count": len(projection.semantic_delta),
+        "governed_count": governed_count,
+        "authored_count": authored_count,
+        "changes": changes,
+        "readiness_reasons": list(projection.readiness_reasons),
+        "ambiguity_reasons": list(projection.ambiguity_reasons),
+        "has_unattributed_changes": authored_count > 0,
+    }
+
+
+@app.route("/api/workflow-drafts/<filename>/lifecycle")
+def workflow_lifecycle_status(filename):
+    workflow = WorkflowDraftService().get_draft(filename)
+    if workflow is None:
+        return {"ok": False, "error": "Workflow draft not found."}, 404
+    projection = WorkflowLifecycleProjectionService(
+        Path(__file__).resolve().parents[1]
+    ).project(str(workflow.get("workflow_id") or ""))
+    return {
+        "ok": True,
+        "projection": asdict(projection),
+        "view": workflow_lifecycle_view(projection),
+    }
 
 
 @app.route(

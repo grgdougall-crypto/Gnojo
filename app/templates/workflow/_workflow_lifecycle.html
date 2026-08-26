@@ -1,0 +1,44 @@
+<section id="workflowLifecyclePanel" class="workflow-lifecycle" aria-labelledby="workflowLifecycleTitle">
+    <div class="workflow-lifecycle__heading">
+        <div>
+            <span class="workflow-panel__eyebrow">Release state</span>
+            <h3 id="workflowLifecycleTitle">Publication readiness</h3>
+        </div>
+        <strong id="workflowLifecycleReviewState" class="workflow-lifecycle__review{% if lifecycle_view.review_state == 'READY_FOR_PUBLICATION_REVIEW' %} is-ready{% elif lifecycle_view.review_state == 'NOT_READY' %} is-blocked{% endif %}">{{ lifecycle_view.review_label }}</strong>
+    </div>
+
+    <dl class="workflow-lifecycle__facts">
+        <div><dt>Lifecycle</dt><dd id="workflowLifecycleState">{{ lifecycle_view.lifecycle_label }}</dd></div>
+        <div><dt>Active publication</dt><dd id="workflowLifecyclePublished">{% if lifecycle_view.active_version %}v{{ lifecycle_view.active_version }}{% else %}None{% endif %}</dd></div>
+        <div><dt>Runtime selection</dt><dd id="workflowLifecycleRuntime">{% if lifecycle_view.runtime_version %}v{{ lifecycle_view.runtime_version }}{% else %}None{% endif %}</dd></div>
+        <div><dt>Runtime alignment</dt><dd id="workflowLifecycleAlignment">{{ 'Aligned' if lifecycle_view.runtime_aligned else 'Not aligned' }}</dd></div>
+        <div><dt>Unpublished changes</dt><dd id="workflowLifecycleChangeCount">{{ lifecycle_view.change_count }}</dd></div>
+        <div><dt>Provenance</dt><dd><span id="workflowLifecycleGovernedCount">{{ lifecycle_view.governed_count }}</span> governed · <span id="workflowLifecycleAuthoredCount">{{ lifecycle_view.authored_count }}</span> authored/unattributed</dd></div>
+    </dl>
+
+    <p id="workflowLifecycleOverlay" class="workflow-lifecycle__notice"{% if not lifecycle_view.runtime_overlay_present %} hidden{% endif %}>Runtime uses a disclosed compatibility overlay. The publication snapshot remains immutable.</p>
+    <div id="workflowLifecycleAmbiguity" class="workflow-lifecycle__warning" role="alert"{% if not lifecycle_view.ambiguity_reasons %} hidden{% endif %}>
+        <strong>Lifecycle state could not be determined safely.</strong>
+        <ul>{% for reason in lifecycle_view.ambiguity_reasons %}<li>{{ reason }}</li>{% endfor %}</ul>
+    </div>
+    <div id="workflowLifecycleReasons" class="workflow-lifecycle__reasons"{% if not lifecycle_view.readiness_reasons %} hidden{% endif %}>
+        <strong>Review before publication:</strong>
+        <ul>{% for reason in lifecycle_view.readiness_reasons %}<li>{{ reason }}</li>{% endfor %}</ul>
+    </div>
+    <p id="workflowLifecycleHumanReview" class="workflow-lifecycle__notice"{% if not lifecycle_view.has_unattributed_changes %} hidden{% endif %}>Authored or unattributed changes require human review and are not eligible for future automated publication.</p>
+
+    <details id="workflowLifecycleChanges" class="workflow-lifecycle__changes"{% if not lifecycle_view.changes %} hidden{% endif %}>
+        <summary>Review <span id="workflowLifecycleDetailsCount">{{ lifecycle_view.change_count }}</span> unpublished change{% if lifecycle_view.change_count != 1 %}s{% endif %}</summary>
+        <ul id="workflowLifecycleChangeList">
+            {% for change in lifecycle_view.changes %}
+            <li class="workflow-lifecycle__change">
+                <span class="workflow-lifecycle__tag">{{ change.category }}</span>
+                <span class="workflow-lifecycle__tag workflow-lifecycle__tag--{{ 'governed' if change.provenance == 'governed' else 'authored' }}">{{ 'Governed' if change.provenance == 'governed' else 'Authored/unattributed' }}</span>
+                <code>{{ change.operation }} {{ change.path }}</code>
+                <span class="workflow-lifecycle__delta">{{ change.before }} → {{ change.after }}</span>
+            </li>
+            {% endfor %}
+        </ul>
+    </details>
+    <p id="workflowLifecycleNoChanges" class="workflow-lifecycle__empty"{% if lifecycle_view.change_count %} hidden{% endif %}>No unpublished changes.</p>
+</section>

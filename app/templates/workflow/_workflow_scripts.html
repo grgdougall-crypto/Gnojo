@@ -30,6 +30,10 @@
     const publishButton = document.getElementById("publishWorkflowButton");
     let validationPassed = false;
     let publicationStatus = { is_published: false, versions: [], has_unpublished_changes: true };
+    let lifecycleView = {
+        lifecycle_state: designer.dataset.lifecycleState,
+        header_label: designer.dataset.lifecycleHeader,
+    };
     const settingsDialog = document.getElementById("workflowSettingsDialog");
     const settingsForm = document.getElementById("workflowSettingsForm");
     let workflowSettingsState = null;
@@ -269,6 +273,7 @@
             publicationStatus.has_unpublished_changes = true;
             updatePublicationBadge();
             updatePublishAvailability();
+            await loadLifecycleProjection();
             saved = true;
             element("nodeDetailsHint").textContent = "Changes saved";
             element("nodeDetailsHint").classList.remove("is-error");
@@ -300,6 +305,7 @@
         publicationStatus.has_unpublished_changes = true;
         updatePublicationBadge();
         updatePublishAvailability();
+        loadLifecycleProjection();
         element("coverageAssistantMessage").textContent = message;
         element("coverageAssistantMessage").classList.remove("is-error");
     };
@@ -461,13 +467,80 @@
 
     function updatePublicationBadge() {
         const badge = element("versionHistoryButton");
-        badge.classList.toggle("workflow-status--draft", !publicationStatus.is_published);
-        badge.classList.toggle("workflow-status--published", publicationStatus.is_published && !publicationStatus.has_unpublished_changes);
-        badge.classList.toggle("workflow-status--changed", publicationStatus.is_published && publicationStatus.has_unpublished_changes);
-        if (!publicationStatus.is_published) badge.textContent = "Editable draft · Not published";
-        else if (publicationStatus.has_unpublished_changes) badge.textContent = `Editable draft changes · Published v${publicationStatus.current_version}`;
-        else badge.textContent = `Editable draft · Published v${publicationStatus.current_version}`;
+        const state = lifecycleView?.lifecycle_state;
+        badge.classList.toggle("workflow-status--draft", state === "NO_ACTIVE_PUBLICATION");
+        badge.classList.toggle("workflow-status--published", state === "MATCHES_PUBLISHED");
+        badge.classList.toggle("workflow-status--changed", ["GOVERNED_CHANGES", "AUTHORED_OR_UNATTRIBUTED_CHANGES", "MIXED_CHANGES"].includes(state));
+        badge.classList.toggle("workflow-status--ambiguous", state === "AMBIGUOUS_STATE" || !state);
+        badge.textContent = lifecycleView?.header_label || "Lifecycle status unavailable";
     }
+
+    const renderLifecycleReasons = (id, reasons) => {
+        const container = element(id);
+        const list = container.querySelector("ul");
+        list.replaceChildren();
+        (reasons || []).forEach((reason) => {
+            const item = document.createElement("li");
+            item.textContent = reason;
+            list.appendChild(item);
+        });
+        container.hidden = !reasons?.length;
+    };
+
+    const renderLifecycleProjection = (view) => {
+        lifecycleView = view;
+        updatePublicationBadge();
+        element("workflowLifecycleState").textContent = view.lifecycle_label;
+        element("workflowLifecyclePublished").textContent = view.active_version ? `v${view.active_version}` : "None";
+        element("workflowLifecycleRuntime").textContent = view.runtime_version ? `v${view.runtime_version}` : "None";
+        element("workflowLifecycleAlignment").textContent = view.runtime_aligned ? "Aligned" : "Not aligned";
+        element("workflowLifecycleChangeCount").textContent = view.change_count;
+        element("workflowLifecycleGovernedCount").textContent = view.governed_count;
+        element("workflowLifecycleAuthoredCount").textContent = view.authored_count;
+        const review = element("workflowLifecycleReviewState");
+        review.textContent = view.review_label;
+        review.classList.toggle("is-ready", view.review_state === "READY_FOR_PUBLICATION_REVIEW");
+        review.classList.toggle("is-blocked", view.review_state === "NOT_READY");
+        element("workflowLifecycleOverlay").hidden = !view.runtime_overlay_present;
+        renderLifecycleReasons("workflowLifecycleAmbiguity", view.ambiguity_reasons);
+        renderLifecycleReasons("workflowLifecycleReasons", view.readiness_reasons);
+        element("workflowLifecycleHumanReview").hidden = !view.has_unattributed_changes;
+        const details = element("workflowLifecycleChanges");
+        details.hidden = !view.changes.length;
+        details.querySelector("summary").textContent = `Review ${view.change_count} unpublished change${view.change_count === 1 ? "" : "s"}`;
+        const list = element("workflowLifecycleChangeList");
+        list.replaceChildren();
+        view.changes.forEach((change) => {
+            const item = document.createElement("li");
+            item.className = "workflow-lifecycle__change";
+            const category = document.createElement("span");
+            category.className = "workflow-lifecycle__tag";
+            category.textContent = change.category;
+            const provenance = document.createElement("span");
+            const governed = change.provenance === "governed";
+            provenance.className = `workflow-lifecycle__tag workflow-lifecycle__tag--${governed ? "governed" : "authored"}`;
+            provenance.textContent = governed ? "Governed" : "Authored/unattributed";
+            const operation = document.createElement("code");
+            operation.textContent = `${change.operation} ${change.path}`;
+            const delta = document.createElement("span");
+            delta.className = "workflow-lifecycle__delta";
+            delta.textContent = `${change.before} → ${change.after}`;
+            item.append(category, provenance, operation, delta);
+            list.appendChild(item);
+        });
+        element("workflowLifecycleNoChanges").hidden = view.change_count !== 0;
+    };
+
+    const loadLifecycleProjection = async () => {
+        try {
+            const response = await fetch(designer.dataset.lifecycleUrl, { headers: { "Accept": "application/json" } });
+            const result = await response.json();
+            if (!response.ok || !result.ok) throw new Error(result.error || "Lifecycle status is unavailable.");
+            renderLifecycleProjection(result.view);
+        } catch (error) {
+            console.error(error);
+        }
+    };
 
     function updatePublishAvailability() {
         const canPublish = validationPassed && publicationStatus.has_unpublished_changes;
@@ -577,6 +650,7 @@
             element("publicationLabel").value = "";
             const successMessage = `Version ${result.current_version} published successfully.`;
             element("publicationMessage").textContent = successMessage;
+            await loadLifecycleProjection();
             updatePublicationBadge();
             updatePublishAvailability();
             renderPublicationHistory();
@@ -671,6 +745,7 @@
             publicationStatus.has_unpublished_changes = true;
             updatePublicationBadge();
             updatePublishAvailability();
+            await loadLifecycleProjection();
             message.textContent = "Workflow settings saved.";
             message.className = "settings-message settings-message--success";
             message.hidden = false;
@@ -1032,6 +1107,7 @@
     aiDialog.addEventListener("click", (event) => { if (event.target === aiDialog) aiDialog.close(); });
     workflowSettingsState = readSettingsForm();
     loadPublicationStatus();
+    loadLifecycleProjection();
     window.addEventListener("beforeunload", (event) => {
         if (hasChanges() || settingsAreDirty()) event.preventDefault();
     });

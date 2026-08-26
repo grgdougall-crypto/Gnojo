@@ -24,6 +24,8 @@
                 <dd id="workflowStartNodeTitle">{{ statistics.start_node_title or 'Not set' }}</dd>
             </div>
         </dl>
+
+        {% include "workflow/_workflow_lifecycle.html" %}
     </div>
 
     <div class="workflow-panel__footer workflow-summary__actions">

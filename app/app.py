@@ -126,6 +126,9 @@ from app.services.curator_repair_planner import CuratorRepairPlanner
 from app.services.curator_session_reconciliation_service import CuratorSessionReconciliationService
 from app.services.curator_targeted_verification_service import CuratorTargetedVerificationService
 from app.services.curator_verification_presentation_service import CuratorVerificationPresentationService
+from app.services.curator_progress_auto_repair_policy_service import (
+    CuratorProgressAutoRepairPolicyService,
+)
 from app.services.curator_growth_service import CuratorGrowthService
 from app.services.knowledge_coverage_planner_service import (
     KnowledgeCoveragePlannerError,
@@ -1705,6 +1708,21 @@ def curator_task_detail(task_id):
         )
     except (CuratorMemoryError, CuratorFixSessionError):
         abort(404)
+    automation_policy = None
+    if (
+        task.get("curator_rule") == "CUR-WR-PROGRESS"
+        and task.get("finding_type") == "workflow_reasoning_progress_inconsistency"
+    ):
+        automation_policy = CuratorProgressAutoRepairPolicyService(
+            repository_root
+        ).evaluate(task_id).to_dict()
+        gates = automation_policy.get("gate_results", ())
+        automation_policy["passed_gate_count"] = sum(
+            bool(gate.get("passed")) for gate in gates
+        )
+        automation_policy["failed_gate_count"] = sum(
+            not bool(gate.get("passed")) for gate in gates
+        )
     messages = {
         "updated": ("success", "Knowledge Task updated."),
         "invalid": ("danger", request.args.get("error") or "The requested task change could not be applied."),
@@ -1734,6 +1752,7 @@ def curator_task_detail(task_id):
         structural_repair_state=CuratorStructuralRepairReviewService(
             repository_root
         ).applied_state(task_id),
+        automation_policy=automation_policy,
         session_task_actionable=session_task_actionable,
         return_to=return_to, curator_session=session_id, category=category,
         task_navigation=task_navigation, task_origin=origin,

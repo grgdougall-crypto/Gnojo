@@ -8,6 +8,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from app.app import app as flask_app
 from app.services.curator_progress_auto_repair_policy_service import (
     CuratorProgressAutoRepairPolicyService,
 )
@@ -36,6 +37,14 @@ class CuratorProgressAutoRepairPolicyTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name)
+        self.previous_repository_root = flask_app.config.get(
+            "STRUCTURAL_REPAIR_REPOSITORY_ROOT"
+        )
+        flask_app.config.update(
+            TESTING=True,
+            STRUCTURAL_REPAIR_REPOSITORY_ROOT=str(self.root),
+        )
+        self.client = flask_app.test_client()
         self.drafts = self.root / "app" / "workflow_drafts"
         self.publications = self.root / "app" / "workflow_publications" / "policy_progress"
         self.drafts.mkdir(parents=True)
@@ -50,6 +59,12 @@ class CuratorProgressAutoRepairPolicyTests(unittest.TestCase):
         self.now = datetime(2026, 8, 26, 12, 0, tzinfo=timezone.utc)
 
     def tearDown(self):
+        if self.previous_repository_root is None:
+            flask_app.config.pop("STRUCTURAL_REPAIR_REPOSITORY_ROOT", None)
+        else:
+            flask_app.config[
+                "STRUCTURAL_REPAIR_REPOSITORY_ROOT"
+            ] = self.previous_repository_root
         self.temporary.cleanup()
 
     @staticmethod
@@ -181,6 +196,59 @@ class CuratorProgressAutoRepairPolicyTests(unittest.TestCase):
             "CUR-WR-PROGRESS", "workflow_reasoning_progress_inconsistency"
         )
         self.assertFalse(registration.executable)
+
+    def test_task_page_renders_eligible_policy_observation_without_mutation(self):
+        before = self.tree_state()
+
+        response = self.client.get(f"/curator/tasks/{self.task_id}")
+
+        self.assertEqual(response.status_code, 200)
+        page = response.get_data(as_text=True)
+        self.assertIn("Automation eligibility", page)
+        self.assertIn("ELIGIBLE FOR FUTURE AUTO-REPAIR", page)
+        self.assertIn("cur-wr-progress-draft-auto-apply-eligibility", page)
+        self.assertIn("/progress_mode", page)
+        self.assertIn("absent", page)
+        self.assertIn("branch_aware", page)
+        self.assertIn("18 passed", page)
+        self.assertIn("0 failed", page)
+        self.assertIn("Observation only.", page)
+        self.assertIn("No automatic repair authority is enabled.", page)
+        self.assertNotIn("Apply automatic repair", page)
+        self.assertNotIn("Enable auto-apply", page)
+        self.assertEqual(self.tree_state(), before)
+        self.assertFalse((self.root / "curation_memory/structural_repair_approvals").exists())
+        self.assertFalse((self.root / "curation_memory/structural_repair_applications").exists())
+        self.assertFalse((self.root / "curation_memory/structural_repair_recoveries").exists())
+        self.assertEqual(self.store.load()["tasks"][self.task_id]["status"], "open")
+
+    def test_task_page_renders_ineligible_reason_and_omits_unsupported_policy(self):
+        self.update_task(lambda task: task["current_verification"].update({
+            "status": "appears_corrected",
+        }))
+
+        response = self.client.get(f"/curator/tasks/{self.task_id}")
+
+        self.assertEqual(response.status_code, 200)
+        page = response.get_data(as_text=True)
+        self.assertIn("INELIGIBLE", page)
+        self.assertIn("Why this task is ineligible", page)
+        self.assertIn(
+            "A current still_detected verification with the exact draft fingerprint is unavailable.",
+            page,
+        )
+        self.assertIn("17 passed", page)
+        self.assertIn("1 failed", page)
+
+        self.update_task(lambda task: task.update({
+            "curator_rule": "CUR-WR-TERMINAL-EVIDENCE",
+            "finding_type": "workflow_reasoning_evidence_gap",
+        }))
+        response = self.client.get(f"/curator/tasks/{self.task_id}")
+        self.assertEqual(response.status_code, 200)
+        page = response.get_data(as_text=True)
+        self.assertNotIn("Automation eligibility", page)
+        self.assertNotIn("cur-wr-progress-draft-auto-apply-eligibility", page)
 
     def test_verification_publication_and_fingerprint_failures_fail_closed(self):
         cases = []

@@ -28,6 +28,26 @@
     {% if verification_presentation and verification_presentation.technical_detail %}<details class="curator-technical-disclosure"><summary>Verification technical details</summary><p>{{ verification_presentation.technical_detail }}</p><code>{{ verification_presentation.technical_state }}</code></details>{% endif %}
   </section>
 
+  {% if automation_policy %}
+  {% set mutation = automation_policy.proposed_mutation %}
+  <section class="quality-section mt-4" aria-labelledby="automationEligibilityTitle">
+    <div class="quality-section__heading">
+      <div><span class="section-eyebrow">Read-only policy observation</span><h2 id="automationEligibilityTitle">Automation eligibility</h2></div>
+      <span class="badge text-bg-{{ 'success' if automation_policy.eligible else 'warning' }}">{{ 'ELIGIBLE FOR FUTURE AUTO-REPAIR' if automation_policy.eligible else 'INELIGIBLE' }}</span>
+    </div>
+    <p><strong>Observation only.</strong> No automatic repair authority is enabled. Publication and task resolution remain human-controlled.</p>
+    <dl class="curator-definition-list">
+      <div><dt>Policy</dt><dd><code>{{ automation_policy.policy_id }}</code> version {{ automation_policy.policy_version }}</dd></div>
+      <div><dt>Proposed metadata mutation</dt><dd><code>{{ mutation.path }}</code>: <code>{{ mutation.before_value if mutation.before_present else 'absent' }}</code> → <code>{{ mutation.after_value }}</code></dd></div>
+      <div><dt>Policy gates</dt><dd>{{ automation_policy.passed_gate_count }} passed &middot; {{ automation_policy.failed_gate_count }} failed</dd></div>
+    </dl>
+    {% if automation_policy.failed_gate_reasons %}
+    <div class="alert alert-warning" role="status"><strong>Why this task is ineligible</strong><ul class="mb-0">{% for reason in automation_policy.failed_gate_reasons %}<li>{{ reason }}</li>{% endfor %}</ul></div>
+    {% endif %}
+    <details class="curator-technical-disclosure"><summary>View policy gate details</summary><ol>{% for gate in automation_policy.gate_results %}<li><strong>{{ 'Passed' if gate.passed else 'Failed' }} — {{ gate.label }}</strong><p>{{ gate.reason }}</p></li>{% endfor %}</ol></details>
+  </section>
+  {% endif %}
+
   <div class="row g-4 curator-decision-layout">
     <div class="col-xl-8">
       <section class="quality-section" aria-labelledby="evidenceTitle">

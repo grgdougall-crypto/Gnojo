@@ -4,6 +4,7 @@ import unittest
 from copy import deepcopy
 from pathlib import Path
 
+from app.services.workflow_quality_validator import WorkflowQualityValidator
 from curator.auditor import CuratorAuditor
 from curator.checks import CuratorChecks
 from curator.models import AuditFilter, InventoryRecord
@@ -432,6 +433,75 @@ class WorkflowReasoningAuditorTests(unittest.TestCase):
             "done": {"type": "resolution", "title": "Done"},
         }, steps=2)
         self.assertIn("CUR-WR-PROGRESS", self.rules(self.auditor.analyze(workflow)))
+
+    @staticmethod
+    def progress_boundary_workflow(*, estimated_steps=4):
+        nodes = {}
+        for step in range(1, 6):
+            next_node = f"step_{step + 1}" if step < 5 else "done"
+            nodes[f"step_{step}"] = {
+                "type": "question",
+                "question": f"Check {step}?",
+                "answers": {"yes": {"label": "Yes", "next": next_node}},
+            }
+        nodes["done"] = {"type": "resolution", "title": "Done"}
+        return WorkflowReasoningAuditorTests.workflow(
+            nodes, start="step_1", steps=estimated_steps,
+        )
+
+    def test_progress_boundary_matches_premature_static_validator_finding(self):
+        workflow = self.progress_boundary_workflow(estimated_steps=4)
+
+        findings = [item for item in self.auditor.analyze(workflow)
+                    if item.rule == "CUR-WR-PROGRESS"]
+        quality_rules = {
+            item["rule"] for item in WorkflowQualityValidator().validate(workflow)["findings"]
+        }
+
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].structural, {
+            "configured_steps": 4,
+            "maximum_user_visible_nodes": 6,
+        })
+        self.assertIn("PREMATURE_STATIC_PROGRESS", quality_rules)
+
+    def test_progress_nondefective_boundary_remains_excluded(self):
+        workflow = self.progress_boundary_workflow(estimated_steps=6)
+
+        self.assertNotIn("CUR-WR-PROGRESS", self.rules(self.auditor.analyze(workflow)))
+        self.assertNotIn(
+            "PREMATURE_STATIC_PROGRESS",
+            {item["rule"] for item in WorkflowQualityValidator().validate(workflow)["findings"]},
+        )
+
+    def test_progress_finding_reconciles_once_with_stable_identity(self):
+        workflow = self.progress_boundary_workflow(estimated_steps=4)
+        record = InventoryRecord(
+            "workflow", "fixture", "Fixture", "app/workflow_drafts/fixture.json",
+            "Networking", "Windows", "draft", workflow,
+        )
+        first = [item for item in CuratorChecks().run_record(record)
+                 if item.rule == "CUR-WR-PROGRESS"]
+        second = [item for item in CuratorChecks().run_record(record)
+                  if item.rule == "CUR-WR-PROGRESS"]
+        state = {"tasks": {}}
+        service = KnowledgeTaskService()
+
+        created = service.reconcile(
+            state, first, [record], run_id="AUD-1",
+            observed_at="2026-08-25T00:00:00+00:00", filters=AuditFilter(),
+        )
+        observed = service.reconcile(
+            state, second, [record], run_id="AUD-2",
+            observed_at="2026-08-25T01:00:00+00:00", filters=AuditFilter(),
+        )
+
+        self.assertEqual(len(first), 1)
+        self.assertEqual(first[0].identifier, second[0].identifier)
+        self.assertEqual(len(created["created"]), 1)
+        self.assertEqual(observed["created"], [])
+        self.assertEqual(observed["observed"], created["created"])
+        self.assertEqual(list(state["tasks"]), created["created"])
 
     def test_branch_aware_progress_does_not_emit_static_progress_finding(self):
         workflow = self.workflow({

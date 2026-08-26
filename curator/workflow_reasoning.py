@@ -467,7 +467,7 @@ class WorkflowReasoningAuditor:
             return None
         configured = int(graph.workflow.get("estimated_steps") or 0)
         visible = graph.max_user_visible_path()
-        if not configured or visible <= configured + 2:
+        if not configured or visible <= configured:
             return None
         return ReasoningObservation(
             rule="CUR-WR-PROGRESS", finding_type="workflow_reasoning_progress_inconsistency",

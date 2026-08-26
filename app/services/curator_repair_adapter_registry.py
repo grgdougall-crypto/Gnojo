@@ -6,6 +6,7 @@ from typing import Any, Iterable
 from app.services.curator_structural_repair_contracts import (
     ActionVerificationSpecification,
     EvidenceProbeSpecification,
+    ProgressMetadataSpecification,
 )
 
 
@@ -53,12 +54,24 @@ class CuratorRepairAdapterRegistry:
             preview_enabled=True,
             supervised_apply_available=False,
         ),
+        RepairAdapterRegistration(
+            "branch_aware_progress_metadata",
+            "CUR-WR-PROGRESS",
+            "workflow_reasoning_progress_inconsistency",
+            executable=False,
+            structural=True,
+            preview_enabled=True,
+            supervised_apply_available=False,
+        ),
     )
 
     def __init__(self, registrations: Iterable[RepairAdapterRegistration] | None = None,
                  evidence_specs: Iterable[EvidenceProbeSpecification] | None = None,
                  action_verification_specs: Iterable[
                      ActionVerificationSpecification
+                 ] | None = None,
+                 progress_metadata_specs: Iterable[
+                     ProgressMetadataSpecification
                  ] | None = None):
         values = tuple(self.DEFAULT_REGISTRATIONS if registrations is None else registrations)
         self._registrations = {
@@ -93,6 +106,15 @@ class CuratorRepairAdapterRegistry:
             )
             for key in {item.verification_key for item in approved_action_specs}
         }
+        if progress_metadata_specs is None:
+            from app.services.curator_progress_metadata_specification_catalog import (
+                PRODUCTION_PROGRESS_METADATA_SPECIFICATIONS,
+            )
+            progress_metadata_specs = PRODUCTION_PROGRESS_METADATA_SPECIFICATIONS.all()
+        self._progress_metadata_specs = {
+            (item.curator_rule, item.finding_type): item
+            for item in progress_metadata_specs if item.approved
+        }
 
     def lookup(self, curator_rule: str, finding_type: str) -> RepairAdapterRegistration | None:
         return self._registrations.get((str(curator_rule or ""), str(finding_type or "")))
@@ -105,7 +127,16 @@ class CuratorRepairAdapterRegistry:
     ) -> ActionVerificationSpecification | None:
         return self._action_verification_specs.get(str(verification_key or ""))
 
-    def preview(self, task: dict[str, Any], workflow: dict[str, Any]) -> dict[str, Any]:
+    def progress_metadata_specification(
+        self, curator_rule: str, finding_type: str,
+    ) -> ProgressMetadataSpecification | None:
+        return self._progress_metadata_specs.get((
+            str(curator_rule or ""), str(finding_type or ""),
+        ))
+
+    def preview(self, task: dict[str, Any], workflow: dict[str, Any], *,
+                workflow_raw_sha256: str = "",
+                workflow_semantic_sha256: str = "") -> dict[str, Any]:
         """Dispatch a read-only preview only after registry eligibility succeeds."""
         eligibility = self.eligibility(task)
         if not eligibility["capability_eligible"]:
@@ -117,6 +148,25 @@ class CuratorRepairAdapterRegistry:
                 "reason": "This adapter retains its existing preview implementation.",
             }
         structural = task["structured_evidence"]
+        if registration.adapter_id == "branch_aware_progress_metadata":
+            specification = self.progress_metadata_specification(
+                task.get("curator_rule", ""), task.get("finding_type", "")
+            )
+            from app.services.curator_structural_repair_preview_service import (
+                CuratorStructuralRepairPreviewService,
+            )
+            preview = CuratorStructuralRepairPreviewService().preview_progress_metadata(
+                task, specification, workflow,
+                workflow_raw_sha256=workflow_raw_sha256,
+                workflow_semantic_sha256=workflow_semantic_sha256,
+            )
+            available = bool(preview.get("available"))
+            return {
+                **eligibility,
+                **preview,
+                "status": "preview_eligible" if available else "preview_unavailable",
+                "preview_eligible": available,
+            }
         if registration.adapter_id == "missing_post_action_verification":
             specification = self.action_verification_specification(
                 structural.get("verification_key", "")
@@ -165,6 +215,33 @@ class CuratorRepairAdapterRegistry:
                 registration,
             )
         structural = task.get("structured_evidence")
+        if registration.adapter_id == "branch_aware_progress_metadata":
+            if (task.get("content_type") != "workflow"
+                    or not isinstance(structural, dict)
+                    or isinstance(structural.get("configured_steps"), bool)
+                    or not isinstance(structural.get("configured_steps"), int)
+                    or isinstance(structural.get("maximum_user_visible_nodes"), bool)
+                    or not isinstance(structural.get("maximum_user_visible_nodes"), int)
+                    or structural["configured_steps"] < 1
+                    or structural["maximum_user_visible_nodes"] <= structural["configured_steps"]):
+                return self._result(
+                    "human_review_only",
+                    "The finding does not contain one deterministic static progress defect.",
+                    registration,
+                )
+            if not self.progress_metadata_specification(
+                    task.get("curator_rule", ""), task.get("finding_type", "")):
+                return self._result(
+                    "missing_evidence_specification",
+                    "No approved progress metadata specification matches this finding.",
+                    registration,
+                )
+            return self._result(
+                "preview_candidate",
+                "An approved one-field branch-aware progress preview is available.",
+                registration,
+                capability_eligible=True,
+            )
         if registration.adapter_id == "missing_post_action_verification":
             if not isinstance(structural, dict):
                 return self._result(

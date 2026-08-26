@@ -284,6 +284,7 @@ class StructuralRepairApplicationRecord:
     proposed_node_ids: tuple[str, ...]
     changed_edges: tuple[RouteEdge, ...]
     new_edges: tuple[RouteEdge, ...]
+    metadata_changes: tuple[ImmutableMapping, ...]
     created_at: str
     applied_at: str
     finalized_at: str
@@ -325,12 +326,44 @@ class StructuralRepairApplicationRecord:
         if rollback not in ROLLBACK_STATUSES:
             raise StructuralRepairGovernanceError("Rollback status is unsupported.")
         nodes = value.get("proposed_node_ids")
-        if not isinstance(nodes, list) or not nodes or not all(str(item).strip() for item in nodes):
-            raise StructuralRepairGovernanceError("Proposed node IDs must be an explicit nonempty list.")
+        if not isinstance(nodes, list) or not all(str(item).strip() for item in nodes):
+            raise StructuralRepairGovernanceError("Proposed node IDs must be an explicit list.")
         changed = value.get("changed_edges")
         new = value.get("new_edges")
-        if not isinstance(changed, list) or not changed or not isinstance(new, list) or not new:
-            raise StructuralRepairGovernanceError("Changed and new edge sets must be explicit and nonempty.")
+        metadata = value.get("metadata_changes", [])
+        if (not isinstance(changed, list) or not isinstance(new, list)
+                or not isinstance(metadata, list)):
+            raise StructuralRepairGovernanceError(
+                "Graph and metadata change sets must be explicit lists."
+            )
+        graph_change = bool(nodes or changed or new)
+        metadata_change = bool(metadata)
+        if graph_change == metadata_change:
+            raise StructuralRepairGovernanceError(
+                "An application must contain exactly one graph or metadata mutation type."
+            )
+        if graph_change and (not nodes or not changed or not new):
+            raise StructuralRepairGovernanceError(
+                "Graph repairs require proposed nodes and changed/new edges."
+            )
+        normalized_metadata = []
+        if metadata_change:
+            if len(metadata) != 1 or nodes or changed or new:
+                raise StructuralRepairGovernanceError(
+                    "Metadata repair must contain exactly one change and no graph delta."
+                )
+            item = metadata[0]
+            if (not isinstance(item, dict)
+                    or set(item) != {"path", "before_present", "before_value", "after_value"}
+                    or item.get("path") != "/progress_mode"
+                    or not isinstance(item.get("before_present"), bool)
+                    or ((not item["before_present"] and item.get("before_value") is not None)
+                        or (item["before_present"] and item.get("before_value") != "static"))
+                    or item.get("after_value") != "branch_aware"):
+                raise StructuralRepairGovernanceError(
+                    "Metadata journal change exceeds the progress-mode allowlist."
+                )
+            normalized_metadata.append(_immutable_data(item))
         summaries = value.get("validation_summaries", {})
         if not isinstance(summaries, dict):
             raise StructuralRepairGovernanceError("Validation summaries must be an object.")
@@ -376,6 +409,7 @@ class StructuralRepairApplicationRecord:
             tuple(str(item).strip() for item in nodes),
             tuple(RouteEdge.from_dict(item) for item in changed),
             tuple(RouteEdge.from_dict(item) for item in new),
+            tuple(normalized_metadata),
             created,
             applied,
             finalized,
@@ -389,8 +423,13 @@ class StructuralRepairApplicationRecord:
         )
 
     def to_dict(self) -> dict[str, Any]:
-        return _canonical_data(self)
+        value = _canonical_data(self)
+        # Preserve the exact Stage 3 graph-journal digest shape. The metadata
+        # field is serialized only for the new, mutually exclusive mutation type.
+        if not self.metadata_changes:
+            value.pop("metadata_changes", None)
+        return value
 
     @property
     def event_digest(self) -> str:
-        return StructuralRepairFingerprint.contract(self)
+        return StructuralRepairFingerprint.contract(self.to_dict())

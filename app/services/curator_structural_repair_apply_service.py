@@ -21,8 +21,14 @@ from app.repositories.structural_repair_recovery_repository import (
 from app.services.curator_evidence_specification_catalog import (
     PRODUCTION_EVIDENCE_SPECIFICATIONS,
 )
+from app.services.curator_progress_metadata_specification_catalog import (
+    PRODUCTION_PROGRESS_METADATA_SPECIFICATIONS,
+)
 from app.services.curator_repair_adapter_registry import CuratorRepairAdapterRegistry
-from app.services.curator_structural_repair_contracts import StructuralRepairPlan
+from app.services.curator_structural_repair_contracts import (
+    ProgressMetadataRepairPlan,
+    StructuralRepairPlan,
+)
 from app.services.curator_structural_repair_governance import (
     STAGE3_SCHEMA_VERSION,
     StructuralRepairApplicationRecord,
@@ -59,6 +65,7 @@ class CuratorStructuralRepairApplyService:
         self.persistence = WorkflowDraftPersistence(self.root / "app" / "workflow_drafts")
         self.task_loader = lambda task_id: CuratorTaskService(self.root).get(task_id)
         self.catalog = PRODUCTION_EVIDENCE_SPECIFICATIONS
+        self.progress_catalog = PRODUCTION_PROGRESS_METADATA_SPECIFICATIONS
         self.validator = self._validate_candidate
         self.now = lambda: datetime.now(timezone.utc)
         self.lock_timeout = 2.0
@@ -79,6 +86,7 @@ class CuratorStructuralRepairApplyService:
         value.persistence = WorkflowDraftPersistence(value.root / "app" / "workflow_drafts")
         value.task_loader = task_loader
         value.catalog = specification_catalog
+        value.progress_catalog = PRODUCTION_PROGRESS_METADATA_SPECIFICATIONS
         value.validator = validator or value._validate_candidate
         value.now = now or (lambda: datetime.now(timezone.utc))
         value.lock_timeout = lock_timeout
@@ -116,13 +124,10 @@ class CuratorStructuralRepairApplyService:
         if self.now() >= datetime.fromisoformat(approval.expires_at.replace("Z", "+00:00")):
             self.approvals.transition(approval_id, "expired", "approval_expired")
             raise StructuralRepairApplyError("approval_expired", "Approval has expired.")
-        specification = self.catalog.lookup(approval.specification_id.replace(
-            "-windows-v" + str(approval.specification_version), ""), approval.specification_version)
-        if specification is None:
-            # Catalog lookup is evidence-key based; bind by immutable identity as a second safe path.
-            specification = next((item for item in self.catalog.all()
-                                  if item.specification_id == approval.specification_id
-                                  and item.version == approval.specification_version), None)
+        catalogs = (self.catalog, self.progress_catalog)
+        specification = next((item for catalog in catalogs for item in catalog.all()
+                              if item.specification_id == approval.specification_id
+                              and item.version == approval.specification_version), None)
         if specification is None or StructuralRepairFingerprint.contract(specification) != approval.specification_digest:
             self.approvals.transition(approval_id, "invalidated", "specification_changed")
             raise StructuralRepairApplyError("preview_unknown", "Approved evidence specification changed.")
@@ -143,17 +148,22 @@ class CuratorStructuralRepairApplyService:
                     raise StructuralRepairApplyError("stale_workflow", "Editable workflow identity changed.")
                 task = self._task(approval)
                 regenerated = CuratorRepairAdapterRegistry(
-                    evidence_specs=self.catalog.all()
-                ).preview(task, before.workflow)
+                    evidence_specs=self.catalog.all(),
+                    progress_metadata_specs=self.progress_catalog.all(),
+                ).preview(
+                    task, before.workflow,
+                    workflow_raw_sha256=before.raw_sha256,
+                    workflow_semantic_sha256=before.semantic_sha256,
+                )
                 try:
                     self._match_approval(approval, stored["preview"], regenerated)
                 except StructuralRepairApplyError:
                     self.approvals.transition(approval_id, "invalidated", "preview_changed")
                     raise
-                plan = StructuralRepairPlan.from_dict(regenerated["plan"])
+                plan = self._plan(regenerated)
                 reasoning_baseline = self._reasoning_findings(before.workflow)
                 candidate = self.preview_service.simulate(before.workflow, regenerated)
-                self._assert_exact_graph(before.workflow, candidate, regenerated, plan)
+                self._assert_exact_change(before.workflow, candidate, regenerated, plan)
                 validation = self.validator(candidate, task, reasoning_baseline)
                 if not validation.get("passed"):
                     self._append(approval, regenerated, validation, outcome="failed",
@@ -203,8 +213,8 @@ class CuratorStructuralRepairApplyService:
                     persisted_validation = self.validator(
                         replacement.after.workflow, task, reasoning_baseline
                     )
-                    self._assert_exact_graph(before.workflow, replacement.after.workflow,
-                                             regenerated, plan)
+                    self._assert_exact_change(before.workflow, replacement.after.workflow,
+                                              regenerated, plan)
                     if (replacement.after.raw_sha256 != expected_raw
                             or replacement.after.semantic_sha256 != expected_semantic
                             or not persisted_validation.get("passed")):
@@ -270,6 +280,36 @@ class CuratorStructuralRepairApplyService:
         )
         if any(actual != expected for actual, expected in checks):
             raise StructuralRepairApplyError("preview_unknown", "Approved structural preview no longer matches.")
+
+    @staticmethod
+    def _plan(preview):
+        value = preview.get("plan")
+        if isinstance(value, dict) and value.get("plan_type") == "workflow_metadata":
+            return ProgressMetadataRepairPlan.from_dict(value)
+        return StructuralRepairPlan.from_dict(value)
+
+    def _assert_exact_change(self, before, candidate, preview, plan):
+        if isinstance(plan, ProgressMetadataRepairPlan):
+            self._assert_exact_metadata(before, candidate, plan)
+            return
+        self._assert_exact_graph(before, candidate, preview, plan)
+
+    @staticmethod
+    def _assert_exact_metadata(before, candidate, plan):
+        if (StructuralRepairFingerprint.contract(before.get("nodes"))
+                != plan.unchanged_graph_sha256
+                or candidate.get("nodes") != before.get("nodes")):
+            raise StructuralRepairApplyError("plan_invalid", "Metadata repair changed the workflow graph.")
+        present = "progress_mode" in before
+        if (present != plan.before_present
+                or before.get("progress_mode") != plan.before_value):
+            raise StructuralRepairApplyError("stale_workflow", "Progress metadata changed after preview.")
+        expected = deepcopy(before)
+        expected["progress_mode"] = "branch_aware"
+        if candidate != expected or candidate.get("estimated_steps") != before.get("estimated_steps"):
+            raise StructuralRepairApplyError(
+                "plan_invalid", "Metadata repair exceeds the progress-mode allowlist."
+            )
 
     def _assert_exact_graph(self, before, candidate, preview, plan):
         inserted = {item["node_id"] for item in preview["proposed"]["inserted_nodes"]}
@@ -342,19 +382,52 @@ class CuratorStructuralRepairApplyService:
         validation = WorkflowValidationService().validate(workflow)
         quality = validation.get("quality", {})
         reasoning = cls._reasoning_findings(workflow)
-        terminal = task.get("structured_evidence", {}).get("terminal")
-        defect_present = any(item[0] == "CUR-WR-TERMINAL-EVIDENCE" and item[2] == terminal
-                             for item in reasoning)
+        rule = str(task.get("curator_rule") or "")
+        if rule == "CUR-WR-PROGRESS":
+            defect_present = any(item[0] == rule for item in reasoning)
+        else:
+            terminal = task.get("structured_evidence", {}).get("terminal")
+            defect_present = any(item[0] == "CUR-WR-TERMINAL-EVIDENCE" and item[2] == terminal
+                                 for item in reasoning)
         new_reasoning = reasoning - frozenset(reasoning_baseline)
+        quality_ok = quality.get("overall_status") != "ERROR"
+        if rule == "CUR-WR-PROGRESS":
+            progress_rules = {
+                "PREMATURE_STATIC_PROGRESS",
+                "STATIC_PATH_LENGTH_CONFLICT",
+                "BRANCH_PROGRESS_INTEGRITY",
+            }
+            quality_ok = (quality.get("overall_status") == "CLEAN"
+                          and not progress_rules & {
+                              item.get("rule") for item in quality.get("findings", [])
+                          })
         passed = bool(validation.get("is_valid")) and not validation.get("unreachable_nodes") \
-            and quality.get("overall_status") != "ERROR" and not defect_present and not new_reasoning
+            and quality_ok and not defect_present and not new_reasoning
         return {"passed": passed, "schema": validation, "quality": quality,
                 "reasoning_finding_absent": not defect_present,
                 "new_reasoning_findings": [list(item) for item in sorted(new_reasoning)]}
 
     def _append(self, approval, preview, validation, *, outcome, failure="",
                 expected_raw="", expected_semantic=""):
-        plan = StructuralRepairPlan.from_dict(preview["plan"])
+        plan = self._plan(preview)
+        metadata_changes = []
+        proposed_node_ids = []
+        changed_edges = []
+        new_edges = []
+        if isinstance(plan, ProgressMetadataRepairPlan):
+            metadata_changes = [{
+                "path": plan.metadata_path,
+                "before_present": plan.before_present,
+                "before_value": plan.before_value,
+                "after_value": plan.after_value,
+            }]
+        else:
+            proposed_node_ids = [
+                plan.probe.evidence_node.node_id, plan.probe.result_node.node_id,
+                *(item.node_id for item in plan.proposed_outcome_nodes),
+            ]
+            changed_edges = [edge.__dict__ for edge in plan.changed_existing_edges]
+            new_edges = [edge.__dict__ for edge in plan.new_edges]
         now = self.now().isoformat()
         return StructuralRepairApplicationRecord.from_dict(self.applications.append({
             "schema_version": STAGE3_SCHEMA_VERSION,
@@ -373,12 +446,10 @@ class CuratorStructuralRepairApplyService:
             "adapter_id": approval.adapter_id, "specification_id": approval.specification_id,
             "specification_version": approval.specification_version,
             "specification_digest": approval.specification_digest,
-            "proposed_node_ids": [
-                plan.probe.evidence_node.node_id, plan.probe.result_node.node_id,
-                *(item.node_id for item in plan.proposed_outcome_nodes),
-            ],
-            "changed_edges": [edge.__dict__ for edge in plan.changed_existing_edges],
-            "new_edges": [edge.__dict__ for edge in plan.new_edges],
+            "proposed_node_ids": proposed_node_ids,
+            "changed_edges": changed_edges,
+            "new_edges": new_edges,
+            "metadata_changes": metadata_changes,
             "created_at": now, "applied_at": "", "finalized_at": now if outcome == "failed" else "",
             "validation_summaries": validation, "outcome": outcome,
             "failure_category": failure, "failure_reason": "",

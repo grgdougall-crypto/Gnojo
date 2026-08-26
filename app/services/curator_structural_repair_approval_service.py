@@ -8,7 +8,10 @@ from typing import Any, Callable
 from app.repositories.structural_repair_approval_repository import (
     StructuralRepairApprovalRepository,
 )
-from app.services.curator_structural_repair_contracts import StructuralRepairPlan
+from app.services.curator_structural_repair_contracts import (
+    ProgressMetadataRepairPlan,
+    StructuralRepairPlan,
+)
 from app.services.curator_repair_adapter_registry import CuratorRepairAdapterRegistry
 from app.services.curator_task_service import CuratorTaskService
 from app.services.curator_structural_repair_governance import (
@@ -64,10 +67,17 @@ class CuratorStructuralRepairApprovalService:
             snapshot = draft.read()
         if snapshot.filename != f"{snapshot.workflow.get('workflow_id')}.json":
             raise ValueError("Editable workflow filename and identity do not match.")
-        preview = self.registry.preview(task, snapshot.workflow)
+        preview = self.registry.preview(
+            task, snapshot.workflow,
+            workflow_raw_sha256=snapshot.raw_sha256,
+            workflow_semantic_sha256=snapshot.semantic_sha256,
+        )
         if not preview.get("available") or not preview.get("read_only"):
             raise ValueError("A valid governed structural preview is required.")
-        plan = StructuralRepairPlan.from_dict(preview.get("plan"))
+        raw_plan = preview.get("plan")
+        plan = (ProgressMetadataRepairPlan.from_dict(raw_plan)
+                if isinstance(raw_plan, dict) and raw_plan.get("plan_type") == "workflow_metadata"
+                else StructuralRepairPlan.from_dict(raw_plan))
         if plan.workflow_id != snapshot.workflow.get("workflow_id"):
             raise ValueError("Preview and editable workflow identities do not match.")
         specification = preview.get("specification")

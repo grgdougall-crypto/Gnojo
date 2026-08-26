@@ -26,7 +26,7 @@ class StructuralRepairApplicationRepository:
         "expected_workflow_raw_sha256_after", "expected_workflow_semantic_sha256_after",
         "preview_digest", "plan_digest", "adapter_id", "specification_id",
         "specification_version", "specification_digest", "proposed_node_ids",
-        "changed_edges", "new_edges", "created_at",
+        "changed_edges", "new_edges", "metadata_changes", "created_at",
     )
 
     def __init__(self, curator_root: Path):

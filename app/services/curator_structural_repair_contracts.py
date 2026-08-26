@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from collections.abc import Iterator, Mapping
-from dataclasses import dataclass
 from copy import deepcopy
+from dataclasses import dataclass
+import re
 from types import MappingProxyType
 from typing import Any
 
@@ -66,6 +67,13 @@ def _text(value: Any, label: str) -> str:
     normalized = str(value or "").strip()
     if not normalized:
         raise StructuralRepairContractError(f"{label} is required.")
+    return normalized
+
+
+def _sha256(value: Any, label: str) -> str:
+    normalized = str(value or "").strip().lower()
+    if not re.fullmatch(r"[0-9a-f]{64}", normalized):
+        raise StructuralRepairContractError(f"{label} must be a SHA-256 digest.")
     return normalized
 
 
@@ -460,6 +468,152 @@ class ActionVerificationRepairPlan:
             new_edges,
             preserved,
             unaffected,
+            rule,
+            status,
+        )
+
+
+@dataclass(frozen=True)
+class ProgressMetadataSpecification:
+    """Code-owned allowlist for the one supported workflow progress mutation."""
+
+    specification_id: str
+    version: int
+    curator_rule: str
+    finding_type: str
+    metadata_path: str
+    allowed_before_states: tuple[str, ...]
+    after_value: str
+    approved: bool
+    approved_by: str
+    approved_at: str
+    forbidden_mutations: tuple[str, ...]
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> "ProgressMetadataSpecification":
+        if not isinstance(value, dict):
+            raise StructuralRepairContractError(
+                "Progress metadata specification must be an object."
+            )
+        version = value.get("version")
+        if isinstance(version, bool) or not isinstance(version, int) or version < 1:
+            raise StructuralRepairContractError(
+                "Progress metadata specification version must be positive."
+            )
+        approved = value.get("approved") is True
+        approved_by = str(value.get("approved_by") or "").strip()
+        approved_at = str(value.get("approved_at") or "").strip()
+        if approved and (not approved_by or not approved_at):
+            raise StructuralRepairContractError(
+                "Approved progress specifications require review provenance."
+            )
+        before = value.get("allowed_before_states")
+        if before != ["absent", "static"]:
+            raise StructuralRepairContractError(
+                "Progress repair may start only from absent or static mode."
+            )
+        forbidden = value.get("forbidden_mutations")
+        required_forbidden = {
+            "estimated_steps", "nodes", "routes", "start_node", "other_metadata",
+        }
+        if (not isinstance(forbidden, list)
+                or not required_forbidden <= {str(item) for item in forbidden}):
+            raise StructuralRepairContractError(
+                "Progress repair must forbid estimate, graph, start-node, and other metadata changes."
+            )
+        if (value.get("curator_rule") != "CUR-WR-PROGRESS"
+                or value.get("finding_type") != "workflow_reasoning_progress_inconsistency"
+                or value.get("metadata_path") != "/progress_mode"
+                or value.get("after_value") != "branch_aware"):
+            raise StructuralRepairContractError(
+                "Progress specification exceeds the approved branch-aware mutation."
+            )
+        return cls(
+            _text(value.get("specification_id"), "Progress specification ID"),
+            version,
+            "CUR-WR-PROGRESS",
+            "workflow_reasoning_progress_inconsistency",
+            "/progress_mode",
+            ("absent", "static"),
+            "branch_aware",
+            approved,
+            approved_by,
+            approved_at,
+            tuple(str(item) for item in forbidden),
+        )
+
+
+@dataclass(frozen=True)
+class ProgressMetadataRepairPlan:
+    """Exact one-field workflow metadata mutation with immutable before identity."""
+
+    plan_id: str
+    plan_type: str
+    workflow_id: str
+    task_id: str
+    finding_id: str
+    metadata_path: str
+    before_present: bool
+    before_value: str | None
+    after_value: str
+    workflow_raw_sha256_before: str
+    workflow_semantic_sha256_before: str
+    unchanged_graph_sha256: str
+    unchanged_graph_guarantee: bool
+    specification: ProgressMetadataSpecification
+    expected_post_repair_rule: str
+    expected_post_repair_status: str
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> "ProgressMetadataRepairPlan":
+        if not isinstance(value, dict):
+            raise StructuralRepairContractError("Progress metadata repair plan must be an object.")
+        if value.get("plan_type") != "workflow_metadata":
+            raise StructuralRepairContractError("Progress repair plan type is unsupported.")
+        before_present = value.get("before_present")
+        if not isinstance(before_present, bool):
+            raise StructuralRepairContractError("Metadata before-presence must be explicit.")
+        before_value = value.get("before_value")
+        if ((not before_present and before_value is not None)
+                or (before_present and before_value != "static")):
+            raise StructuralRepairContractError(
+                "Progress mode before-state must be absent or exactly static."
+            )
+        specification = ProgressMetadataSpecification.from_dict(value.get("specification"))
+        if (value.get("metadata_path") != specification.metadata_path
+                or value.get("after_value") != specification.after_value):
+            raise StructuralRepairContractError(
+                "Metadata change must exactly match the approved progress specification."
+            )
+        expected = value.get("expected_post_repair")
+        if not isinstance(expected, dict):
+            expected = {
+                "rule": value.get("expected_post_repair_rule"),
+                "status": value.get("expected_post_repair_status"),
+            }
+        rule = _text(expected.get("rule"), "Expected post-repair rule")
+        status = _text(expected.get("status"), "Expected post-repair status")
+        if rule != "CUR-WR-PROGRESS" or status != "finding_absent":
+            raise StructuralRepairContractError(
+                "Progress repair must require its deterministic finding to be absent."
+            )
+        if value.get("unchanged_graph_guarantee") is not True:
+            raise StructuralRepairContractError("Progress repair must guarantee an unchanged graph.")
+        return cls(
+            _text(value.get("plan_id"), "Repair plan ID"),
+            "workflow_metadata",
+            _text(value.get("workflow_id"), "Workflow ID"),
+            _text(value.get("task_id"), "Task ID"),
+            _text(value.get("finding_id"), "Finding ID"),
+            "/progress_mode",
+            before_present,
+            before_value,
+            "branch_aware",
+            _sha256(value.get("workflow_raw_sha256_before"), "Raw workflow fingerprint"),
+            _sha256(value.get("workflow_semantic_sha256_before"), "Semantic workflow fingerprint"),
+            _sha256(value.get("unchanged_graph_sha256"), "Workflow graph fingerprint"),
+            True,
+            specification,
             rule,
             status,
         )

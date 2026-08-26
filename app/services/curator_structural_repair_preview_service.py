@@ -11,11 +11,14 @@ from app.services.curator_structural_repair_contracts import (
     ActionVerificationRepairPlan,
     ActionVerificationSpecification,
     EvidenceProbeSpecification,
+    ProgressMetadataRepairPlan,
+    ProgressMetadataSpecification,
     StructuralRepairContractError,
     StructuralRepairPlan,
     to_plain_data,
 )
 from app.services.workflow_validation_service import WorkflowValidationService
+from app.services.curator_structural_repair_governance import StructuralRepairFingerprint
 from curator.workflow_reasoning import WorkflowGraph
 from curator.workflow_reasoning import WorkflowReasoningAuditor
 
@@ -241,6 +244,205 @@ class CuratorStructuralRepairPreviewService:
             return {"available": False, "reason": str(error), "read_only": True}
         return preview
 
+    def preview_progress_metadata(
+        self,
+        task: dict[str, Any],
+        specification: ProgressMetadataSpecification | None,
+        workflow: dict[str, Any],
+        *,
+        workflow_raw_sha256: str,
+        workflow_semantic_sha256: str,
+    ) -> dict[str, Any]:
+        try:
+            plan = self._build_progress_metadata(
+                task, specification, workflow,
+                workflow_raw_sha256=workflow_raw_sha256,
+                workflow_semantic_sha256=workflow_semantic_sha256,
+            )
+        except StructuralRepairPreviewError as error:
+            return {"available": False, "reason": str(error), "read_only": True}
+        plan_data = to_plain_data(asdict(plan))
+        change = {
+            "path": plan.metadata_path,
+            "before_present": plan.before_present,
+            "before_value": plan.before_value,
+            "after_value": plan.after_value,
+        }
+        preview = {
+            "available": True,
+            "read_only": True,
+            "plan": plan_data,
+            "specification": self._specification_payload(specification),
+            "before": {"metadata": change},
+            "proposed": {
+                "metadata_changes": [change],
+                "inserted_nodes": [],
+                "changed_predecessor_edges": [],
+                "changed_existing_edges": [],
+                "new_edges": [],
+                "unaffected_routes": self._workflow_edges(workflow),
+                "preserved_existing_nodes": sorted(workflow["nodes"]),
+            },
+        }
+        preview["preview_token"] = self._hash({
+            "task": self._task_identity(task),
+            "structured_evidence": task.get("structured_evidence"),
+            "workflow": workflow,
+            "specification": preview["specification"],
+            "validated_plan": plan_data,
+        })
+        try:
+            simulated = self.simulate(workflow, preview)
+            preview["validation"] = self._validate_progress_metadata_simulation(
+                task, workflow, simulated, plan
+            )
+        except StructuralRepairPreviewError as error:
+            return {"available": False, "reason": str(error), "read_only": True}
+        return preview
+
+    def _build_progress_metadata(
+        self,
+        task: dict[str, Any],
+        specification: ProgressMetadataSpecification | None,
+        workflow: dict[str, Any],
+        *,
+        workflow_raw_sha256: str,
+        workflow_semantic_sha256: str,
+    ) -> ProgressMetadataRepairPlan:
+        if (task.get("curator_rule") != "CUR-WR-PROGRESS"
+                or task.get("finding_type") != "workflow_reasoning_progress_inconsistency"
+                or task.get("content_type") != "workflow"):
+            raise StructuralRepairPreviewError("The task is not a workflow progress finding.")
+        if not isinstance(specification, ProgressMetadataSpecification) or not specification.approved:
+            raise StructuralRepairPreviewError(
+                "An approved progress metadata specification is required."
+            )
+        if not isinstance(workflow, dict) or not isinstance(workflow.get("nodes"), dict):
+            raise StructuralRepairPreviewError("The editable workflow is unavailable or malformed.")
+        workflow_id = str(workflow.get("workflow_id") or "").strip()
+        if not workflow_id or task.get("content_identifier") != workflow_id:
+            raise StructuralRepairPreviewError(
+                "The task and editable workflow identities do not match."
+            )
+        semantic = StructuralRepairFingerprint.semantic_workflow(workflow)
+        if (workflow_semantic_sha256 != semantic
+                or not workflow_raw_sha256):
+            raise StructuralRepairPreviewError(
+                "Exact raw and semantic workflow fingerprints are required."
+            )
+        structural = task.get("structured_evidence")
+        configured = workflow.get("estimated_steps")
+        maximum = WorkflowGraph(workflow).max_user_visible_path()
+        if (not isinstance(structural, dict)
+                or structural.get("configured_steps") != configured
+                or structural.get("maximum_user_visible_nodes") != maximum
+                or isinstance(configured, bool) or not isinstance(configured, int)
+                or maximum <= configured):
+            raise StructuralRepairPreviewError(
+                "The recorded progress evidence is stale or no longer defective."
+            )
+        before_present = "progress_mode" in workflow
+        before_value = workflow.get("progress_mode") if before_present else None
+        if (not before_present and before_value is None):
+            pass
+        elif before_value == "static":
+            pass
+        elif before_value == "branch_aware":
+            raise StructuralRepairPreviewError(
+                "Branch-aware progress is already enabled; no repair is available."
+            )
+        else:
+            raise StructuralRepairPreviewError(
+                "The current progress mode is outside the approved metadata allowlist."
+            )
+        plan_seed = {
+            "workflow_id": workflow_id,
+            "task": self._task_identity(task),
+            "specification": [specification.specification_id, specification.version],
+            "raw": workflow_raw_sha256,
+            "semantic": workflow_semantic_sha256,
+        }
+        plan_data = {
+            "plan_id": "SRP-" + self._hash(plan_seed)[:12].upper(),
+            "plan_type": "workflow_metadata",
+            "workflow_id": workflow_id,
+            "task_id": task.get("task_id"),
+            "finding_id": task.get("finding_id"),
+            "metadata_path": "/progress_mode",
+            "before_present": before_present,
+            "before_value": before_value,
+            "after_value": "branch_aware",
+            "workflow_raw_sha256_before": workflow_raw_sha256,
+            "workflow_semantic_sha256_before": workflow_semantic_sha256,
+            "unchanged_graph_sha256": StructuralRepairFingerprint.contract(workflow["nodes"]),
+            "unchanged_graph_guarantee": True,
+            "specification": self._specification_payload(specification),
+            "expected_post_repair": {
+                "rule": "CUR-WR-PROGRESS", "status": "finding_absent",
+            },
+        }
+        try:
+            return ProgressMetadataRepairPlan.from_dict(plan_data)
+        except StructuralRepairContractError as error:
+            raise StructuralRepairPreviewError(str(error)) from error
+
+    @staticmethod
+    def _validate_progress_metadata_simulation(
+        task: dict[str, Any], before: dict[str, Any], simulated: dict[str, Any],
+        plan: ProgressMetadataRepairPlan,
+    ) -> dict[str, Any]:
+        if StructuralRepairFingerprint.contract(before.get("nodes")) != plan.unchanged_graph_sha256:
+            raise StructuralRepairPreviewError("The current workflow graph fingerprint is stale.")
+        if before.get("nodes") != simulated.get("nodes"):
+            raise StructuralRepairPreviewError("A metadata preview changed the workflow graph.")
+        expected = deepcopy(before)
+        expected["progress_mode"] = "branch_aware"
+        if simulated != expected or simulated.get("estimated_steps") != before.get("estimated_steps"):
+            raise StructuralRepairPreviewError(
+                "The preview contains a mutation outside the approved progress-mode field."
+            )
+        validation = WorkflowValidationService().validate(simulated)
+        quality = validation.get("quality") or {}
+        quality_rules = {item.get("rule") for item in quality.get("findings", [])}
+        prohibited = {
+            "PREMATURE_STATIC_PROGRESS",
+            "STATIC_PATH_LENGTH_CONFLICT",
+            "BRANCH_PROGRESS_INTEGRITY",
+        }
+        if (not validation.get("is_valid")
+                or quality.get("overall_status") != "CLEAN"
+                or quality_rules & prohibited):
+            raise StructuralRepairPreviewError(
+                "The simulated branch-aware workflow does not validate cleanly."
+            )
+        auditor = WorkflowReasoningAuditor()
+        before_findings = auditor.analyze(before)
+        after_findings = auditor.analyze(simulated)
+        if any(item.rule == "CUR-WR-PROGRESS" for item in after_findings):
+            raise StructuralRepairPreviewError(
+                "The simulated repair does not remove the progress finding."
+            )
+        before_signatures = {(item.rule, item.finding_type, item.node_id)
+                             for item in before_findings}
+        new_findings = [
+            {"rule": item.rule, "finding_type": item.finding_type, "node_id": item.node_id}
+            for item in after_findings
+            if (item.rule, item.finding_type, item.node_id) not in before_signatures
+        ]
+        if new_findings:
+            raise StructuralRepairPreviewError(
+                "The simulated metadata repair introduces a new reasoning finding."
+            )
+        return {
+            "passed": True,
+            "schema": validation,
+            "quality": quality,
+            "original_finding_absent": True,
+            "new_reasoning_findings": [],
+            "graph_unchanged": True,
+            "estimated_steps_unchanged": True,
+        }
+
     def _build_action_verification(
         self,
         task: dict[str, Any],
@@ -395,6 +597,21 @@ class CuratorStructuralRepairPreviewService:
             raise StructuralRepairPreviewError("A validated structural preview is required.")
         simulated = deepcopy(workflow)
         proposed = preview["proposed"]
+        metadata_changes = proposed.get("metadata_changes")
+        if metadata_changes is not None:
+            if (not isinstance(metadata_changes, list) or len(metadata_changes) != 1
+                    or metadata_changes[0].get("path") != "/progress_mode"
+                    or metadata_changes[0].get("after_value") != "branch_aware"):
+                raise StructuralRepairPreviewError(
+                    "A simulated metadata change exceeds the approved allowlist."
+                )
+            change = metadata_changes[0]
+            present = "progress_mode" in simulated
+            if (present != change.get("before_present")
+                    or simulated.get("progress_mode") != change.get("before_value")):
+                raise StructuralRepairPreviewError("The simulated metadata before-state is stale.")
+            simulated["progress_mode"] = "branch_aware"
+            return simulated
         for change in proposed.get("changed_predecessor_edges", []):
             before, after = change.get("before"), change.get("after")
             self._replace_edge(simulated, before, after)
@@ -570,7 +787,7 @@ class CuratorStructuralRepairPreviewService:
         )}
 
     @staticmethod
-    def _specification_payload(specification: EvidenceProbeSpecification) -> dict[str, Any]:
+    def _specification_payload(specification: Any) -> dict[str, Any]:
         return to_plain_data(asdict(specification))
 
     @staticmethod

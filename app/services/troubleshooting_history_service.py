@@ -13,6 +13,8 @@ class TroubleshootingHistoryError(ValueError):
 
 class TroubleshootingHistoryService:
     STATUSES = {"active", "completed", "abandoned"}
+    SESSION_ENVIRONMENTS = {"production", "development", "test"}
+    ENVIRONMENT_SCOPES = SESSION_ENVIRONMENTS | {"unclassified", "all"}
 
     def __init__(self, history_path=None):
         self.history_path = (
@@ -23,7 +25,10 @@ class TroubleshootingHistoryService:
         self.history_path.mkdir(parents=True, exist_ok=True)
 
     def start(self, workflow_id, workflow_name, node_id, version=None,
-              device=None, learning_mode=False):
+              device=None, learning_mode=False, session_environment="production"):
+        session_environment = self._validated_environment(
+            session_environment, allow_scopes=False
+        )
         now = self._now()
         record = {
             "id": uuid4().hex,
@@ -41,6 +46,7 @@ class TroubleshootingHistoryService:
             "backtracks": 0,
             "transitions": 0,
             "learning_mode": bool(learning_mode),
+            "session_environment": session_environment,
             "device": self._device_snapshot(device),
             "path": [str(node_id)],
         }
@@ -49,7 +55,7 @@ class TroubleshootingHistoryService:
 
     def progress(self, history_id, node_id, *, action="advance",
                  workflow_id=None, workflow_name=None, version=None):
-        record = self.get(history_id)
+        record = self._get_raw(history_id)
         if record is None or record.get("status") != "active":
             return record
         node_id = str(node_id)
@@ -76,7 +82,7 @@ class TroubleshootingHistoryService:
         return record
 
     def complete(self, history_id, node_id, outcome=None):
-        record = self.get(history_id)
+        record = self._get_raw(history_id)
         if record is None:
             return None
         if record.get("status") == "completed":
@@ -99,7 +105,7 @@ class TroubleshootingHistoryService:
         return record
 
     def abandon(self, history_id):
-        record = self.get(history_id)
+        record = self._get_raw(history_id)
         if record is None or record.get("status") != "active":
             return record
         record["status"] = "abandoned"
@@ -109,7 +115,7 @@ class TroubleshootingHistoryService:
         return record
 
     def add_feedback(self, history_id, values):
-        record = self.get(history_id)
+        record = self._get_raw(history_id)
         if record is None:
             raise FileNotFoundError(history_id)
         if record.get("status") != "completed":
@@ -145,6 +151,10 @@ class TroubleshootingHistoryService:
         return record["feedback"]
 
     def get(self, history_id):
+        value = self._get_raw(history_id)
+        return self._project_environment(value) if isinstance(value, dict) else None
+
+    def _get_raw(self, history_id):
         path = self._path(history_id)
         if not path.is_file():
             return None
@@ -156,17 +166,32 @@ class TroubleshootingHistoryService:
             ) from error
         return value if isinstance(value, dict) else None
 
-    def list(self, limit=100):
-        return self._all_records()[:max(1, min(int(limit), 500))]
+    def list(self, limit=100, *, environment="all"):
+        records = self._environment_records(
+            self._all_records(), self._validated_environment(environment)
+        )
+        return records[:max(1, min(int(limit), 500))]
 
     def query_page(self, *, page=1, workflow="", status="", range="all",
-                   page_size=25, now=None):
+                   environment="all", page_size=25, now=None):
         """Return one validated, newest-first history page and filter metadata."""
         records = self._all_records()
         total_count = len(records)
+        try:
+            environment_value = self._validated_environment(environment)
+        except TroubleshootingHistoryError:
+            environment_value = "production"
+        environment_counts = {
+            value: sum(
+                item.get("session_environment") == value for item in records
+            )
+            for value in ("production", "development", "test", "unclassified")
+        }
+        scoped_records = self._environment_records(records, environment_value)
+        total_scoped = len(scoped_records)
         workflows = {}
         status_counts = {}
-        for record in records:
+        for record in scoped_records:
             workflow_id = str(record.get("workflow_id") or "").strip()
             if workflow_id:
                 option = workflows.setdefault(workflow_id, {
@@ -189,7 +214,7 @@ class TroubleshootingHistoryService:
         if range_value not in {"7d", "30d", "all"}:
             range_value = "all"
 
-        filtered = records
+        filtered = scoped_records
         if workflow_value:
             filtered = [
                 item for item in filtered
@@ -234,6 +259,11 @@ class TroubleshootingHistoryService:
             "total_pages": total_pages,
             "total_matching": matching_count,
             "total_count": total_count,
+            "total_scoped": total_scoped,
+            "environments": [
+                {"value": value, "count": environment_counts[value]}
+                for value in ("production", "development", "test", "unclassified")
+            ],
             "workflows": sorted(
                 workflows.values(), key=lambda item: item["name"].casefold()
             ),
@@ -246,10 +276,11 @@ class TroubleshootingHistoryService:
                 "workflow": workflow_value,
                 "status": status_value,
                 "range": range_value,
+                "environment": environment_value,
             },
             "has_previous": page_value > 1,
             "has_next": page_value < total_pages,
-            "analytics": self.analytics(records),
+            "analytics": self.analytics(scoped_records),
         }
 
     def _all_records(self):
@@ -260,7 +291,7 @@ class TroubleshootingHistoryService:
             except (OSError, json.JSONDecodeError):
                 continue
             if isinstance(value, dict):
-                records.append(value)
+                records.append(self._project_environment(value))
         records.sort(key=lambda item: item.get("started_at", ""), reverse=True)
         return records
 
@@ -331,6 +362,33 @@ class TroubleshootingHistoryService:
         if not isinstance(history_id, str) or not re.fullmatch(r"[a-f0-9]{32}", history_id):
             raise TroubleshootingHistoryError("History record ID is invalid.")
         return self.history_path / f"{history_id}.json"
+
+    @classmethod
+    def _validated_environment(cls, value, *, allow_scopes=True):
+        normalized = str(value or "").strip().lower()
+        allowed = cls.ENVIRONMENT_SCOPES if allow_scopes else cls.SESSION_ENVIRONMENTS
+        if normalized not in allowed:
+            raise TroubleshootingHistoryError("Session environment is invalid.")
+        return normalized
+
+    @staticmethod
+    def _project_environment(record):
+        projected = dict(record)
+        value = str(projected.get("session_environment") or "").strip().lower()
+        projected["session_environment"] = (
+            value if value in TroubleshootingHistoryService.SESSION_ENVIRONMENTS
+            else "unclassified"
+        )
+        return projected
+
+    @staticmethod
+    def _environment_records(records, environment):
+        if environment == "all":
+            return list(records)
+        return [
+            item for item in records
+            if item.get("session_environment") == environment
+        ]
 
     @staticmethod
     def _device_snapshot(device):

@@ -176,6 +176,10 @@ class CuratorConfusingStepImprovementTests(unittest.TestCase):
         self._feedback(history, "advanced_network", 2, "test_dns", 4, None)
         self._feedback(history, "advanced_network", 2, "other_node", 1, "other_node")
         self._feedback(history, "other_workflow", 2, "test_dns", 1, "test_dns")
+        self._feedback(
+            history, "advanced_network", 2, "test_dns", 1, "test_dns",
+            environment="test",
+        )
         measured = self.service.measure(self.task["task_id"])
         measurement = measured["measurement"]
         self.assertEqual(measurement["state"], "observational_evidence_available")
@@ -214,8 +218,12 @@ class CuratorConfusingStepImprovementTests(unittest.TestCase):
         return self.service.record_published_version(self.task["task_id"])
 
     @staticmethod
-    def _feedback(history, workflow_id, version, node_id, clarity, confusing_step):
-        record = history.start(workflow_id, workflow_id, node_id, version=version)
+    def _feedback(history, workflow_id, version, node_id, clarity, confusing_step,
+                  environment="production"):
+        record = history.start(
+            workflow_id, workflow_id, node_id, version=version,
+            session_environment=environment,
+        )
         history.complete(record["id"], node_id)
         history.add_feedback(record["id"], {
             "solved": "yes", "clarity": clarity,

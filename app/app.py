@@ -99,6 +99,9 @@ from app.services.troubleshooting_history_service import (
     TroubleshootingHistoryError,
     TroubleshootingHistoryService,
 )
+TROUBLESHOOTING_SESSION_ENVIRONMENTS = frozenset(
+    TroubleshootingHistoryService.SESSION_ENVIRONMENTS
+)
 from app.services.content_quality_service import ContentQualityService
 from app.services.curator_content_quality_bridge_service import (
     CuratorContentQualityBridgeError,
@@ -645,6 +648,7 @@ def troubleshooting_history():
         workflow=request.args.get("workflow", ""),
         status=request.args.get("status", ""),
         range=request.args.get("range", "all"),
+        environment=request.args.get("environment", "production"),
     )
     return render_template(
         "troubleshooting_history.html",
@@ -762,7 +766,7 @@ def content_quality():
         for item in WorkflowDraftService().list_drafts()
         if item.get("workflow_id") and not item.get("is_damaged")
     }
-    records = TroubleshootingHistoryService().list(500)
+    records = TroubleshootingHistoryService().list(500, environment="production")
     versions = {workflow_id: catalog[workflow_id].get("version") for workflow_id in workflow_data}
     report = ContentQualityService().build(
         workflow_data, records, drafts, workflow_versions=versions
@@ -789,7 +793,9 @@ def send_confusing_step_to_curator():
         if item.get("workflow_id") and not item.get("is_damaged")
     }
     report = ContentQualityService().build(
-        {workflow_id: engine.workflow}, TroubleshootingHistoryService().list(500), drafts,
+        {workflow_id: engine.workflow},
+        TroubleshootingHistoryService().list(500, environment="production"),
+        drafts,
         workflow_versions={workflow_id: catalog[workflow_id].get("version")},
     )
     finding = next(
@@ -4411,6 +4417,7 @@ def wizard():
             version=pinned_version,
             device=active_device_profile(),
             learning_mode=session.get("learning_mode", False),
+            session_environment=troubleshooting_session_environment(),
         )
         session["troubleshooting_history_id"] = history_record["id"]
     except OSError:
@@ -4423,6 +4430,23 @@ def wizard():
         knowledge,
         workflow_catalog,
     )
+
+
+def troubleshooting_session_environment():
+    """Resolve one authoritative environment label for a newly created session."""
+    configured = str(os.getenv("GNOJO_SESSION_ENVIRONMENT") or "").strip().lower()
+    if configured:
+        if configured in TROUBLESHOOTING_SESSION_ENVIRONMENTS:
+            return configured
+        app.logger.warning(
+            "Invalid GNOJO_SESSION_ENVIRONMENT; defaulting troubleshooting history to production."
+        )
+        return "production"
+    if app.config.get("TESTING"):
+        return "test"
+    if app.debug:
+        return "development"
+    return "production"
 
 
 def render_wizard(engine, node, knowledge, workflow_catalog=None):

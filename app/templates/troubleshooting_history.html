@@ -25,6 +25,16 @@
     <section class="history-filters" aria-label="Troubleshooting history filters">
         <form method="get" action="{{ url_for('troubleshooting_history') }}" class="history-filters__form">
             <div>
+                <label for="historyEnvironment">Environment</label>
+                <select class="form-select" id="historyEnvironment" name="environment">
+                    <option value="production" {% if history_page.filters.environment == 'production' %}selected{% endif %}>Production</option>
+                    <option value="development" {% if history_page.filters.environment == 'development' %}selected{% endif %}>Development</option>
+                    <option value="test" {% if history_page.filters.environment == 'test' %}selected{% endif %}>Test</option>
+                    <option value="unclassified" {% if history_page.filters.environment == 'unclassified' %}selected{% endif %}>Unclassified</option>
+                    <option value="all" {% if history_page.filters.environment == 'all' %}selected{% endif %}>All environments</option>
+                </select>
+            </div>
+            <div>
                 <label for="historyWorkflow">Workflow</label>
                 <select class="form-select" id="historyWorkflow" name="workflow">
                     <option value="">All workflows</option>
@@ -47,9 +57,9 @@
                 </select>
             </div>
             <button class="btn btn-primary" type="submit">Apply filters</button>
-            {% if history_page.filters.workflow or history_page.filters.status or history_page.filters.range != 'all' %}<a class="btn btn-outline-secondary" href="{{ url_for('troubleshooting_history') }}">Clear filters</a>{% endif %}
+            {% if history_page.filters.environment != 'production' or history_page.filters.workflow or history_page.filters.status or history_page.filters.range != 'all' %}<a class="btn btn-outline-secondary" href="{{ url_for('troubleshooting_history') }}">Clear filters</a>{% endif %}
         </form>
-        <p class="small text-muted mb-0" role="status">Showing {{ history_page.total_matching }} of {{ history_page.total_count }} sessions.</p>
+        <p class="small text-muted mb-0" role="status">Showing {{ history_page.total_matching }} of {{ history_page.total_scoped }} sessions in this environment.</p>
     </section>
 
     <section class="analytics-grid" aria-label="Troubleshooting analytics">
@@ -58,7 +68,7 @@
         <article><span>Average steps</span><strong>{{ analytics.average_steps }}</strong></article>
         <article><span>Currently active</span><strong>{{ analytics.active }}</strong></article>
     </section>
-    <p class="small text-muted mt-2" role="note"><strong>Analytics scope:</strong> Totals include all locally stored sessions. Older development or test sessions cannot be excluded reliably because history records do not identify their environment.</p>
+    <p class="small text-muted mt-2" role="note"><strong>Analytics scope:</strong> Totals include only the selected environment. Older sessions without authoritative classification appear under <strong>Unclassified</strong>.</p>
 
     {% if analytics.feedback_count %}
     <section class="feedback-analytics" aria-labelledby="feedbackAnalyticsTitle">
@@ -114,15 +124,19 @@
         </div>
         {% if history_page.total_pages > 1 %}
         <nav class="history-pagination" aria-label="Troubleshooting history pages">
-            {% if history_page.has_previous %}<a class="btn btn-outline-primary" rel="prev" href="{{ url_for('troubleshooting_history', page=history_page.page - 1, workflow=history_page.filters.workflow, status=history_page.filters.status, range=history_page.filters.range) }}">Previous</a>{% else %}<span class="btn btn-outline-secondary disabled" aria-disabled="true">Previous</span>{% endif %}
+            {% if history_page.has_previous %}<a class="btn btn-outline-primary" rel="prev" href="{{ url_for('troubleshooting_history', page=history_page.page - 1, environment=history_page.filters.environment, workflow=history_page.filters.workflow, status=history_page.filters.status, range=history_page.filters.range) }}">Previous</a>{% else %}<span class="btn btn-outline-secondary disabled" aria-disabled="true">Previous</span>{% endif %}
             <span aria-current="page">Page {{ history_page.page }} of {{ history_page.total_pages }}</span>
-            {% if history_page.has_next %}<a class="btn btn-outline-primary" rel="next" href="{{ url_for('troubleshooting_history', page=history_page.page + 1, workflow=history_page.filters.workflow, status=history_page.filters.status, range=history_page.filters.range) }}">Next</a>{% else %}<span class="btn btn-outline-secondary disabled" aria-disabled="true">Next</span>{% endif %}
+            {% if history_page.has_next %}<a class="btn btn-outline-primary" rel="next" href="{{ url_for('troubleshooting_history', page=history_page.page + 1, environment=history_page.filters.environment, workflow=history_page.filters.workflow, status=history_page.filters.status, range=history_page.filters.range) }}">Next</a>{% else %}<span class="btn btn-outline-secondary disabled" aria-disabled="true">Next</span>{% endif %}
         </nav>
         {% endif %}
         {% else %}
         <div class="history-empty">
             <i class="bi bi-clock-history" aria-hidden="true"></i>
-            {% if history_page.total_count %}
+            {% if history_page.total_count and not history_page.total_scoped %}
+            <h3>No sessions in this environment</h3>
+            <p>Choose another environment to review other locally stored sessions.</p>
+            <a class="btn btn-outline-primary" href="{{ url_for('troubleshooting_history', environment='all') }}">View all environments</a>
+            {% elif history_page.total_count %}
             <h3>No sessions match these filters</h3>
             <p>Try a different workflow, status, or date range.</p>
             <a class="btn btn-outline-primary" href="{{ url_for('troubleshooting_history') }}">Clear filters</a>

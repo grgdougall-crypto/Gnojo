@@ -227,6 +227,38 @@ class ContentQualityPageTests(unittest.TestCase):
         self.assertNotIn("private first comment", json.dumps(task))
         self.assertNotIn("private second comment", json.dumps(task))
 
+    def test_dashboard_and_curator_bridge_use_production_feedback_only(self):
+        version = available_workflows()["windows_slow"].get("version")
+
+        def feedback(environment, clarity):
+            record = self.history.start(
+                "windows_slow", "Computer Running Slowly", "confirm_windows",
+                version=version, session_environment=environment,
+            )
+            self.history.complete(record["id"], "confirm_windows")
+            self.history.add_feedback(record["id"], {
+                "solved": "no", "clarity": clarity,
+                "confusing_step": "confirm_windows", "comment": "private",
+            })
+
+        feedback("development", 1)
+        feedback("test", 1)
+        before_threshold = self.client.get("/content-quality").get_data(as_text=True)
+        self.assertNotIn("Send to Curator", before_threshold)
+
+        feedback("production", 2)
+        eligible = self.client.get("/content-quality").get_data(as_text=True)
+        self.assertIn("Send to Curator", eligible)
+        response = self.client.post(
+            "/content-quality/confusing-step/curator",
+            data={"workflow_id": "windows_slow", "node_id": "confirm_windows"},
+            follow_redirects=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        task = next(iter(self.bridge.store.load()["tasks"].values()))
+        self.assertEqual(task["quality_baseline"]["report_count"], 1)
+        self.assertEqual(task["quality_baseline"]["sample_count"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

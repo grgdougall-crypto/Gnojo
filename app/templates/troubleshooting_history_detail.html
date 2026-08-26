@@ -19,6 +19,7 @@
         <article><span>Steps visited</span><strong>{{ record.steps }}</strong></article>
         <article><span>Backtracks</span><strong>{{ record.backtracks }}</strong></article>
         <article><span>Learning Mode</span><strong>{{ 'On' if record.learning_mode else 'Off' }}</strong></article>
+        <article><span>Environment</span><strong>{{ record.session_environment|title }}</strong></article>
     </div>
 
     {% if record.device %}

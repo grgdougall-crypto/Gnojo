@@ -61,6 +61,7 @@ Requirements: Python 3.11 or newer and Git.
 | --- | --- |
 | `FLASK_SECRET_KEY` | Stable session-signing key; use a strong private value outside local development |
 | `GNOJO_DEBUG` | Set to `true` only for local debugging |
+| `GNOJO_SESSION_ENVIRONMENT` | Classify new troubleshooting sessions as `production`, `development`, or `test`; older records remain unclassified |
 | `GEMINI_API_KEY` | Optional Gemini access |
 | `GEMINI_MODEL` | Optional Gemini model override |
 | `OPENAI_API_KEY` | Optional OpenAI access |

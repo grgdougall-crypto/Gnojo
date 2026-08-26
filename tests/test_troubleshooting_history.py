@@ -1,3 +1,5 @@
+import json
+import os
 import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
@@ -6,7 +8,7 @@ import re
 from pathlib import Path
 from unittest.mock import patch
 
-from app.app import app
+from app.app import app, troubleshooting_session_environment
 from app.services.troubleshooting_history_service import TroubleshootingHistoryService
 
 
@@ -49,6 +51,7 @@ class TroubleshootingHistoryServiceTests(unittest.TestCase):
         self.assertEqual(analytics["solved_rate"], 100)
         self.assertEqual(analytics["average_clarity"], 4.0)
         self.assertEqual(analytics["confusing_steps"][0]["node_id"], "check_scope")
+        self.assertEqual(first["session_environment"], "production")
 
     def test_feedback_requires_completed_session_and_valid_values(self):
         record = self.service.start("internet", "Internet", "start")
@@ -65,11 +68,13 @@ class TroubleshootingHistoryServiceTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.service.get("../private")
 
-    def _record(self, index, *, workflow="internet", status="completed", days_ago=0):
+    def _record(self, index, *, workflow="internet", status="completed", days_ago=0,
+                environment="production"):
         record = self.service.start(
             workflow,
             "Internet Connection" if workflow == "internet" else "Printer",
             "start",
+            session_environment=environment,
         )
         if status == "completed":
             record = self.service.complete(record["id"], "done")
@@ -132,6 +137,69 @@ class TroubleshootingHistoryServiceTests(unittest.TestCase):
         self.assertEqual(small["total_matching"], 10)
         self.assertEqual(large["total_matching"], 0)
 
+    def test_environment_scopes_filter_before_analytics_and_compose(self):
+        self._record(0, environment="production", status="completed")
+        self._record(1, environment="production", status="abandoned")
+        self._record(2, environment="development", status="completed")
+        self._record(3, environment="test", status="completed")
+        legacy = self._record(4, environment="production", status="completed")
+        path = self.service._path(legacy["id"])
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        raw.pop("session_environment")
+        path.write_text(json.dumps(raw, indent=2) + "\n", encoding="utf-8")
+
+        production = self.service.query_page(environment="production")
+        development = self.service.query_page(environment="development")
+        test = self.service.query_page(environment="test")
+        unclassified = self.service.query_page(environment="unclassified")
+        all_records = self.service.query_page(environment="all")
+
+        self.assertEqual(production["total_scoped"], 2)
+        self.assertEqual(production["analytics"]["total"], 2)
+        self.assertEqual(production["analytics"]["completion_rate"], 50)
+        self.assertEqual(development["analytics"]["total"], 1)
+        self.assertEqual(test["analytics"]["total"], 1)
+        self.assertEqual(unclassified["analytics"]["total"], 1)
+        self.assertEqual(all_records["analytics"]["total"], 5)
+        self.assertEqual(
+            self.service.query_page(
+                environment="production", status="completed"
+            )["total_matching"],
+            1,
+        )
+        self.assertEqual(
+            self.service.query_page(environment="invalid")["filters"]["environment"],
+            "production",
+        )
+
+    def test_legacy_record_projects_unclassified_without_rewrite(self):
+        record = self.service.start("internet", "Internet", "start")
+        path = self.service._path(record["id"])
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        raw.pop("session_environment")
+        path.write_text(json.dumps(raw, indent=2) + "\n", encoding="utf-8")
+        before = path.read_bytes()
+
+        projected = self.service.get(record["id"])
+
+        self.assertEqual(projected["session_environment"], "unclassified")
+        self.assertEqual(path.read_bytes(), before)
+        self.assertEqual(
+            self.service.list(environment="unclassified")[0]["id"], record["id"]
+        )
+        self.service.progress(record["id"], "next")
+        self.assertNotIn(
+            "session_environment",
+            json.loads(path.read_text(encoding="utf-8")),
+        )
+
+    def test_invalid_new_session_environment_is_rejected_without_record(self):
+        with self.assertRaises(ValueError):
+            self.service.start(
+                "internet", "Internet", "start", session_environment="staging"
+            )
+        self.assertEqual(self.service.list(), [])
+
     def test_deletion_that_removes_final_page_clamps_to_new_last_page(self):
         records = [self._record(index) for index in range(21)]
         self.assertEqual(self.service.query_page(page=2, page_size=20)["page"], 2)
@@ -149,10 +217,19 @@ class TroubleshootingHistoryPageTests(unittest.TestCase):
             "app.app.TroubleshootingHistoryService", return_value=self.service
         )
         self.service_patch.start()
-        app.config.update(TESTING=True)
+        self.previous_testing = app.config.get("TESTING")
+        self.previous_debug = app.config.get("DEBUG")
+        self.previous_environment = os.environ.get("GNOJO_SESSION_ENVIRONMENT")
+        os.environ["GNOJO_SESSION_ENVIRONMENT"] = ""
+        app.config.update(TESTING=True, DEBUG=False)
         self.client = app.test_client()
 
     def tearDown(self):
+        app.config.update(TESTING=self.previous_testing, DEBUG=self.previous_debug)
+        if self.previous_environment is None:
+            os.environ.pop("GNOJO_SESSION_ENVIRONMENT", None)
+        else:
+            os.environ["GNOJO_SESSION_ENVIRONMENT"] = self.previous_environment
         self.service_patch.stop()
         self.temporary.cleanup()
 
@@ -162,9 +239,10 @@ class TroubleshootingHistoryPageTests(unittest.TestCase):
         records = self.service.list()
         self.assertEqual(len(records), 1)
         self.assertEqual(records[0]["status"], "active")
+        self.assertEqual(records[0]["session_environment"], "test")
         self.assertNotIn("answers", records[0])
 
-        history = self.client.get("/troubleshooting-history")
+        history = self.client.get("/troubleshooting-history?environment=test")
         html = history.get_data(as_text=True)
         self.assertEqual(history.status_code, 200)
         self.assertIn("Troubleshooting History", html)
@@ -175,6 +253,40 @@ class TroubleshootingHistoryPageTests(unittest.TestCase):
             f"/troubleshooting-history/{records[0]['id']}"
         )
         self.assertIn("Session Path", detail.get_data(as_text=True))
+        self.assertIn("Environment", detail.get_data(as_text=True))
+        self.assertIn("Test", detail.get_data(as_text=True))
+
+    def test_creation_environment_resolution_precedence_and_safe_fallback(self):
+        for configured in ("production", "development", "test"):
+            with self.subTest(configured=configured):
+                os.environ["GNOJO_SESSION_ENVIRONMENT"] = configured
+                app.config.update(TESTING=True, DEBUG=True)
+                self.assertEqual(troubleshooting_session_environment(), configured)
+
+        os.environ["GNOJO_SESSION_ENVIRONMENT"] = ""
+        app.config.update(TESTING=True, DEBUG=False)
+        self.assertEqual(troubleshooting_session_environment(), "test")
+        app.config.update(TESTING=False, DEBUG=True)
+        self.assertEqual(troubleshooting_session_environment(), "development")
+        app.config.update(TESTING=False, DEBUG=False)
+        self.assertEqual(troubleshooting_session_environment(), "production")
+        os.environ["GNOJO_SESSION_ENVIRONMENT"] = "invalid"
+        app.config.update(TESTING=False, DEBUG=False)
+        self.assertEqual(troubleshooting_session_environment(), "production")
+        os.environ["GNOJO_SESSION_ENVIRONMENT"] = ""
+
+    def test_explicit_environments_are_persisted_by_canonical_wizard_start(self):
+        for configured in ("production", "development", "test"):
+            with self.subTest(configured=configured):
+                os.environ["GNOJO_SESSION_ENVIRONMENT"] = configured
+                self.service.clear()
+                with self.client.session_transaction() as browser_session:
+                    browser_session.clear()
+                response = self.client.get("/wizard?workflow=internet")
+                self.assertEqual(response.status_code, 200)
+                record = self.service.list()[0]
+                self.assertEqual(record["session_environment"], configured)
+        os.environ["GNOJO_SESSION_ENVIRONMENT"] = ""
 
     def test_restarting_marks_previous_session_abandoned(self):
         self.client.get("/wizard?workflow=internet")
@@ -210,7 +322,9 @@ class TroubleshootingHistoryPageTests(unittest.TestCase):
         self.assertEqual(saved["solved"], "partially")
         self.assertEqual(saved["clarity"], 3)
 
-        history_html = self.client.get("/troubleshooting-history").get_data(as_text=True)
+        history_html = self.client.get(
+            "/troubleshooting-history?environment=test"
+        ).get_data(as_text=True)
         self.assertIn("Workflow Feedback", history_html)
         self.assertIn("Average clarity", history_html)
         detail_html = self.client.get(
@@ -227,9 +341,9 @@ class TroubleshootingHistoryPageTests(unittest.TestCase):
             "/troubleshooting-history?workflow=internet&status=completed&range=30d"
         ).get_data(as_text=True)
         self.assertEqual(html.count("View details</a>"), 25)
-        self.assertIn("Showing 26 of 26 sessions.", html)
+        self.assertIn("Showing 26 of 26 sessions in this environment.", html)
         self.assertIn("Page 1 of 2", html)
-        self.assertIn("page=2&amp;workflow=internet&amp;status=completed&amp;range=30d", html)
+        self.assertIn("page=2&amp;environment=production&amp;workflow=internet", html)
         self.assertIn("Clear filters", html)
         self.assertIn("aria-label=\"View Internet Connection session details from", html)
         self.assertIn(
@@ -237,7 +351,7 @@ class TroubleshootingHistoryPageTests(unittest.TestCase):
             html,
         )
         page_two = self.client.get(
-            "/troubleshooting-history?page=2&workflow=internet&status=completed&range=30d"
+            "/troubleshooting-history?page=2&environment=production&workflow=internet&status=completed&range=30d"
         ).get_data(as_text=True)
         self.assertEqual(page_two.count("View details</a>"), 1)
         self.assertIn('aria-current="page">Page 2 of 2', page_two)
@@ -247,12 +361,12 @@ class TroubleshootingHistoryPageTests(unittest.TestCase):
             page_two,
         ).group(1))
         self.assertIn(
-            "return_to=%2Ftroubleshooting-history%3Fpage%3D2%26workflow%3Dinternet%26status%3Dcompleted%26range%3D30d",
+            "return_to=%2Ftroubleshooting-history%3Fpage%3D2%26environment%3Dproduction%26workflow%3Dinternet%26status%3Dcompleted%26range%3D30d",
             detail_url,
         )
         detail = self.client.get(detail_url).get_data(as_text=True)
         self.assertIn(
-            'href="/troubleshooting-history?page=2&amp;workflow=internet&amp;status=completed&amp;range=30d"',
+            'href="/troubleshooting-history?page=2&amp;environment=production&amp;workflow=internet&amp;status=completed&amp;range=30d"',
             detail,
         )
         self.assertIn("Back to Troubleshooting History", detail)
@@ -263,6 +377,7 @@ class TroubleshootingHistoryPageTests(unittest.TestCase):
         self.assertIn('value="internet" selected', returned)
         self.assertIn('value="completed" selected', returned)
         self.assertIn('value="30d" selected', returned)
+        self.assertIn('value="production" selected', returned)
         self.assertIn('aria-current="page">Page 2 of 2', returned)
 
         record = self.service.list()[0]
@@ -285,10 +400,19 @@ class TroubleshootingHistoryPageTests(unittest.TestCase):
         self.assertIn("Clear filters", filtered)
         self.assertNotIn("No Troubleshooting History Yet", filtered)
 
+        self.service.clear()
+        self.service.start(
+            "internet", "Internet Connection", "start", session_environment="test"
+        )
+        scoped = self.client.get("/troubleshooting-history").get_data(as_text=True)
+        self.assertIn("No sessions in this environment", scoped)
+        self.assertNotIn("No Troubleshooting History Yet", scoped)
+
     def test_analytics_discloses_unclassified_local_test_sessions(self):
         html = self.client.get("/troubleshooting-history").get_data(as_text=True)
         self.assertIn("Analytics scope", html)
-        self.assertIn("history records do not identify their environment", html)
+        self.assertIn("Older sessions without authoritative classification", html)
+        self.assertIn("Unclassified", html)
 
 
 if __name__ == "__main__":

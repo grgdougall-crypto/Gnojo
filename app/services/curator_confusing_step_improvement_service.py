@@ -191,7 +191,7 @@ class CuratorConfusingStepImprovementService:
             raise CuratorConfusingStepImprovementError(
                 "Record the published workflow version before measuring the outcome."
             )
-        records = self.history.list(500)
+        records = self.history.list(500, environment="production")
         before = self._cohort(
             records, package["workflow_id"], package["node_id"],
             package["before_workflow_version"],
@@ -277,7 +277,7 @@ class CuratorConfusingStepImprovementService:
             return version
         measured_at = str(baseline.get("measured_at") or task.get("first_seen") or "")
         candidates = []
-        for record in self.history.list(500):
+        for record in self.history.list(500, environment="production"):
             feedback = record.get("feedback")
             submitted_at = str((feedback or {}).get("submitted_at") or "")
             record_version = record.get("workflow_version")

@@ -62,6 +62,9 @@ from app.engine.workflow_generation_engine import (
 from app.services.workflow_validation_service import (
     WorkflowValidationService,
 )
+from app.services.workflow_runtime_compatibility_service import (
+    apply_runtime_compatibility_handoffs,
+)
 
 from app.services.workflow_draft_service import (
     WorkflowDraftError,
@@ -432,17 +435,9 @@ def load_runtime_workflow(engine, workflow_id, catalog=None, version=None):
     else:
         engine.load_workflow(workflow_id)
 
-    # Preserve immutable historical publications while allowing a narrowly scoped
-    # runtime navigation enhancement for older active snapshots.
-    runtime_handoffs = {
-        ("network_diagnostics", "advanced_complete"): "higher_layer_connectivity",
-    }
-    for (source_workflow, node_id), destination_workflow in runtime_handoffs.items():
-        if workflow_id != source_workflow:
-            continue
-        node = engine.get_node(node_id)
-        if node is not None and node.type == "resolution" and not node.next_workflow:
-            node.next_workflow = destination_workflow
+    # Preserve immutable historical publications while allowing narrowly scoped
+    # runtime compatibility for older active snapshots.
+    apply_runtime_compatibility_handoffs(engine, workflow_id)
 
 
 def active_device_profile():

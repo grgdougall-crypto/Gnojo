@@ -40,6 +40,16 @@ class CuratorWorkflowLifecycleService:
     def resolve(self, workflow_id: str) -> ActionableWorkflow | None:
         return self._draft(workflow_id) or self._published(workflow_id) or self._built_in(workflow_id)
 
+    def drafts(self, workflow_id: str) -> tuple[ActionableWorkflow, ...]:
+        """Return every editable candidate so lifecycle projections can fail closed."""
+        directory = self.root / "app" / "workflow_drafts"
+        values = []
+        for path in sorted(directory.glob("*.json")) if directory.exists() else ():
+            workflow = self._read_workflow(path)
+            if workflow and str(workflow.get("workflow_id") or path.stem) == workflow_id:
+                values.append(self._target(workflow_id, path.name, path, "draft", workflow))
+        return tuple(values)
+
     def relationship(self, workflow_id: str, node_id: str) -> dict[str, Any]:
         target = self.resolve(workflow_id)
         if not target:
@@ -73,12 +83,8 @@ class CuratorWorkflowLifecycleService:
         return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
     def _draft(self, workflow_id: str) -> ActionableWorkflow | None:
-        directory = self.root / "app" / "workflow_drafts"
-        for path in sorted(directory.glob("*.json")) if directory.exists() else ():
-            workflow = self._read_workflow(path)
-            if workflow and str(workflow.get("workflow_id") or path.stem) == workflow_id:
-                return self._target(workflow_id, path.name, path, "draft", workflow)
-        return None
+        values = self.drafts(workflow_id)
+        return values[0] if values else None
 
     def _published(self, workflow_id: str) -> ActionableWorkflow | None:
         try:

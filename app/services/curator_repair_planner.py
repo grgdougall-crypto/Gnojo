@@ -7,6 +7,7 @@ from typing import Any
 
 from app.services.knowledge_integrity_service import KnowledgeIntegrityService
 from app.services.curator_repair_adapter_registry import CuratorRepairAdapterRegistry
+from app.services.curator_structural_repair_governance import StructuralRepairFingerprint
 from app.services.curator_workflow_lifecycle_service import CuratorWorkflowLifecycleService
 from curator.memory import CuratorMemoryError, CuratorMemoryStore
 
@@ -21,6 +22,7 @@ class CuratorRepairPlanner:
         "orphaned_article": 40,
         "safety_risk": 50,
         "workflow_reasoning_evidence_gap": 55,
+        "workflow_reasoning_progress_inconsistency": 55,
         "legacy_provenance": 60,
         "editorial_opportunity": 70,
         "recommendation": 80,
@@ -139,13 +141,29 @@ class CuratorRepairPlanner:
         if (not registration or not registration.structural or registration.executable
                 or not registration.supervised_apply_available):
             return None
-        workflow_id, separator, _ = str(task.get("content_identifier") or "").partition(":")
-        if not separator or not workflow_id:
+        identifier = str(task.get("content_identifier") or "")
+        workflow_id, separator, _ = identifier.partition(":")
+        if task.get("content_type") == "workflow":
+            workflow_id = identifier
+        elif not separator:
+            workflow_id = ""
+        if not workflow_id:
             return None
         target = self.workflow_lifecycle.resolve(workflow_id)
         if not target or target.lifecycle != "draft":
             return None
-        preview = self.structural_registry.preview(task, target.workflow)
+        try:
+            raw = (self.root / target.source_path).read_bytes()
+        except OSError:
+            return None
+        preview = self.structural_registry.preview(
+            task,
+            target.workflow,
+            workflow_raw_sha256=hashlib.sha256(raw).hexdigest(),
+            workflow_semantic_sha256=(
+                StructuralRepairFingerprint.semantic_workflow(target.workflow)
+            ),
+        )
         if (not preview.get("available") or not preview.get("preview_eligible")
                 or not preview.get("supervised_apply_available")
                 or preview.get("execution_eligible")):

@@ -61,7 +61,7 @@ class CuratorRepairAdapterRegistry:
             executable=False,
             structural=True,
             preview_enabled=True,
-            supervised_apply_available=False,
+            supervised_apply_available=True,
         ),
     )
 

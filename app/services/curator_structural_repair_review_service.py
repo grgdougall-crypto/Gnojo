@@ -20,7 +20,10 @@ from app.services.curator_structural_repair_apply_service import (
     CuratorStructuralRepairApplyService,
     StructuralRepairApplyError,
 )
-from app.services.curator_structural_repair_contracts import StructuralRepairPlan
+from app.services.curator_structural_repair_contracts import (
+    ProgressMetadataRepairPlan,
+    StructuralRepairPlan,
+)
 from app.services.curator_structural_repair_preview_service import (
     CuratorStructuralRepairPreviewService,
 )
@@ -79,6 +82,10 @@ class CuratorStructuralRepairReviewService:
                     "application_id": record.application_id,
                     "workflow_filename": Path(record.workflow_path).name,
                     "applied_at": record.applied_at,
+                    "plan_type": "workflow_metadata" if record.metadata_changes else "workflow_graph",
+                    "metadata_changes": tuple(
+                        dict(item) for item in record.metadata_changes
+                    ),
                     "route_changes": self.route_changes(stored["preview"]),
                 }
         except (StructuralRepairApplicationRepositoryError,
@@ -112,8 +119,13 @@ class CuratorStructuralRepairReviewService:
 
     def preview(self, task_id: str, fix_session_id: str) -> dict[str, Any]:
         task, fix_session, item = self._task_context(task_id, fix_session_id)
-        workflow_id, separator, _ = str(task.get("content_identifier") or "").partition(":")
-        if not separator or not workflow_id:
+        identifier = str(task.get("content_identifier") or "")
+        workflow_id, separator, _ = identifier.partition(":")
+        if task.get("content_type") == "workflow":
+            workflow_id = identifier
+        elif not separator:
+            workflow_id = ""
+        if not workflow_id:
             raise StructuralRepairReviewError("preview_unavailable", "The affected workflow is unavailable.")
         filename = f"{workflow_id}.json"
         try:
@@ -127,16 +139,24 @@ class CuratorStructuralRepairReviewService:
             raise StructuralRepairReviewError(
                 "preview_unavailable", "The editable workflow identity does not match this task."
             )
-        preview = self.registry.preview(task, snapshot.workflow)
+        preview = self.registry.preview(
+            task,
+            snapshot.workflow,
+            workflow_raw_sha256=snapshot.raw_sha256,
+            workflow_semantic_sha256=snapshot.semantic_sha256,
+        )
         if not preview.get("available"):
             raise StructuralRepairReviewError(
                 "preview_unavailable", "A governed structural repair preview is not currently available."
             )
         try:
-            plan = StructuralRepairPlan.from_dict(preview["plan"])
+            raw_plan = preview["plan"]
+            plan = (ProgressMetadataRepairPlan.from_dict(raw_plan)
+                    if raw_plan.get("plan_type") == "workflow_metadata"
+                    else StructuralRepairPlan.from_dict(raw_plan))
             apply_service = CuratorStructuralRepairApplyService(self.root)
             candidate = CuratorStructuralRepairPreviewService().simulate(snapshot.workflow, preview)
-            apply_service._assert_exact_graph(snapshot.workflow, candidate, preview, plan)
+            apply_service._assert_exact_change(snapshot.workflow, candidate, preview, plan)
             baseline = apply_service._reasoning_findings(snapshot.workflow)
             validation = apply_service._validate_candidate(candidate, task, baseline)
         except (KeyError, ValueError, StructuralRepairApplyError) as error:
@@ -150,6 +170,14 @@ class CuratorStructuralRepairReviewService:
             "workflow_id": workflow_id,
             "workflow_name": snapshot.workflow.get("name") or workflow_id.replace("_", " ").title(),
             "workflow_filename": filename,
+            "plan_type": (plan.plan_type if isinstance(plan, ProgressMetadataRepairPlan)
+                          else "workflow_graph"),
+            "preserved": {
+                "estimated_steps": snapshot.workflow.get("estimated_steps"),
+                "workflow_graph": "unchanged",
+                "publication": "unchanged",
+                "task_status": "Open",
+            },
             "preview": preview,
             "validation": {
                 "passed": bool(validation.get("passed")),
@@ -186,6 +214,7 @@ class CuratorStructuralRepairReviewService:
             "task": task,
             "fix_session": fix_session,
             "item": item,
+            "plan_type": str(stored["preview"].get("plan", {}).get("plan_type") or "workflow_graph"),
         }
 
     def _task_context(self, task_id: str, fix_session_id: str):

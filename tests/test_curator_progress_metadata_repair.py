@@ -206,7 +206,7 @@ class CuratorProgressMetadataRepairTests(unittest.TestCase):
             result["application"]["expected_workflow_raw_sha256_after"],
         )
 
-    def test_production_registry_does_not_expose_supervised_browser_apply(self):
+    def test_registry_exposes_only_supervised_browser_authority(self):
         registry = CuratorRepairAdapterRegistry()
         registration = registry.lookup(
             "CUR-WR-PROGRESS", "workflow_reasoning_progress_inconsistency"
@@ -214,9 +214,9 @@ class CuratorProgressMetadataRepairTests(unittest.TestCase):
         eligibility = registry.eligibility(self.task_value)
 
         self.assertFalse(registration.executable)
-        self.assertFalse(registration.supervised_apply_available)
+        self.assertTrue(registration.supervised_apply_available)
         self.assertFalse(eligibility["execution_eligible"])
-        self.assertFalse(eligibility["supervised_apply_available"])
+        self.assertTrue(eligibility["supervised_apply_available"])
 
 
 if __name__ == "__main__":

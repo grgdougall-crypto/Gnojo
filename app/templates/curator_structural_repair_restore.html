@@ -5,7 +5,7 @@
   {% with curator_active='maintenance' %}{% include 'partials/_curator_nav.html' %}{% endwith %}
   <header class="curator-task-heading"><div><span class="section-eyebrow">Fix Wizard · Supervised recovery</span><h1 id="restoreTitle">Restore Pre-Repair Draft</h1></div></header>
   {% if result %}
-    <div class="alert alert-success" role="status"><strong>The editable draft was restored exactly.</strong><p class="mb-0">The published workflow was not changed. The original structural application and this compensating recovery remain in the audit history.</p></div>
+    <div class="alert alert-success" role="status"><strong>The editable draft was restored exactly.</strong><p class="mb-0">The published workflow was not changed. The original governed repair application and this compensating recovery remain in the audit history.</p></div>
     <section class="quality-section"><dl class="curator-definition-list"><div><dt>Application reverted</dt><dd><code>{{ result.application.application_id }}</code></dd></div><div><dt>Workflow draft</dt><dd><code>{{ result.application.workflow_path|replace('app/workflow_drafts/', '') }}</code></dd></div><div><dt>Restored fingerprint</dt><dd><code>{{ result.recovery_event.restored_raw_sha256 }}</code></dd></div></dl></section>
   {% elif failure %}
     <div class="alert alert-danger" role="alert"><strong>{{ 'The editable draft was restored, but recovery requires attention.' if failure.restored else 'The editable draft was not restored.' }}</strong><p class="mb-0">{{ failure.message }}</p></div>

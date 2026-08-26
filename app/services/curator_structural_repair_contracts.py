@@ -253,6 +253,219 @@ class EvidenceProbeSpecification:
 
 
 @dataclass(frozen=True)
+class ActionVerificationSpecification:
+    """Reviewed question and routes for one exact post-action verification pattern."""
+
+    specification_id: str
+    version: int
+    verification_key: str
+    action_family: str
+    workflow_id: str
+    action_node_id: str
+    expected_current_destination: str
+    approved: bool
+    approved_by: str
+    approved_at: str
+    verification_node: WorkflowNodeSpecification
+    result_routes: tuple[tuple[str, str], ...]
+    platform_constraints: tuple[str, ...]
+    safety_constraints: tuple[str, ...]
+    forbidden_mutations: tuple[str, ...]
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> "ActionVerificationSpecification":
+        if not isinstance(value, dict):
+            raise StructuralRepairContractError(
+                "Action-verification specification must be an object."
+            )
+        version = value.get("version")
+        if isinstance(version, bool) or not isinstance(version, int) or version < 1:
+            raise StructuralRepairContractError(
+                "Action-verification specification version must be positive."
+            )
+        approved = value.get("approved") is True
+        approved_by = str(value.get("approved_by") or "").strip()
+        approved_at = str(value.get("approved_at") or "").strip()
+        if approved and (not approved_by or not approved_at):
+            raise StructuralRepairContractError(
+                "Approved action-verification specifications require review provenance."
+            )
+        verification_node = WorkflowNodeSpecification.from_dict(
+            value.get("verification_node"), expected_type="question"
+        )
+        answers = verification_node.content.get("answers")
+        routes = value.get("result_routes")
+        if isinstance(routes, list):
+            try:
+                routes = dict(routes)
+            except (TypeError, ValueError):
+                routes = None
+        if not isinstance(answers, Mapping) or not isinstance(routes, dict) or len(routes) < 2:
+            raise StructuralRepairContractError(
+                "Action verification requires at least two explicit answer routes."
+            )
+        normalized_routes = []
+        for answer_id, destination in routes.items():
+            answer_id = _text(answer_id, "Verification answer ID")
+            destination = _text(destination, f"Destination for verification '{answer_id}'")
+            answer = answers.get(answer_id)
+            if (not isinstance(answer, Mapping)
+                    or str(answer.get("next") or "").strip() != destination):
+                raise StructuralRepairContractError(
+                    f"Verification route '{answer_id}' must match its question answer."
+                )
+            _text(answer.get("label"), f"Label for verification '{answer_id}'")
+            normalized_routes.append((answer_id, destination))
+        if set(answers) != {key for key, _ in normalized_routes}:
+            raise StructuralRepairContractError(
+                "Every verification answer requires one explicit route."
+            )
+        if len({destination for _, destination in normalized_routes}) < 2:
+            raise StructuralRepairContractError(
+                "Action verification requires distinct success and non-success destinations."
+            )
+
+        def required_strings(field: str, label: str) -> tuple[str, ...]:
+            raw = value.get(field)
+            if (not isinstance(raw, list) or not raw
+                    or not all(str(item).strip() for item in raw)):
+                raise StructuralRepairContractError(f"{label} must be explicit.")
+            return tuple(str(item).strip() for item in raw)
+
+        forbidden = required_strings("forbidden_mutations", "Forbidden mutations")
+        if not {"action_content", "unrelated_routes", "publication"} <= set(forbidden):
+            raise StructuralRepairContractError(
+                "Action verification must forbid action-content, unrelated-route, and publication changes."
+            )
+        return cls(
+            _text(value.get("specification_id"), "Action-verification specification ID"),
+            version,
+            _text(value.get("verification_key"), "Verification key"),
+            _text(value.get("action_family"), "Action family"),
+            _text(value.get("workflow_id"), "Workflow ID"),
+            _text(value.get("action_node_id"), "Action node ID"),
+            _text(value.get("expected_current_destination"), "Expected current destination"),
+            approved,
+            approved_by,
+            approved_at,
+            verification_node,
+            tuple(normalized_routes),
+            required_strings("platform_constraints", "Platform constraints"),
+            required_strings("safety_constraints", "Safety constraints"),
+            forbidden,
+        )
+
+
+@dataclass(frozen=True)
+class ActionVerificationRepairPlan:
+    plan_id: str
+    workflow_id: str
+    action_node_id: str
+    verification_key: str
+    outgoing_edge: RouteEdge
+    specification: ActionVerificationSpecification
+    changed_existing_edges: tuple[RouteEdge, ...]
+    new_edges: tuple[RouteEdge, ...]
+    preserved_existing_nodes: tuple[str, ...]
+    unaffected_routes: tuple[RouteEdge, ...]
+    expected_post_repair_rule: str
+    expected_post_repair_status: str
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> "ActionVerificationRepairPlan":
+        if not isinstance(value, dict):
+            raise StructuralRepairContractError(
+                "Action-verification repair plan must be an object."
+            )
+        workflow_id = _text(value.get("workflow_id"), "Workflow ID")
+        action_node_id = _text(value.get("action_node_id"), "Action node ID")
+        verification_key = _text(value.get("verification_key"), "Verification key")
+        edge = RouteEdge.from_dict(value.get("outgoing_edge"))
+        if edge.source != action_node_id or edge.route != "next":
+            raise StructuralRepairContractError(
+                "The action repair must identify the instruction's exact next edge."
+            )
+        specification = ActionVerificationSpecification.from_dict(value.get("specification"))
+        if (not specification.approved
+                or specification.workflow_id != workflow_id
+                or specification.action_node_id != action_node_id
+                or specification.verification_key != verification_key
+                or specification.expected_current_destination != edge.destination):
+            raise StructuralRepairContractError(
+                "The approved specification must exactly match the action and current edge."
+            )
+        changed_raw = value.get("changed_existing_edges")
+        if not isinstance(changed_raw, list):
+            raise StructuralRepairContractError("Changed action edges must be explicit.")
+        changed = tuple(RouteEdge.from_dict(item) for item in changed_raw)
+        if changed != (edge,):
+            raise StructuralRepairContractError(
+                "Exactly the recorded action edge may be changed."
+            )
+        new_raw = value.get("new_edges")
+        if not isinstance(new_raw, list) or not new_raw:
+            raise StructuralRepairContractError("Verification routes must be explicit.")
+        new_edges = tuple(RouteEdge.from_dict(item) for item in new_raw)
+        expected_new_edges = {
+            RouteEdge(specification.verification_node.node_id, answer, destination)
+            for answer, destination in specification.result_routes
+        }
+        if set(new_edges) != expected_new_edges or len(new_edges) != len(expected_new_edges):
+            raise StructuralRepairContractError(
+                "New edges must exactly match the approved verification answers."
+            )
+        preserved_raw = value.get("preserved_existing_nodes")
+        if (not isinstance(preserved_raw, list) or not preserved_raw
+                or not all(str(item).strip() for item in preserved_raw)):
+            raise StructuralRepairContractError("Preserved existing nodes must be explicit.")
+        preserved = tuple(str(item) for item in preserved_raw)
+        if (action_node_id not in preserved
+                or specification.verification_node.node_id in preserved):
+            raise StructuralRepairContractError(
+                "The action must be preserved and the verification node must be new."
+            )
+        destinations = {destination for _, destination in specification.result_routes}
+        if not destinations <= set(preserved):
+            raise StructuralRepairContractError(
+                "Every verification route must target a preserved existing node."
+            )
+        unaffected_raw = value.get("unaffected_routes")
+        if not isinstance(unaffected_raw, list):
+            raise StructuralRepairContractError("Unaffected routes must be explicit.")
+        unaffected = tuple(RouteEdge.from_dict(item) for item in unaffected_raw)
+        if edge in unaffected:
+            raise StructuralRepairContractError(
+                "The changed action edge cannot also be unaffected."
+            )
+        expected = value.get("expected_post_repair")
+        if not isinstance(expected, dict):
+            expected = {
+                "rule": value.get("expected_post_repair_rule"),
+                "status": value.get("expected_post_repair_status"),
+            }
+        rule = _text(expected.get("rule"), "Expected post-repair rule")
+        status = _text(expected.get("status"), "Expected post-repair status")
+        if rule != "CUR-WR-ACTION-VERIFICATION" or status != "finding_absent":
+            raise StructuralRepairContractError(
+                "Action verification must expect its exact reasoning finding to be absent."
+            )
+        return cls(
+            _text(value.get("plan_id"), "Repair plan ID"),
+            workflow_id,
+            action_node_id,
+            verification_key,
+            edge,
+            specification,
+            changed,
+            new_edges,
+            preserved,
+            unaffected,
+            rule,
+            status,
+        )
+
+
+@dataclass(frozen=True)
 class AffectedPath:
     nodes: tuple[str, ...]
     missing: tuple[str, ...]

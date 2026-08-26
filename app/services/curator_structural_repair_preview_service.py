@@ -8,12 +8,16 @@ from dataclasses import asdict
 from typing import Any
 
 from app.services.curator_structural_repair_contracts import (
+    ActionVerificationRepairPlan,
+    ActionVerificationSpecification,
     EvidenceProbeSpecification,
     StructuralRepairContractError,
     StructuralRepairPlan,
     to_plain_data,
 )
+from app.services.workflow_validation_service import WorkflowValidationService
 from curator.workflow_reasoning import WorkflowGraph
+from curator.workflow_reasoning import WorkflowReasoningAuditor
 
 
 class StructuralRepairPreviewError(ValueError):
@@ -95,8 +99,17 @@ class CuratorStructuralRepairPreviewService:
         except StructuralRepairContractError as error:
             raise StructuralRepairPreviewError(str(error)) from error
 
-    def preview(self, task: dict[str, Any], specification: EvidenceProbeSpecification,
+    def preview(self, task: dict[str, Any], specification: Any,
                 workflow: dict[str, Any]) -> dict[str, Any]:
+        if (task.get("curator_rule") == "CUR-WR-ACTION-VERIFICATION"
+                or task.get("finding_type") == "workflow_reasoning_unverified_action"):
+            if not isinstance(specification, ActionVerificationSpecification):
+                return {
+                    "available": False,
+                    "reason": "An approved action-verification specification is required.",
+                    "read_only": True,
+                }
+            return self._preview_action_verification(task, specification, workflow)
         try:
             plan = self.build(task, specification, workflow)
         except StructuralRepairPreviewError as error:
@@ -161,6 +174,219 @@ class CuratorStructuralRepairPreviewService:
                 "unaffected_routes": [asdict(edge) for edge in plan.unaffected_routes],
                 "preserved_existing_nodes": list(plan.preserved_existing_nodes),
             },
+        }
+
+    def _preview_action_verification(
+        self,
+        task: dict[str, Any],
+        specification: ActionVerificationSpecification,
+        workflow: dict[str, Any],
+    ) -> dict[str, Any]:
+        try:
+            plan = self._build_action_verification(task, specification, workflow)
+        except StructuralRepairPreviewError as error:
+            return {"available": False, "reason": str(error), "read_only": True}
+        plan_data = to_plain_data(asdict(plan))
+        before_edge = asdict(plan.outgoing_edge)
+        verification_node = {
+            "node_id": plan.specification.verification_node.node_id,
+            "content": to_plain_data(plan.specification.verification_node.content),
+        }
+        result_routes = [
+            {"answer": answer, "destination": destination}
+            for answer, destination in plan.specification.result_routes
+        ]
+        proposed = {
+            "inserted_nodes": [verification_node],
+            "result_decision_node": verification_node,
+            "outcome_nodes": [],
+            "changed_predecessor_edges": [{
+                "before": before_edge,
+                "after": {
+                    **before_edge,
+                    "destination": plan.specification.verification_node.node_id,
+                },
+            }],
+            "changed_existing_edges": [asdict(edge) for edge in plan.changed_existing_edges],
+            "new_edges": [asdict(edge) for edge in plan.new_edges],
+            "result_routes": result_routes,
+            "unaffected_routes": [asdict(edge) for edge in plan.unaffected_routes],
+            "preserved_existing_nodes": list(plan.preserved_existing_nodes),
+        }
+        preview = {
+            "available": True,
+            "read_only": True,
+            "plan": plan_data,
+            "specification": self._specification_payload(specification),
+            "before": {
+                "action_node_id": plan.action_node_id,
+                "outgoing_edge": before_edge,
+                "current_destination": plan.outgoing_edge.destination,
+            },
+            "proposed": proposed,
+        }
+        preview["preview_token"] = self._hash({
+            "task": self._task_identity(task),
+            "structured_evidence": task.get("structured_evidence"),
+            "workflow": workflow,
+            "specification": preview["specification"],
+            "validated_plan": plan_data,
+        })
+        try:
+            simulated = self.simulate(workflow, preview)
+            preview["validation"] = self._validate_action_simulation(
+                task, workflow, simulated
+            )
+        except StructuralRepairPreviewError as error:
+            return {"available": False, "reason": str(error), "read_only": True}
+        return preview
+
+    def _build_action_verification(
+        self,
+        task: dict[str, Any],
+        specification: ActionVerificationSpecification,
+        workflow: dict[str, Any],
+    ) -> ActionVerificationRepairPlan:
+        if (task.get("curator_rule") != "CUR-WR-ACTION-VERIFICATION"
+                or task.get("finding_type") != "workflow_reasoning_unverified_action"):
+            raise StructuralRepairPreviewError(
+                "The task is not a post-action verification finding."
+            )
+        if not specification.approved:
+            raise StructuralRepairPreviewError(
+                "An approved action-verification specification is required."
+            )
+        if not isinstance(workflow, dict) or not isinstance(workflow.get("nodes"), dict):
+            raise StructuralRepairPreviewError("The editable workflow is unavailable or malformed.")
+        workflow_id = str(workflow.get("workflow_id") or "").strip()
+        task_workflow, _, task_node = str(task.get("content_identifier") or "").partition(":")
+        structural = task.get("structured_evidence")
+        if not isinstance(structural, dict):
+            raise StructuralRepairPreviewError("Typed action-edge evidence is unavailable.")
+        action_node_id = str(structural.get("action_node_id") or "")
+        if (workflow_id != task_workflow
+                or workflow_id != specification.workflow_id
+                or task_node != action_node_id
+                or action_node_id != specification.action_node_id):
+            raise StructuralRepairPreviewError(
+                "The task, action specification, and editable workflow identities do not match."
+            )
+        if (structural.get("evidence_version") != "1.0"
+                or structural.get("action_node_type") != "instruction"
+                or structural.get("verification_key") != specification.verification_key
+                or structural.get("action_family") != specification.action_family):
+            raise StructuralRepairPreviewError(
+                "The action evidence does not match the reviewed specification."
+            )
+        action = workflow["nodes"].get(action_node_id)
+        if not isinstance(action, dict) or action.get("type") != "instruction":
+            raise StructuralRepairPreviewError("The recorded action node is no longer an instruction.")
+        transitions = WorkflowGraph(workflow).transitions(action_node_id)
+        if len(transitions) != 1:
+            raise StructuralRepairPreviewError(
+                "The action must have exactly one unambiguous outgoing edge."
+            )
+        route, destination = transitions[0]
+        edge = structural.get("outgoing_edge")
+        expected_edge = {
+            "source": action_node_id,
+            "route": route,
+            "destination": destination,
+        }
+        if (edge != expected_edge
+                or route != "next"
+                or destination != specification.expected_current_destination
+                or structural.get("current_destination") != destination):
+            raise StructuralRepairPreviewError(
+                "The recorded action edge is stale or does not match the approved topology."
+            )
+        if list(structural.get("required_destinations") or []) != sorted(
+            set(destination for _, destination in specification.result_routes)
+        ):
+            raise StructuralRepairPreviewError(
+                "The bounded downstream destinations do not match the specification."
+            )
+        verification_id = specification.verification_node.node_id
+        if verification_id in workflow["nodes"]:
+            raise StructuralRepairPreviewError(
+                "The approved verification node already exists; no duplicate preview is allowed."
+            )
+        required_destinations = {
+            destination for _, destination in specification.result_routes
+        }
+        if not required_destinations <= set(workflow["nodes"]):
+            raise StructuralRepairPreviewError(
+                "An approved verification destination is unavailable in the workflow."
+            )
+        current_edges = self._workflow_edges(workflow)
+        unaffected = [item for item in current_edges if self._edge_key(item) != self._edge_key(edge)]
+        plan_seed = {
+            "workflow_id": workflow_id,
+            "task": self._task_identity(task),
+            "specification": [specification.specification_id, specification.version],
+            "outgoing_edge": edge,
+        }
+        plan_data = {
+            "plan_id": "SRP-" + self._hash(plan_seed)[:12].upper(),
+            "workflow_id": workflow_id,
+            "action_node_id": action_node_id,
+            "verification_key": specification.verification_key,
+            "outgoing_edge": deepcopy(edge),
+            "specification": self._specification_payload(specification),
+            "changed_existing_edges": [deepcopy(edge)],
+            "new_edges": [
+                {"source": verification_id, "route": answer, "destination": destination}
+                for answer, destination in specification.result_routes
+            ],
+            "preserved_existing_nodes": sorted(workflow["nodes"]),
+            "unaffected_routes": unaffected,
+            "expected_post_repair": {
+                "rule": "CUR-WR-ACTION-VERIFICATION",
+                "status": "finding_absent",
+            },
+        }
+        try:
+            return ActionVerificationRepairPlan.from_dict(plan_data)
+        except StructuralRepairContractError as error:
+            raise StructuralRepairPreviewError(str(error)) from error
+
+    @staticmethod
+    def _validate_action_simulation(
+        task: dict[str, Any], before: dict[str, Any], simulated: dict[str, Any],
+    ) -> dict[str, Any]:
+        validation = WorkflowValidationService().validate(simulated)
+        quality = validation.get("quality") or {}
+        if (not validation.get("is_valid")
+                or validation.get("errors")
+                or validation.get("warnings")
+                or quality.get("overall_status") not in {None, "CLEAN"}):
+            raise StructuralRepairPreviewError(
+                "The simulated action-verification repair does not validate cleanly."
+            )
+        auditor = WorkflowReasoningAuditor()
+        before_findings = auditor.analyze(before)
+        after_findings = auditor.analyze(simulated)
+        action_node_id = str(task.get("structured_evidence", {}).get("action_node_id") or "")
+        if any(item.rule == "CUR-WR-ACTION-VERIFICATION"
+               and item.node_id == action_node_id for item in after_findings):
+            raise StructuralRepairPreviewError(
+                "The simulated repair does not remove the action-verification finding."
+            )
+        before_signatures = {(item.rule, item.finding_type, item.node_id) for item in before_findings}
+        new_findings = [
+            {"rule": item.rule, "finding_type": item.finding_type, "node_id": item.node_id}
+            for item in after_findings
+            if (item.rule, item.finding_type, item.node_id) not in before_signatures
+        ]
+        if new_findings:
+            raise StructuralRepairPreviewError(
+                "The simulated repair introduces a new reasoning finding."
+            )
+        return {
+            "passed": True,
+            "schema": validation,
+            "original_finding_absent": True,
+            "new_reasoning_findings": [],
         }
 
     def simulate(self, workflow: dict[str, Any], preview: dict[str, Any]) -> dict[str, Any]:

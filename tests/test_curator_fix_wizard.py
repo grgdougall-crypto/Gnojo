@@ -4,6 +4,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+from tests.structural_repair_fixtures import pre_stage34_network_diagnostics_bytes
+
 from app.repositories.knowledge_repository import KnowledgeRepository
 from app.services.curator_fix_session_service import CuratorFixSessionError, CuratorFixSessionService
 from app.services.curator_repair_executor import CuratorRepairError, CuratorRepairExecutor
@@ -71,8 +73,7 @@ class CuratorFixWizardTests(unittest.TestCase):
     def install_structural_draft(self):
         destination = self.root / "app/workflow_drafts/network_diagnostics.json"
         destination.parent.mkdir(parents=True, exist_ok=True)
-        source = Path(__file__).resolve().parents[1] / "app/workflow_drafts/network_diagnostics.json"
-        destination.write_bytes(source.read_bytes())
+        destination.write_bytes(pre_stage34_network_diagnostics_bytes())
         return destination
 
     @staticmethod

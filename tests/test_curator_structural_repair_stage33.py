@@ -10,6 +10,7 @@ from app.app import app as flask_app
 from app.services.curator_fix_session_service import CuratorFixSessionService
 from app.services.curator_structural_repair_apply_service import StructuralRepairApplyError
 from curator.memory import CuratorMemoryStore
+from tests.structural_repair_fixtures import pre_stage34_network_diagnostics_bytes
 
 
 class StructuralRepairStage33BrowserTests(unittest.TestCase):
@@ -20,9 +21,8 @@ class StructuralRepairStage33BrowserTests(unittest.TestCase):
         self.root = Path(self.temporary.name)
         self.drafts = self.root / "app" / "workflow_drafts"
         self.drafts.mkdir(parents=True)
-        source = Path(__file__).resolve().parents[1] / "app" / "workflow_drafts" / "network_diagnostics.json"
         self.filename = "network_diagnostics.json"
-        (self.drafts / self.filename).write_bytes(source.read_bytes())
+        (self.drafts / self.filename).write_bytes(pre_stage34_network_diagnostics_bytes())
         self.before = (self.drafts / self.filename).read_bytes()
         self.store = CuratorMemoryStore(self.root / "curation_memory")
         state = self.store.load()

@@ -4,6 +4,8 @@ from collections import deque
 from dataclasses import dataclass, field
 from typing import Any, Iterable
 
+from .action_verification import action_verification_profile
+
 
 @dataclass(frozen=True)
 class ReasoningObservation:
@@ -353,12 +355,40 @@ class WorkflowReasoningAuditor:
         for node_id, node in graph.nodes.items():
             if node.get("type") != "instruction" or not self._is_action(node):
                 continue
-            targets = [target for _, target in graph.transitions(node_id)]
+            transitions = graph.transitions(node_id)
+            targets = [target for _, target in transitions]
             if not targets:
                 continue
             verified = any(self._is_verification(graph.nodes.get(target, {})) for target in targets)
             if verified:
                 continue
+            outgoing_edges = [
+                {"source": node_id, "route": route, "destination": target}
+                for route, target in transitions
+            ]
+            structural = {
+                "evidence_version": "1.0",
+                "workflow_id": str(graph.workflow.get("workflow_id") or ""),
+                "action_node_id": node_id,
+                "action_node_type": str(node.get("type") or ""),
+                "action_title": str(node.get("title") or ""),
+                "action_text": str(node.get("instruction") or ""),
+                "outgoing_edges": outgoing_edges,
+            }
+            if len(outgoing_edges) == 1:
+                structural["outgoing_edge"] = outgoing_edges[0]
+                structural["current_destination"] = outgoing_edges[0]["destination"]
+                profile = action_verification_profile(
+                    structural["workflow_id"], node_id,
+                )
+                if (profile
+                        and profile.expected_current_destination
+                        == structural["current_destination"]):
+                    structural.update({
+                        "action_family": profile.action_family,
+                        "verification_key": profile.verification_key,
+                        "required_destinations": sorted(profile.required_destinations),
+                    })
             found.append(ReasoningObservation(
                 rule="CUR-WR-ACTION-VERIFICATION", finding_type="workflow_reasoning_unverified_action",
                 classification="risk", node_id=node_id,
@@ -366,7 +396,7 @@ class WorkflowReasoningAuditor:
                 explanation="The instruction appears intended to change system state, but its immediate downstream node is not a question that verifies the result.",
                 evidence=(f"Action node: {node_id}", f"Immediate destinations: {', '.join(targets)}"),
                 action="Review whether an observable outcome check should follow this action.", severity="medium",
-                structural={"action_node": node_id, "destinations": targets},
+                structural=structural,
             ))
         return found
 

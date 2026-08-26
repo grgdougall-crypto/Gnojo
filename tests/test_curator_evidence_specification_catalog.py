@@ -17,6 +17,7 @@ from app.services.curator_structural_repair_preview_service import CuratorStruct
 from app.services.workflow_quality_validator import WorkflowQualityValidator
 from app.services.workflow_validation_service import WorkflowValidationService
 from curator.workflow_reasoning import WorkflowReasoningAuditor
+from tests.structural_repair_fixtures import pre_stage34_network_diagnostics_bytes
 
 
 class CuratorEvidenceSpecificationCatalogTests(unittest.TestCase):
@@ -150,7 +151,7 @@ class CuratorEvidenceSpecificationCatalogTests(unittest.TestCase):
     def test_real_advanced_network_topology_produces_valid_three_node_preview(self):
         workflow_path = Path("app/workflow_drafts/network_diagnostics.json")
         workflow_before = workflow_path.read_bytes()
-        workflow = json.loads(workflow_before.decode("utf-8"))
+        workflow = json.loads(pre_stage34_network_diagnostics_bytes().decode("utf-8"))
         observation = next(
             item for item in WorkflowReasoningAuditor().analyze(workflow)
             if item.rule == "CUR-WR-TERMINAL-EVIDENCE" and item.node_id == "dns_problem"

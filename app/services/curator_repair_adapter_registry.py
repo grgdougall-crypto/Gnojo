@@ -3,7 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Iterable
 
-from app.services.curator_structural_repair_contracts import EvidenceProbeSpecification
+from app.services.curator_structural_repair_contracts import (
+    ActionVerificationSpecification,
+    EvidenceProbeSpecification,
+)
 
 
 @dataclass(frozen=True)
@@ -41,10 +44,22 @@ class CuratorRepairAdapterRegistry:
             preview_enabled=True,
             supervised_apply_available=True,
         ),
+        RepairAdapterRegistration(
+            "missing_post_action_verification",
+            "CUR-WR-ACTION-VERIFICATION",
+            "workflow_reasoning_unverified_action",
+            executable=False,
+            structural=True,
+            preview_enabled=True,
+            supervised_apply_available=False,
+        ),
     )
 
     def __init__(self, registrations: Iterable[RepairAdapterRegistration] | None = None,
-                 evidence_specs: Iterable[EvidenceProbeSpecification] | None = None):
+                 evidence_specs: Iterable[EvidenceProbeSpecification] | None = None,
+                 action_verification_specs: Iterable[
+                     ActionVerificationSpecification
+                 ] | None = None):
         values = tuple(self.DEFAULT_REGISTRATIONS if registrations is None else registrations)
         self._registrations = {
             (item.curator_rule, item.finding_type): item for item in values
@@ -61,12 +76,34 @@ class CuratorRepairAdapterRegistry:
                      key=lambda item: (item.version, item.specification_id))
             for key in {item.evidence_key for item in approved_specs}
         }
+        if action_verification_specs is None:
+            from app.services.curator_action_verification_specification_catalog import (
+                PRODUCTION_ACTION_VERIFICATION_SPECIFICATIONS,
+            )
+            action_verification_specs = (
+                PRODUCTION_ACTION_VERIFICATION_SPECIFICATIONS.all()
+            )
+        approved_action_specs = tuple(
+            item for item in action_verification_specs if item.approved
+        )
+        self._action_verification_specs = {
+            key: max(
+                (item for item in approved_action_specs if item.verification_key == key),
+                key=lambda item: (item.version, item.specification_id),
+            )
+            for key in {item.verification_key for item in approved_action_specs}
+        }
 
     def lookup(self, curator_rule: str, finding_type: str) -> RepairAdapterRegistration | None:
         return self._registrations.get((str(curator_rule or ""), str(finding_type or "")))
 
     def evidence_specification(self, evidence_key: str) -> EvidenceProbeSpecification | None:
         return self._evidence_specs.get(str(evidence_key or ""))
+
+    def action_verification_specification(
+        self, verification_key: str,
+    ) -> ActionVerificationSpecification | None:
+        return self._action_verification_specs.get(str(verification_key or ""))
 
     def preview(self, task: dict[str, Any], workflow: dict[str, Any]) -> dict[str, Any]:
         """Dispatch a read-only preview only after registry eligibility succeeds."""
@@ -79,7 +116,25 @@ class CuratorRepairAdapterRegistry:
                 "available": False, "read_only": True, **eligibility,
                 "reason": "This adapter retains its existing preview implementation.",
             }
-        missing = task["structured_evidence"]["missing"]
+        structural = task["structured_evidence"]
+        if registration.adapter_id == "missing_post_action_verification":
+            specification = self.action_verification_specification(
+                structural.get("verification_key", "")
+            )
+            from app.services.curator_structural_repair_preview_service import (
+                CuratorStructuralRepairPreviewService,
+            )
+            preview = CuratorStructuralRepairPreviewService().preview(
+                task, specification, workflow
+            )
+            available = bool(preview.get("available"))
+            return {
+                **eligibility,
+                **preview,
+                "status": "preview_eligible" if available else "preview_unavailable",
+                "preview_eligible": available,
+            }
+        missing = structural["missing"]
         if len(missing) != 1:
             return {
                 "available": False, "read_only": True, **eligibility,
@@ -110,6 +165,36 @@ class CuratorRepairAdapterRegistry:
                 registration,
             )
         structural = task.get("structured_evidence")
+        if registration.adapter_id == "missing_post_action_verification":
+            if not isinstance(structural, dict):
+                return self._result(
+                    "human_review_only",
+                    "The finding does not contain typed action-edge evidence.",
+                    registration,
+                )
+            verification_key = str(structural.get("verification_key") or "")
+            edge = structural.get("outgoing_edge")
+            if not verification_key or not isinstance(edge, dict):
+                return self._result(
+                    "human_review_only",
+                    "The finding has no approved unambiguous action-verification identity.",
+                    registration,
+                )
+            if not self.action_verification_specification(verification_key):
+                return self._result(
+                    "missing_evidence_specification",
+                    "No approved action-verification specification exists for: "
+                    + verification_key,
+                    registration,
+                    missing_evidence_specifications=[verification_key],
+                )
+            return self._result(
+                "preview_candidate",
+                "A reviewed action-verification specification and exact edge evidence are available; "
+                "topology validation is required.",
+                registration,
+                capability_eligible=True,
+            )
         missing = structural.get("missing") if isinstance(structural, dict) else None
         if registration.structural and (not isinstance(missing, list) or not missing):
             return self._result(

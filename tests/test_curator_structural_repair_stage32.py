@@ -32,6 +32,7 @@ from app.services.curator_structural_repair_governance import (
 from app.services.curator_structural_repair_preview_service import CuratorStructuralRepairPreviewService
 from app.services.workflow_draft_persistence import LockedWorkflowDraft, WorkflowDraftPersistence
 from app.services.workflow_draft_persistence import WorkflowDraftPersistenceError
+from tests.structural_repair_fixtures import pre_stage34_network_diagnostics_bytes
 
 
 class StructuralRepairStage32Tests(unittest.TestCase):
@@ -40,9 +41,8 @@ class StructuralRepairStage32Tests(unittest.TestCase):
         self.root = Path(self.temporary.name)
         self.drafts = self.root / "app" / "workflow_drafts"
         self.drafts.mkdir(parents=True)
-        source = Path(__file__).resolve().parents[1] / "app" / "workflow_drafts" / "network_diagnostics.json"
         self.filename = "network_diagnostics.json"
-        (self.drafts / self.filename).write_bytes(source.read_bytes())
+        (self.drafts / self.filename).write_bytes(pre_stage34_network_diagnostics_bytes())
         self.task = {
             "task_id": "GKT-STAGE32", "finding_id": "CUR-STAGE32", "status": "open",
             "durable_identity": "terminal-evidence|network_diagnostics:dns_problem",

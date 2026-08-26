@@ -146,7 +146,7 @@ class AdvancedNetworkContinuationTests(unittest.TestCase):
 
         advanced = self.client.post("/wizard", follow_redirects=True)
         self.assertIn("Advanced Network Diagnostics", advanced.get_data(as_text=True))
-        self.assertIn("Step 1 of 7 on this path", advanced.get_data(as_text=True))
+        self.assertIn("Step 1 of 9 on this path", advanced.get_data(as_text=True))
 
         restored_handoff = self.client.post(
             "/wizard", data={"navigation_action": "previous"}, follow_redirects=True
@@ -208,9 +208,9 @@ class AdvancedNetworkContinuationTests(unittest.TestCase):
         self.assertIn('aria-valuenow="100"', medium[-1])
 
         long = self._run_network(["", "normal", "", "yes", "", "yes"])
-        self.assertIn("Step 5 of 7 on this path", long[4])
+        self.assertIn("Step 5 of 9 on this path", long[4])
         self.assertNotIn("Step 5 of 5", long[4])
-        self.assertIn("Step 6 of 7 on this path", long[5])
+        self.assertIn("Step 6 of 9 on this path", long[5])
         self.assertIn("Step 7 of 7 on this path", long[6])
         self.assertIn("Continue to Higher-Layer Diagnostics", long[6])
         for page in long[:-1]:
@@ -221,7 +221,7 @@ class AdvancedNetworkContinuationTests(unittest.TestCase):
 
     def test_previous_restores_long_route_node_and_progress(self):
         self._run_network(["", "normal", "", "yes", ""])
-        self.assertIn("Step 6 of 7 on this path", self.client.get(
+        self.assertIn("Step 6 of 9 on this path", self.client.get(
             "/wizard?workflow=network_diagnostics&resume=1"
         ).get_data(as_text=True))
 
@@ -229,14 +229,14 @@ class AdvancedNetworkContinuationTests(unittest.TestCase):
             "/wizard", data={"navigation_action": "previous"}, follow_redirects=True
         ).get_data(as_text=True)
         self.assertIn("Test DNS Resolution", previous)
-        self.assertIn("Step 5 of 7 on this path", previous)
-        self.assertIn('aria-valuenow="71"', previous)
+        self.assertIn("Step 5 of 9 on this path", previous)
+        self.assertIn('aria-valuenow="56"', previous)
 
         previous_again = self.client.post(
             "/wizard", data={"navigation_action": "previous"}, follow_redirects=True
         ).get_data(as_text=True)
         self.assertIn("Did the default gateway respond?", previous_again)
-        self.assertIn("Step 4 of 7 on this path", previous_again)
+        self.assertIn("Step 4 of 9 on this path", previous_again)
 
     def test_published_graph_is_clean_and_handoff_is_explicit(self):
         catalog = available_workflows()
@@ -250,12 +250,12 @@ class AdvancedNetworkContinuationTests(unittest.TestCase):
         report = WorkflowQualityValidator().validate(engine.workflow, set(catalog))
         self.assertEqual(report["overall_status"], "CLEAN")
         self.assertEqual(report["findings"], [])
-        self.assertEqual(report["metrics"]["reachable_nodes"], 12)
+        self.assertEqual(report["metrics"]["reachable_nodes"], 15)
         self.assertEqual(report["metrics"]["unreachable_nodes"], 0)
-        self.assertEqual(report["metrics"]["terminal_nodes"], 6)
-        self.assertEqual(report["metrics"]["terminating_paths"], 6)
+        self.assertEqual(report["metrics"]["terminal_nodes"], 7)
+        self.assertEqual(report["metrics"]["terminating_paths"], 7)
         self.assertEqual(report["metrics"]["shortest_path"], 3)
-        self.assertEqual(report["metrics"]["longest_path"], 7)
+        self.assertEqual(report["metrics"]["longest_path"], 9)
         handoff = engine.workflow["nodes"]["advanced_complete"]
         self.assertEqual(handoff["type"], "transition")
         self.assertEqual(handoff["next_workflow"], "higher_layer_connectivity")

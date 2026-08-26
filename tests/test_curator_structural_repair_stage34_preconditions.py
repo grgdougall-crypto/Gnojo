@@ -28,6 +28,7 @@ from curator.checks import CuratorChecks
 from curator.memory import CuratorMemoryStore
 from curator.models import AuditFilter, InventoryRecord
 from curator.tasks import KnowledgeTaskService
+from tests.structural_repair_fixtures import pre_stage34_network_diagnostics_bytes
 
 
 class StructuralRepairStage34PreconditionTests(unittest.TestCase):
@@ -39,9 +40,8 @@ class StructuralRepairStage34PreconditionTests(unittest.TestCase):
         self.root = Path(self.temporary.name)
         self.drafts = self.root / "app" / "workflow_drafts"
         self.drafts.mkdir(parents=True)
-        source = Path(__file__).resolve().parents[1] / "app/workflow_drafts/network_diagnostics.json"
         self.filename = "network_diagnostics.json"
-        (self.drafts / self.filename).write_bytes(source.read_bytes())
+        (self.drafts / self.filename).write_bytes(pre_stage34_network_diagnostics_bytes())
         self.original = (self.drafts / self.filename).read_bytes()
         self.publication = self.root / "app/workflow_publications/network_diagnostics/current.json"
         self.publication.parent.mkdir(parents=True)

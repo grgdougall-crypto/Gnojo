@@ -326,10 +326,10 @@ class WorkflowReasoningAuditorTests(unittest.TestCase):
     def test_registered_terminal_requirement_passes_with_evidence(self):
         self.assertNotIn("CUR-WR-TERMINAL-EVIDENCE", self.rules(self.auditor.analyze(self.dns_workflow(True))))
 
-    def test_current_dns_reference_workflow_is_flagged(self):
+    def test_current_dns_reference_workflow_has_repaired_evidence_path(self):
         workflow = json.loads(Path("app/workflow_drafts/network_diagnostics.json").read_text(encoding="utf-8"))
         findings = [item for item in self.auditor.analyze(workflow) if item.rule == "CUR-WR-TERMINAL-EVIDENCE"]
-        self.assertEqual([item.node_id for item in findings], ["dns_problem"])
+        self.assertEqual(findings, [])
 
     def test_current_performance_reference_retains_signal_finding(self):
         workflow = json.loads(Path("app/workflow_drafts/windows_slow.json").read_text(encoding="utf-8"))

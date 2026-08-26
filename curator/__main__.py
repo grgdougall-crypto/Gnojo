@@ -9,6 +9,8 @@ from .auditor import CuratorAuditor
 from .locking import AuditAlreadyRunningError, AuditLock
 from .memory import CuratorMemoryError, CuratorMemoryStore
 from .models import AuditFilter
+from .observation_models import FAILED, SKIPPED_OVERLAP, SUCCEEDED
+from .observation_runner import CuratorObservationRunner, ObservationRunnerError
 
 
 def parser() -> argparse.ArgumentParser:
@@ -31,6 +33,19 @@ def parser() -> argparse.ArgumentParser:
     tasks.add_argument("--status", choices=("open", "in_progress", "resolved", "ignored", "superseded"))
     tasks.add_argument("--owner", choices=("Curator", "Researcher", "Workflow Designer", "Script Engineer", "QA Reviewer", "Human"))
     tasks.add_argument("--note", default="")
+    observe = commands.add_parser(
+        "observe", help="Run one allowlisted read-only Curator observation"
+    )
+    observe.add_argument(
+        "--job",
+        required=True,
+        choices=("health", "audit", "integrity", "progress-policy", "analytics"),
+    )
+    observe.add_argument("--repository", default=".")
+    observe.add_argument("--results", default="curation_observations")
+    observe.add_argument("--memory", default="curation_memory")
+    observe.add_argument("--trigger", choices=("manual", "scheduled"), default="manual")
+    observe.add_argument("--correlation-id", default="")
     return root
 
 
@@ -39,6 +54,47 @@ def main(argv: list[str] | None = None) -> int:
     repository = Path(args.repository).resolve()
     memory_path = Path(args.memory)
     memory_path = memory_path if memory_path.is_absolute() else repository / memory_path
+    if args.command == "observe":
+        results_path = Path(args.results)
+        results_path = (
+            results_path if results_path.is_absolute() else repository / results_path
+        )
+        try:
+            result = CuratorObservationRunner(
+                repository,
+                results_root=results_path,
+                memory_root=memory_path,
+            ).run(
+                args.job,
+                trigger_source=args.trigger,
+                scheduler_correlation_id=args.correlation_id,
+            )
+        except ObservationRunnerError as error:
+            print(json.dumps({"status": "FAILED", "error": str(error)}), file=sys.stderr)
+            return 2
+        except Exception as error:
+            print(json.dumps({
+                "status": "FAILED",
+                "error": f"Observation runner failed ({type(error).__name__}).",
+            }), file=sys.stderr)
+            return 2
+        print(json.dumps({
+            "status": result.status,
+            "run_id": result.run_id,
+            "job": result.job_type,
+            "counts": dict(result.observation_counts),
+            "warnings": list(result.warnings),
+            "errors": list(result.errors),
+        }, sort_keys=True))
+        if result.status == SUCCEEDED:
+            return 0
+        if result.status == SKIPPED_OVERLAP:
+            return 3
+        if result.status == FAILED and any(
+            "disabled" in item.casefold() for item in result.errors
+        ):
+            return 4
+        return 2
     if args.command == "tasks":
         store = CuratorMemoryStore(memory_path)
         try:

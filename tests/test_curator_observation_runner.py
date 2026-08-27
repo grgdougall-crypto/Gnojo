@@ -1,5 +1,7 @@
 import io
 import json
+import os
+import socket
 import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
@@ -172,6 +174,158 @@ class CuratorObservationRunnerTests(unittest.TestCase):
         result = self.runner().run("health")
         self.assertEqual(result.status, SKIPPED_OVERLAP)
         self.assertTrue(lock_path.exists())
+
+    def test_live_same_host_lock_is_never_removed_even_when_old(self):
+        lock_path = self.root / ".curator-observation.lock"
+        owner = {
+            "pid": os.getpid(),
+            "host": socket.gethostname(),
+            "job_type": "audit",
+            "run_id": "OBS-LIVE-OWNER",
+            "acquired_at": "2000-01-01T00:00:00+00:00",
+        }
+        lock_path.write_text(json.dumps(owner), encoding="utf-8")
+        before = lock_path.read_bytes()
+        result = self.runner().run("health")
+        self.assertEqual(result.status, SKIPPED_OVERLAP)
+        self.assertEqual(lock_path.read_bytes(), before)
+        self.assertEqual(
+            list((self.results_root / "_orphaned_locks").glob("*.lock.json")),
+            [],
+        )
+
+    def test_dead_same_host_lock_recovers_and_marks_interrupted_result(self):
+        lock_path = self.root / ".curator-observation.lock"
+        owner_run = "OBS-ORPHANED-OWNER"
+        acquired_at = "2026-08-26T11:55:00+00:00"
+        owner = {
+            "pid": 9552,
+            "host": socket.gethostname(),
+            "job_type": "health",
+            "run_id": owner_run,
+            "acquired_at": acquired_at,
+        }
+        lock_path.write_text(json.dumps(owner), encoding="utf-8")
+        interrupted = self.result(owner_run, RUNNING, completed_at="")
+        interrupted = ObservationRunResult(
+            **{
+                **interrupted.__dict__,
+                "started_at": acquired_at,
+            }
+        )
+        ObservationResultRepository(self.results_root).create(interrupted)
+        with patch.object(ObservationLock, "_process_liveness", return_value=False):
+            result = self.runner().run("health")
+        self.assertEqual(result.status, SUCCEEDED)
+        recovery_warnings = [
+            item for item in result.warnings
+            if "orphaned observation lock" in item
+        ]
+        self.assertEqual(len(recovery_warnings), 1)
+        self.assertIn(owner_run, recovery_warnings[0])
+        self.assertIn("health", recovery_warnings[0])
+        self.assertFalse(lock_path.exists())
+        evidence = list((self.results_root / "_orphaned_locks").glob("*.lock.json"))
+        self.assertEqual(len(evidence), 1)
+        self.assertEqual(json.loads(evidence[0].read_text(encoding="utf-8")), owner)
+        recovered = ObservationResultRepository(self.results_root).get(owner_run)
+        self.assertEqual(recovered.status, FAILED)
+        self.assertTrue(any("interrupted" in item for item in recovered.warnings))
+
+    def test_recovery_warning_is_durable_before_handler_finishes(self):
+        lock_path = self.root / ".curator-observation.lock"
+        owner = {
+            "pid": 9552,
+            "host": socket.gethostname(),
+            "job_type": "audit",
+            "run_id": "OBS-DURABLE-RECOVERY",
+            "acquired_at": "2026-08-26T11:55:00+00:00",
+        }
+        lock_path.write_text(json.dumps(owner), encoding="utf-8")
+        runner = self.runner()
+
+        def inspect_running_then_fail():
+            running = next(
+                item for item in runner.results.list_recent()
+                if item.status == RUNNING and item.run_id != owner["run_id"]
+            )
+            warnings = [
+                item for item in running.warnings
+                if "orphaned observation lock" in item
+            ]
+            self.assertEqual(len(warnings), 1)
+            raise RuntimeError("simulated interrupted handler")
+
+        runner.handlers["health"] = inspect_running_then_fail
+        with patch.object(ObservationLock, "_process_liveness", return_value=False):
+            result = runner.run("health")
+        self.assertEqual(result.status, FAILED)
+        warnings = [
+            item for item in result.warnings
+            if "orphaned observation lock" in item
+        ]
+        self.assertEqual(len(warnings), 1)
+
+    def test_foreign_and_malformed_lock_ownership_fail_closed(self):
+        lock_path = self.root / ".curator-observation.lock"
+        cases = (
+            {
+                "pid": 9552,
+                "host": "foreign-host",
+                "job_type": "audit",
+                "run_id": "OBS-FOREIGN",
+                "acquired_at": "2026-08-26T00:00:00+00:00",
+            },
+            {
+                "pid": "9552",
+                "host": socket.gethostname(),
+                "job_type": "audit",
+                "run_id": "OBS-BAD-PID",
+                "acquired_at": "2026-08-26T00:00:00+00:00",
+            },
+            {"pid": 9552, "host": socket.gethostname()},
+        )
+        for owner in cases:
+            with self.subTest(owner=owner):
+                lock_path.write_text(json.dumps(owner), encoding="utf-8")
+                before = lock_path.read_bytes()
+                with patch.object(
+                    ObservationLock, "_process_liveness", return_value=False
+                ):
+                    result = self.runner().run("health")
+                self.assertEqual(result.status, SKIPPED_OVERLAP)
+                self.assertEqual(lock_path.read_bytes(), before)
+                lock_path.unlink()
+        lock_path.write_text("not-json", encoding="utf-8")
+        malformed_before = lock_path.read_bytes()
+        result = self.runner().run("health")
+        self.assertEqual(result.status, SKIPPED_OVERLAP)
+        self.assertEqual(lock_path.read_bytes(), malformed_before)
+
+    def test_dead_orphan_without_matching_running_result_preserves_lock_evidence(self):
+        lock_path = self.root / ".curator-observation.lock"
+        owner = {
+            "pid": 9552,
+            "host": socket.gethostname(),
+            "job_type": "audit",
+            "run_id": "OBS-NO-RESULT",
+            "acquired_at": "2026-08-26T00:00:00+00:00",
+        }
+        lock_path.write_text(json.dumps(owner), encoding="utf-8")
+        with patch.object(ObservationLock, "_process_liveness", return_value=False):
+            result = self.runner().run("health")
+        self.assertEqual(result.status, SUCCEEDED)
+        self.assertTrue(any("no exact RUNNING result" in item for item in result.warnings))
+        evidence = list((self.results_root / "_orphaned_locks").glob("*.lock.json"))
+        self.assertEqual(len(evidence), 1)
+        self.assertEqual(json.loads(evidence[0].read_text(encoding="utf-8")), owner)
+
+    def test_normal_run_has_no_orphan_recovery_warning(self):
+        result = self.runner().run("health")
+        self.assertEqual(result.status, SUCCEEDED)
+        self.assertFalse(any(
+            "orphaned observation lock" in item for item in result.warnings
+        ))
 
     def test_global_and_scheduled_controls_fail_closed(self):
         state = self.store.load()

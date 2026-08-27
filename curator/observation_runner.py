@@ -125,14 +125,44 @@ class CuratorObservationRunner:
             return self._finish(running, FAILED, errors=(disabled_reason,))
 
         try:
+            recovery_warnings: tuple[str, ...] = ()
             with ObservationLock(
                 self.lock_path,
                 job_type=job.job_type,
                 run_id=run_id,
                 acquired_at=started.isoformat(),
-            ):
+                orphan_evidence_root=self.results.root / "_orphaned_locks",
+                detected_at=self.now,
+            ) as lock:
+                if lock.recovered_owner:
+                    owner_run_id = str(lock.recovered_owner.get("run_id") or "unknown")
+                    owner_job = str(lock.recovered_owner.get("job_type") or "unknown")
+                    marked = self.results.mark_interrupted_orphan(
+                        lock.recovered_owner,
+                        detected_at=self.now().isoformat(),
+                        recovery_run_id=run_id,
+                    )
+                    recovery_warnings = ((
+                        "Recovered an orphaned observation lock for prior "
+                        f"{owner_job} run {owner_run_id}; original lock evidence "
+                        "was preserved"
+                        + (
+                            " and its RUNNING result was marked interrupted."
+                            if marked else
+                            "; no exact RUNNING result was eligible for update."
+                        )
+                    ),)
+                    running = replace(
+                        running,
+                        warnings=self._unique_warnings(
+                            running.warnings + recovery_warnings
+                        ),
+                    )
+                    self.results.update(running)
                 payload = self.handlers[job.job_type]()
-            return self._finish(running, SUCCEEDED, payload=payload)
+            return self._finish(
+                running, SUCCEEDED, payload=payload
+            )
         except ObservationOverlapError:
             return self._finish(
                 running,
@@ -166,13 +196,19 @@ class CuratorObservationRunner:
             status=status,
             observation_counts=payload.observation_counts,
             summary=payload.summary,
-            warnings=payload.warnings + warnings,
+            warnings=self._unique_warnings(
+                running.warnings + payload.warnings + warnings
+            ),
             errors=errors,
             policy_versions=payload.policy_versions,
             lifecycle_versions=payload.lifecycle_versions,
         )
         self.results.update(result)
         return result
+
+    @staticmethod
+    def _unique_warnings(values: tuple[str, ...]) -> tuple[str, ...]:
+        return tuple(dict.fromkeys(item for item in values if item))
 
     def _disabled_reason(self, trigger_source: str) -> str:
         try:

@@ -37,10 +37,12 @@ app/exports/
 knowledge_base/drafts/
 
 app/workflow_drafts/
+app/.workflow_draft_locks/
 app/workflow_publications/
 app/device_profiles/
 app/troubleshooting_history/
 curation_runs/
+curation_observations/
 curation_memory/
 knowledge_campaigns/
 .curator-audit.lock

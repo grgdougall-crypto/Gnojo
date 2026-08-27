@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -42,13 +43,14 @@ class CuratorObservationDashboardTests(unittest.TestCase):
         counts=(),
         warnings=(),
         errors=(),
+        trigger_source="manual",
     ):
         completed_at = "" if status == RUNNING else started_at
         return ObservationRunResult(
             run_id=run_id,
             job_type=job_type,
             execution_class=PURE_OBSERVATION,
-            trigger_source="manual",
+            trigger_source=trigger_source,
             scheduler_correlation_id="",
             repository_identity="fixture",
             application_identity="gnojo-local",
@@ -172,6 +174,44 @@ class CuratorObservationDashboardTests(unittest.TestCase):
         self.assertIn("OBS-POLICY", html)
         self.assertIn("No observation recorded yet", html)
 
+    def test_trigger_source_renders_manual_and_scheduled_labels(self):
+        self.repository.create(self.result(
+            "OBS-MANUAL", "health", SUCCEEDED,
+            started_at="2026-08-26T14:10:00+00:00",
+            trigger_source="manual",
+        ))
+        self.repository.create(self.result(
+            "OBS-SCHEDULED", "audit", SUCCEEDED,
+            started_at="2026-08-26T14:11:00+00:00",
+            trigger_source="scheduled",
+        ))
+        projection = CuratorObservationDashboardService(self.root).project()
+        jobs = {item["job_type"]: item for item in projection["jobs"]}
+        self.assertEqual(jobs["health"]["trigger_source"], "Manual")
+        self.assertEqual(jobs["audit"]["trigger_source"], "Scheduled")
+        html = self._render(projection)
+        self.assertIn("Trigger: Manual", html)
+        self.assertIn("Trigger: Scheduled", html)
+
+    def test_missing_legacy_trigger_source_renders_unknown(self):
+        result = self.result(
+            "OBS-LEGACY", "health", SUCCEEDED,
+            started_at="2026-08-26T14:12:00+00:00",
+        ).to_dict()
+        result.pop("trigger_source")
+        directory = self.root / "curation_observations" / "OBS-LEGACY"
+        directory.mkdir(parents=True)
+        (directory / "result.json").write_text(
+            json.dumps(result), encoding="utf-8"
+        )
+
+        projection = CuratorObservationDashboardService(self.root).project()
+        health = next(
+            item for item in projection["jobs"] if item["job_type"] == "health"
+        )
+        self.assertEqual(health["trigger_source"], "Unknown")
+        self.assertIn("Trigger: Unknown", self._render(projection))
+
     def test_dashboard_get_reads_results_without_mutating_any_state(self):
         self.repository.create(self.result(
             "OBS-READ-ONLY", "health", SUCCEEDED,
@@ -197,6 +237,20 @@ class CuratorObservationDashboardTests(unittest.TestCase):
             for path in self.root.rglob("*")
             if path.is_file()
         }
+
+    def _render(self, projection):
+        dashboard = {
+            "has_audit": False,
+            "tasks": [],
+            "recent_audits": [],
+            "observations": projection,
+        }
+        with patch("app.app.CuratorDashboardService") as dashboard_service, patch(
+            "app.app.CuratorBatchService"
+        ) as batch_service:
+            dashboard_service.return_value.dashboard.return_value = dashboard
+            batch_service.return_value.latest.return_value = {}
+            return self.client.get("/curator").get_data(as_text=True)
 
 
 if __name__ == "__main__":

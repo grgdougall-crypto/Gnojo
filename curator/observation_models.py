@@ -10,7 +10,8 @@ SUCCEEDED = "SUCCEEDED"
 FAILED = "FAILED"
 SKIPPED_OVERLAP = "SKIPPED_OVERLAP"
 OBSERVATION_STATUSES = frozenset({RUNNING, SUCCEEDED, FAILED, SKIPPED_OVERLAP})
-TRIGGER_SOURCES = frozenset({"manual", "scheduled"})
+UNKNOWN_TRIGGER_SOURCE = "unknown"
+TRIGGER_SOURCES = frozenset({"manual", "scheduled", UNKNOWN_TRIGGER_SOURCE})
 
 
 @dataclass(frozen=True)
@@ -89,7 +90,9 @@ class ObservationRunResult:
             run_id=str(value.get("run_id") or ""),
             job_type=str(value.get("job_type") or ""),
             execution_class=str(value.get("execution_class") or ""),
-            trigger_source=str(value.get("trigger_source") or ""),
+            trigger_source=str(
+                value.get("trigger_source") or UNKNOWN_TRIGGER_SOURCE
+            ),
             scheduler_correlation_id=str(value.get("scheduler_correlation_id") or ""),
             repository_identity=str(value.get("repository_identity") or ""),
             application_identity=str(value.get("application_identity") or ""),

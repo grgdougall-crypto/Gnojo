@@ -23,7 +23,7 @@
         <div class="d-flex justify-content-between align-items-start gap-2"><span>{{ job.label }}</span>{% if job.has_result %}<span class="badge {% if job.status == 'SUCCEEDED' %}text-bg-success{% elif job.status == 'FAILED' %}text-bg-danger{% elif job.status == 'RUNNING' %}text-bg-info{% else %}text-bg-warning{% endif %}">{{ job.status|replace('_', ' ')|title }}</span>{% endif %}</div>
         {% if not job.has_result %}<strong class="h6">No observation recorded yet</strong>
         {% else %}
-          <small>Run <code>{{ job.run_id }}</code></small>
+          <small>Run <code>{{ job.run_id }}</code> &middot; Trigger: {{ job.trigger_source }}</small>
           {% if job.duration_seconds is not none %}<small>Duration: {{ '%.2f'|format(job.duration_seconds) }} sec</small>{% else %}<small>Started: {{ job.started_at|friendly_datetime }}</small>{% endif %}
           {% if job.counts %}<dl class="mb-0 mt-2">{% for count in job.counts %}<div class="d-flex justify-content-between gap-3"><dt class="fw-normal">{{ count.label }}</dt><dd class="mb-0"><strong>{{ count.value }}</strong></dd></div>{% endfor %}</dl>{% endif %}
           <small>Last success: {{ job.last_successful_at|friendly_datetime if job.last_successful_at else 'None recorded' }}</small>

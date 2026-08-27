@@ -77,6 +77,9 @@ class CuratorObservationDashboardService:
             "label": label,
             "has_result": latest is not None,
             "status": latest.status if latest else "",
+            "trigger_source": self._trigger_label(
+                latest.trigger_source if latest else ""
+            ),
             "started_at": latest.started_at if latest else "",
             "completed_at": latest.completed_at if latest else "",
             "last_successful_at": successful.completed_at if successful else "",
@@ -91,3 +94,9 @@ class CuratorObservationDashboardService:
                 if key in counts
             ],
         }
+
+    @staticmethod
+    def _trigger_label(value: str) -> str:
+        return {"manual": "Manual", "scheduled": "Scheduled"}.get(
+            str(value or "").casefold(), "Unknown"
+        )

@@ -268,21 +268,48 @@ class CuratorStageBReconciliationService:
         if (
             task.get("curator_rule") != self.RULE
             or task.get("finding_type") != self.FINDING_TYPE
+            or task.get("content_type") != "workflow"
         ):
-            return self._skip_plan(snapshot, task_id, task, "Task is not a supported progress finding.")
+            return self._skip_plan(
+                snapshot, task_id, task,
+                "Task is not a supported progress workflow finding.",
+            )
         if str(task.get("status") or "").casefold() not in self.ACTIONABLE:
             return self._skip_plan(snapshot, task_id, task, "Task is not actionable.")
-        workflow_id, separator, node_id = str(
-            task.get("content_identifier") or ""
-        ).partition(":")
-        if not workflow_id or (separator and node_id):
+        workflow_id = str(task.get("content_identifier") or "")
+        if not workflow_id or ":" in workflow_id:
             return self._skip_plan(snapshot, task_id, task, "Workflow identity is ambiguous.")
+        related = task.get("related_workflows") or []
+        if related and set(related) != {workflow_id}:
+            return self._skip_plan(
+                snapshot, task_id, task, "Task workflow identity is inconsistent."
+            )
+        provenance = task.get("provenance") or {}
+        if not isinstance(provenance, dict):
+            return self._skip_plan(
+                snapshot, task_id, task, "Task provenance identity is malformed."
+            )
+        if (
+            provenance.get("workflow_id") not in {None, "", workflow_id}
+            or provenance.get("node_id") not in {None, ""}
+        ):
+            return self._skip_plan(
+                snapshot, task_id, task, "Task provenance identity is inconsistent."
+            )
         drafts = self.lifecycle.drafts(workflow_id)
         if len(drafts) > 1:
             return self._skip_plan(snapshot, task_id, task, "Multiple editable workflows match the task.")
         target = self.lifecycle.resolve(workflow_id)
         if not target or target.workflow_id != workflow_id:
             return self._skip_plan(snapshot, task_id, task, "Authoritative workflow is unavailable.")
+        if (
+            provenance.get("source_path") not in {None, "", target.source_path}
+            or provenance.get("lifecycle") not in {None, "", target.lifecycle}
+        ):
+            return self._skip_plan(
+                snapshot, task_id, task,
+                "Task provenance does not match the authoritative workflow.",
+            )
         workflow = target.workflow
         affected_fingerprint = CuratorTargetedVerificationService.fingerprint(workflow)
         record = InventoryRecord(
@@ -296,6 +323,16 @@ class CuratorStageBReconciliationService:
             and finding.content_identifier == task.get("content_identifier")
             and finding.finding_type == self.FINDING_TYPE
         ]
+        if len(exact) > 1:
+            return self._skip_plan(
+                snapshot, task_id, task,
+                "Multiple matching progress findings are ambiguous.",
+            )
+        if exact and exact[0].identifier != task.get("finding_id"):
+            return self._skip_plan(
+                snapshot, task_id, task,
+                "Current finding identity does not match the task.",
+            )
         status = "still_detected" if exact else "appears_corrected"
         idempotency_key = self._idempotency_key(
             task, status=status, affected_fingerprint=affected_fingerprint
@@ -314,6 +351,7 @@ class CuratorStageBReconciliationService:
             ),
             "human_approval_required": True,
             "affected_fingerprint": affected_fingerprint,
+            "affected_fingerprint_scope": "whole_workflow",
             "stage_b_capability_id": self.CAPABILITY_ID,
             "stage_b_capability_version": self.CAPABILITY_VERSION,
             "stage_b_idempotency_key": idempotency_key,
@@ -340,17 +378,36 @@ class CuratorStageBReconciliationService:
         after_state["tasks"][task_id] = after_task
         before_task_fingerprint = self._fingerprint(task)
         after_task_fingerprint = self._fingerprint(after_task)
+        all_changed = {
+            field for field in set(task) | set(after_task)
+            if task.get(field) != after_task.get(field)
+        }
+        if not all_changed.issubset(self.MUTATION_FIELDS):
+            raise StageBReconciliationError(
+                "Stage B plan exceeds its mutation allowlist."
+            )
         changed = tuple(
             field for field in self.MUTATION_FIELDS
             if task.get(field) != after_task.get(field)
         )
-        if set(changed) - set(self.MUTATION_FIELDS):
-            raise StageBReconciliationError("Stage B plan exceeds its mutation allowlist.")
         return StageBTaskPlan(
             task_id, finding_id, True, "Deterministic progress verification is available.",
             status, affected_fingerprint, idempotency_key, snapshot.fingerprint,
             before_task_fingerprint, after_task_fingerprint, changed,
             {
+                "capability": {
+                    "id": self.CAPABILITY_ID,
+                    "version": self.CAPABILITY_VERSION,
+                },
+                "identity": {
+                    "task_id": task_id,
+                    "finding_id": finding_id,
+                    "workflow_id": workflow_id,
+                    "content_type": "workflow",
+                },
+                "verification_result": status,
+                "affected_fingerprint_scope": "whole_workflow",
+                "whole_workflow_fingerprint": affected_fingerprint,
                 "current_verification": {
                     "before": deepcopy(task.get("current_verification")),
                     "after": deepcopy(verification),
@@ -360,6 +417,20 @@ class CuratorStageBReconciliationService:
                     "after": affected_fingerprint,
                 },
                 "history_event": deepcopy(event) if "history" in changed else None,
+                "changed_fields": list(changed),
+                "idempotency_key": idempotency_key,
+                "eligibility": "eligible",
+                "unchanged": {
+                    "task_lifecycle": True,
+                    "ranking_and_debt": True,
+                    "evidence": True,
+                    "trusted_content": True,
+                    "publication": True,
+                    "approvals": True,
+                    "packages": True,
+                    "repairs": True,
+                    "fix_wizard": True,
+                },
             },
             after_state,
         )

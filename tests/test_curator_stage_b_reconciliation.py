@@ -6,6 +6,7 @@ import unittest
 from contextlib import redirect_stdout
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from app.services.curator_stage_b_reconciliation_service import (
@@ -17,6 +18,7 @@ from curator.memory import (
     CuratorMemoryStore,
     LockedCuratorMemory,
 )
+from curator.models import InventoryRecord
 from curator.observation_runner import CuratorObservationRunner
 from curator.reconciliation import StageBJournalError
 from curator.resolution import ResolutionPackageRepository
@@ -29,18 +31,18 @@ class CuratorStageBReconciliationTests(unittest.TestCase):
         self.store = CuratorMemoryStore(self.root / "curation_memory")
         state = self.store.load()
         state["controls"]["scheduled_runs_disabled"] = False
+        self.write_workflow(self.workflow())
+        self.finding_id = self.progress_finding_id()
         state["tasks"] = {"GKT-PROGRESS": self.task()}
         self.store.save(state)
-        self.write_workflow(self.workflow())
 
     def tearDown(self):
         self.temporary.cleanup()
 
-    @staticmethod
-    def task(**updates):
+    def task(self, **updates):
         value = {
             "task_id": "GKT-PROGRESS",
-            "finding_id": "CUR-PROGRESS",
+            "finding_id": self.finding_id,
             "durable_identity": "CUR-WR-PROGRESS|workflow|higher_layer_connectivity",
             "status": "open",
             "owner": "Workflow Designer",
@@ -102,8 +104,31 @@ class CuratorStageBReconciliationTests(unittest.TestCase):
         self.assertEqual(result.task_results[0].status, "DRY_RUN")
         self.assertEqual(
             set(result.task_results[0].proposed_delta),
-            {"current_verification", "last_verified_fingerprint", "history_event"},
+            {
+                "capability", "identity", "verification_result",
+                "affected_fingerprint_scope", "whole_workflow_fingerprint",
+                "current_verification", "last_verified_fingerprint",
+                "history_event", "changed_fields", "idempotency_key",
+                "eligibility", "unchanged",
+            },
         )
+        proposed = result.task_results[0].proposed_delta
+        self.assertEqual(proposed["capability"], {
+            "id": "cur-wr-progress-verification-refresh", "version": 1,
+        })
+        self.assertEqual(proposed["identity"]["finding_id"], self.finding_id)
+        self.assertEqual(proposed["identity"]["content_type"], "workflow")
+        self.assertEqual(proposed["verification_result"], "still_detected")
+        self.assertEqual(proposed["affected_fingerprint_scope"], "whole_workflow")
+        self.assertEqual(
+            proposed["whole_workflow_fingerprint"],
+            proposed["current_verification"]["after"]["affected_fingerprint"],
+        )
+        self.assertEqual(
+            proposed["whole_workflow_fingerprint"],
+            proposed["last_verified_fingerprint"]["after"],
+        )
+        self.assertTrue(all(proposed["unchanged"].values()))
         self.assertEqual(self.files(), before)
         self.assertFalse((self.root / "curation_memory/stage_b_reconciliations").exists())
 
@@ -113,6 +138,14 @@ class CuratorStageBReconciliationTests(unittest.TestCase):
         after = self.current_task()
         self.assertEqual(result.task_results[0].status, "COMMITTED")
         self.assertEqual(after["current_verification"]["status"], "still_detected")
+        self.assertEqual(
+            after["current_verification"]["affected_fingerprint_scope"],
+            "whole_workflow",
+        )
+        self.assertEqual(
+            after["current_verification"]["affected_fingerprint"],
+            after["last_verified_fingerprint"],
+        )
         self.assertEqual(len(after["history"]), 1)
         self.assert_preserved(before, after)
         events = self.events(result.task_results[0].idempotency_key)
@@ -142,6 +175,67 @@ class CuratorStageBReconciliationTests(unittest.TestCase):
                 before = copy.deepcopy(self.current_task())
                 result = self.service().run(task_id="GKT-PROGRESS")
                 self.assertEqual(result.task_results[0].status, "SKIPPED")
+                self.assertEqual(self.current_task(), before)
+
+    def test_wrong_content_type_is_skipped(self):
+        self.replace_task(self.task(content_type="workflow_node"))
+        before = copy.deepcopy(self.current_task())
+
+        result = self.service().run(task_id="GKT-PROGRESS")
+
+        self.assertEqual(result.task_results[0].status, "SKIPPED")
+        self.assertIn("progress workflow finding", result.task_results[0].reason)
+        self.assertEqual(self.current_task(), before)
+
+    def test_multiple_regenerated_findings_fail_closed(self):
+        finding = SimpleNamespace(
+            rule="CUR-WR-PROGRESS",
+            content_identifier="higher_layer_connectivity",
+            finding_type="workflow_reasoning_progress_inconsistency",
+            identifier=self.finding_id,
+        )
+        service = self.service()
+        with patch.object(service.checks, "run_record", return_value=[finding, finding]):
+            result = service.run(task_id="GKT-PROGRESS")
+
+        self.assertEqual(result.task_results[0].status, "SKIPPED")
+        self.assertIn("Multiple matching progress findings", result.task_results[0].reason)
+        self.assertNotIn("current_verification", self.current_task())
+
+    def test_regenerated_finding_identity_mismatch_fails_closed(self):
+        finding = SimpleNamespace(
+            rule="CUR-WR-PROGRESS",
+            content_identifier="higher_layer_connectivity",
+            finding_type="workflow_reasoning_progress_inconsistency",
+            identifier="CUR-DIFFERENT",
+        )
+        service = self.service()
+        with patch.object(service.checks, "run_record", return_value=[finding]):
+            result = service.run(task_id="GKT-PROGRESS")
+
+        self.assertEqual(result.task_results[0].status, "SKIPPED")
+        self.assertIn("finding identity", result.task_results[0].reason)
+        self.assertNotIn("current_verification", self.current_task())
+
+    def test_workflow_and_provenance_identity_mismatches_fail_closed(self):
+        cases = (
+            self.task(related_workflows=["different_workflow"]),
+            self.task(provenance={"workflow_id": "different_workflow"}),
+            self.task(provenance={"node_id": "step_1"}),
+            self.task(provenance={"source_path": "different/path.json"}),
+            self.task(provenance={"lifecycle": "published"}),
+            self.task(provenance="malformed"),
+        )
+        for task in cases:
+            with self.subTest(task=task):
+                self.replace_task(task)
+                before = copy.deepcopy(self.current_task())
+                result = self.service().run(task_id="GKT-PROGRESS")
+                self.assertEqual(result.task_results[0].status, "SKIPPED")
+                self.assertTrue(
+                    "identity" in result.task_results[0].reason.lower()
+                    or "provenance" in result.task_results[0].reason.lower()
+                )
                 self.assertEqual(self.current_task(), before)
 
     def test_missing_and_ambiguous_workflow_fail_closed(self):
@@ -175,6 +269,25 @@ class CuratorStageBReconciliationTests(unittest.TestCase):
         self.assertNotEqual(first.task_results[0].idempotency_key,
                             second.task_results[0].idempotency_key)
         self.assertEqual(second.task_results[0].status, "COMMITTED")
+        self.assertEqual(len(self.current_task()["history"]), 2)
+
+    def test_downstream_only_change_changes_whole_workflow_fingerprint(self):
+        first = self.service().run(task_id="GKT-PROGRESS")
+        workflow = self.workflow()
+        workflow["nodes"]["done"]["title"] = "Updated downstream outcome"
+        self.write_workflow(workflow)
+
+        second = self.service().run(task_id="GKT-PROGRESS")
+
+        self.assertEqual(second.task_results[0].status, "COMMITTED")
+        self.assertNotEqual(
+            first.task_results[0].idempotency_key,
+            second.task_results[0].idempotency_key,
+        )
+        self.assertNotEqual(
+            first.task_results[0].proposed_delta["whole_workflow_fingerprint"],
+            second.task_results[0].proposed_delta["whole_workflow_fingerprint"],
+        )
         self.assertEqual(len(self.current_task()["history"]), 2)
 
     def test_trusted_content_and_governance_artifacts_are_unchanged(self):
@@ -343,13 +456,32 @@ class CuratorStageBReconciliationTests(unittest.TestCase):
     def current_task(self):
         return self.store.load()["tasks"]["GKT-PROGRESS"]
 
+    def progress_finding_id(self):
+        service = self.service()
+        target = service.lifecycle.resolve("higher_layer_connectivity")
+        workflow = target.workflow
+        record = InventoryRecord(
+            "workflow", "higher_layer_connectivity",
+            str(workflow.get("name") or "higher_layer_connectivity"),
+            target.source_path, str(workflow.get("category") or ""),
+            str(workflow.get("platform") or ""), target.lifecycle, workflow,
+        )
+        findings = [
+            finding for finding in service.checks.run_record(record)
+            if finding.rule == "CUR-WR-PROGRESS"
+        ]
+        self.assertEqual(len(findings), 1)
+        return findings[0].identifier
+
     def events(self, key):
         return self.service().journal.get(key)
 
     def assert_preserved(self, before, after):
         for field in (
             "status", "owner", "priority", "classification", "review_disposition",
-            "resolution_history", "finding_id", "task_id",
+            "resolution_history", "finding_id", "task_id", "current_evidence",
+            "structured_evidence", "times_observed", "last_seen", "trend",
+            "knowledge_debt_score", "disposition",
         ):
             self.assertEqual(after.get(field), before.get(field), field)
 

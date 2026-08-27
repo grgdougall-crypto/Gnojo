@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from dataclasses import asdict
 from pathlib import Path
 
 from .auditor import CuratorAuditor
@@ -46,14 +47,43 @@ def parser() -> argparse.ArgumentParser:
     observe.add_argument("--memory", default="curation_memory")
     observe.add_argument("--trigger", choices=("manual", "scheduled"), default="manual")
     observe.add_argument("--correlation-id", default="")
+    refresh = commands.add_parser(
+        "refresh-progress-verification",
+        help="Run the single allowlisted Stage B progress-verification reconciliation",
+    )
+    refresh.add_argument("--repository", default=".")
+    refresh.add_argument("--task-id")
+    refresh.add_argument("--trigger", choices=("manual", "scheduled"), default="manual")
+    refresh.add_argument("--correlation-id", default="")
+    refresh.add_argument("--dry-run", action="store_true")
     return root
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parser().parse_args(argv)
     repository = Path(args.repository).resolve()
-    memory_path = Path(args.memory)
+    memory_path = Path(getattr(args, "memory", "curation_memory"))
     memory_path = memory_path if memory_path.is_absolute() else repository / memory_path
+    if args.command == "refresh-progress-verification":
+        from app.services.curator_stage_b_reconciliation_service import (
+            CuratorStageBReconciliationService,
+            StageBReconciliationError,
+        )
+        try:
+            result = CuratorStageBReconciliationService(repository).run(
+                task_id=args.task_id,
+                trigger_source=args.trigger,
+                correlation_id=args.correlation_id,
+                dry_run=args.dry_run,
+            )
+        except (StageBReconciliationError, CuratorMemoryError) as error:
+            print(json.dumps({"status": "FAILED", "error": str(error)}), file=sys.stderr)
+            return 2
+        payload = asdict(result)
+        print(json.dumps(payload, sort_keys=True))
+        return 2 if any(
+            item.status == "FAILED" for item in result.task_results
+        ) else 0
     if args.command == "observe":
         results_path = Path(args.results)
         results_path = (

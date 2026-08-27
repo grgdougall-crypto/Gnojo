@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import tempfile
+import time
 from copy import deepcopy
+from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 from curator.calibration import ReasoningCalibrationService
 
@@ -25,30 +30,158 @@ class CuratorMemoryError(RuntimeError):
     pass
 
 
+class CuratorMemoryConflictError(CuratorMemoryError):
+    """Curator memory changed after a writer read its precondition state."""
+
+
+class CuratorMemoryLockError(CuratorMemoryError):
+    """The shared Curator-memory writer lock could not be acquired."""
+
+
+class CuratorMemoryState(dict):
+    """Dictionary-compatible state carrying its exact persisted precondition."""
+
+    def __init__(self, value: dict[str, Any], fingerprint: str):
+        super().__init__(value)
+        self._curator_memory_fingerprint = fingerprint
+
+
+@dataclass(frozen=True)
+class CuratorMemorySnapshot:
+    state: CuratorMemoryState
+    fingerprint: str
+
+
+class _CuratorMemoryFileLock:
+    def __init__(self, path: Path, timeout: float, poll_interval: float = 0.025):
+        self.path = path
+        self.timeout = max(0.0, float(timeout))
+        self.poll_interval = max(0.001, float(poll_interval))
+        self._file = None
+
+    def acquire(self) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._file = self.path.open("a+b")
+        self._file.seek(0, os.SEEK_END)
+        if self._file.tell() == 0:
+            self._file.write(b"\0")
+            self._file.flush()
+        deadline = time.monotonic() + self.timeout
+        while True:
+            try:
+                self._lock_nonblocking()
+                return
+            except (BlockingIOError, OSError):
+                if time.monotonic() >= deadline:
+                    self._file.close()
+                    self._file = None
+                    raise CuratorMemoryLockError(
+                        "Curator memory is currently being updated by another process."
+                    )
+                time.sleep(min(self.poll_interval, max(0.0, deadline - time.monotonic())))
+
+    def release(self) -> None:
+        if not self._file:
+            return
+        try:
+            self._unlock()
+        finally:
+            self._file.close()
+            self._file = None
+
+    def _lock_nonblocking(self) -> None:
+        self._file.seek(0)
+        if os.name == "nt":
+            import msvcrt
+            msvcrt.locking(self._file.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(self._file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+    def _unlock(self) -> None:
+        self._file.seek(0)
+        if os.name == "nt":
+            import msvcrt
+            msvcrt.locking(self._file.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(self._file.fileno(), fcntl.LOCK_UN)
+
+
+class LockedCuratorMemory:
+    def __init__(self, store: "CuratorMemoryStore"):
+        self.store = store
+
+    def snapshot(self) -> CuratorMemorySnapshot:
+        return self.store._snapshot()
+
+    def compare_and_swap(
+        self, expected_fingerprint: str, state: dict[str, Any], *,
+        touch_updated_at: bool = True,
+    ) -> CuratorMemorySnapshot:
+        current = self.snapshot()
+        if current.fingerprint != str(expected_fingerprint or ""):
+            raise CuratorMemoryConflictError(
+                "Curator memory changed after it was inspected."
+            )
+        return self.store._write_locked(state, touch_updated_at=touch_updated_at)
+
+
 class CuratorMemoryStore:
     """Durable operational memory. This store never writes trusted content."""
 
     def __init__(self, root: Path):
         self.root = root.resolve()
         self.state_path = self.root / "memory.json"
+        self.lock_path = self.root / ".memory.lock"
 
     def load(self) -> dict[str, Any]:
-        if not self.state_path.exists():
-            now = datetime.now(timezone.utc).isoformat()
-            return {
-                "schema_version": MEMORY_SCHEMA_VERSION,
-                "created_at": now,
-                "updated_at": now,
-                "tasks": {},
-                "audits": [],
-                "decisions": [],
-                "growth": _growth_defaults(),
-                "controls": _control_defaults(),
-            }
+        return self._snapshot().state
+
+    def snapshot(self) -> CuratorMemorySnapshot:
+        return self._snapshot()
+
+    @contextmanager
+    def locked(self, *, timeout: float = 2.0) -> Iterator[LockedCuratorMemory]:
+        lock = _CuratorMemoryFileLock(self.lock_path, timeout)
+        lock.acquire()
         try:
-            value = json.loads(self.state_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as error:
+            yield LockedCuratorMemory(self)
+        finally:
+            lock.release()
+
+    def _snapshot(self) -> CuratorMemorySnapshot:
+        if not self.state_path.exists():
+            value = self._default_state()
+            fingerprint = self.fingerprint_bytes(None)
+            return CuratorMemorySnapshot(CuratorMemoryState(value, fingerprint), fingerprint)
+        try:
+            content = self.state_path.read_bytes()
+            value = json.loads(content.decode("utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
             raise CuratorMemoryError(f"Unable to read Curator memory: {error}") from error
+        value = self._normalize(value)
+        fingerprint = self.fingerprint_bytes(content)
+        return CuratorMemorySnapshot(CuratorMemoryState(value, fingerprint), fingerprint)
+
+    @staticmethod
+    def _default_state() -> dict[str, Any]:
+        now = datetime.now(timezone.utc).isoformat()
+        return {
+            "schema_version": MEMORY_SCHEMA_VERSION,
+            "created_at": now,
+            "updated_at": now,
+            "tasks": {},
+            "audits": [],
+            "decisions": [],
+            "growth": _growth_defaults(),
+            "controls": _control_defaults(),
+        }
+
+    @staticmethod
+    def _normalize(value: dict[str, Any]) -> dict[str, Any]:
+        if not isinstance(value, dict):
+            raise CuratorMemoryError("Curator memory must contain a JSON object.")
         if value.get("schema_version") != MEMORY_SCHEMA_VERSION:
             raise CuratorMemoryError(
                 f"Unsupported Curator memory schema: {value.get('schema_version')!r}"
@@ -64,21 +197,56 @@ class CuratorMemoryStore:
             controls.setdefault(key, default)
         return value
 
-    def save(self, state: dict[str, Any]) -> None:
+    def save(
+        self, state: dict[str, Any], *, expected_fingerprint: str | None = None
+    ) -> None:
+        expected = expected_fingerprint
+        if expected is None:
+            expected = getattr(state, "_curator_memory_fingerprint", None)
+        if expected is None:
+            expected = self.fingerprint_bytes(None) if not self.state_path.exists() else ""
+        with self.locked() as memory:
+            persisted = memory.compare_and_swap(expected, state)
+        if isinstance(state, CuratorMemoryState):
+            state._curator_memory_fingerprint = persisted.fingerprint
+
+    def _write_locked(
+        self, state: dict[str, Any], *, touch_updated_at: bool = True
+    ) -> CuratorMemorySnapshot:
         self.root.mkdir(parents=True, exist_ok=True)
         value = deepcopy(state)
         value["schema_version"] = MEMORY_SCHEMA_VERSION
-        value["updated_at"] = datetime.now(timezone.utc).isoformat()
-        temporary = self.root / f".{self.state_path.name}.{os.getpid()}.tmp"
+        if touch_updated_at:
+            value["updated_at"] = datetime.now(timezone.utc).isoformat()
+        descriptor, temporary_name = tempfile.mkstemp(
+            prefix=f".{self.state_path.name}.", suffix=".tmp", dir=self.root
+        )
         try:
-            temporary.write_text(
-                json.dumps(value, indent=2, ensure_ascii=False, sort_keys=True) + "\n",
-                encoding="utf-8",
-            )
-            temporary.replace(self.state_path)
-        except OSError as error:
-            temporary.unlink(missing_ok=True)
+            content = (
+                json.dumps(value, indent=2, ensure_ascii=False, sort_keys=True) + "\n"
+            ).encode("utf-8")
+            with os.fdopen(descriptor, "wb") as handle:
+                handle.write(content)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary_name, self.state_path)
+            persisted = self._snapshot()
+            if persisted.fingerprint != self.fingerprint_bytes(content):
+                raise CuratorMemoryError("Persisted Curator memory failed verification.")
+            return persisted
+        except Exception as error:
+            try:
+                os.unlink(temporary_name)
+            except FileNotFoundError:
+                pass
+            if isinstance(error, CuratorMemoryError):
+                raise
             raise CuratorMemoryError(f"Unable to save Curator memory: {error}") from error
+
+    @staticmethod
+    def fingerprint_bytes(content: bytes | None) -> str:
+        marker = b"CURATOR_MEMORY_ABSENT" if content is None else content
+        return hashlib.sha256(marker).hexdigest()
 
     def update_task(
         self,

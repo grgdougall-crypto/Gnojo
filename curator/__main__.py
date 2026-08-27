@@ -84,6 +84,20 @@ def parser() -> argparse.ArgumentParser:
     )
     evidence_sync.add_argument("--correlation-id", default="")
     evidence_sync.add_argument("--dry-run", action="store_true")
+    convergence_refresh = commands.add_parser(
+        "refresh-early-convergence-verification",
+        help=(
+            "Run the allowlisted Stage B early-convergence verification "
+            "reconciliation"
+        ),
+    )
+    convergence_refresh.add_argument("--repository", default=".")
+    convergence_refresh.add_argument("--task-id")
+    convergence_refresh.add_argument(
+        "--trigger", choices=("manual", "scheduled"), default="manual"
+    )
+    convergence_refresh.add_argument("--correlation-id", default="")
+    convergence_refresh.add_argument("--dry-run", action="store_true")
     return root
 
 
@@ -96,8 +110,10 @@ def main(argv: list[str] | None = None) -> int:
         "refresh-progress-verification",
         "refresh-terminal-evidence-verification",
         "sync-terminal-evidence",
+        "refresh-early-convergence-verification",
     }:
         from app.services.curator_stage_b_reconciliation_service import (
+            CuratorEarlyConvergenceStageBReconciliationService,
             CuratorStageBReconciliationService,
             CuratorTerminalEvidenceCurrentEvidenceSyncService,
             CuratorTerminalEvidenceStageBReconciliationService,
@@ -109,6 +125,9 @@ def main(argv: list[str] | None = None) -> int:
                 CuratorTerminalEvidenceStageBReconciliationService
             ),
             "sync-terminal-evidence": CuratorTerminalEvidenceCurrentEvidenceSyncService,
+            "refresh-early-convergence-verification": (
+                CuratorEarlyConvergenceStageBReconciliationService
+            ),
         }
         service_type = service_types[args.command]
         try:

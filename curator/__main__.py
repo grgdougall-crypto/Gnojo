@@ -98,6 +98,20 @@ def parser() -> argparse.ArgumentParser:
     )
     convergence_refresh.add_argument("--correlation-id", default="")
     convergence_refresh.add_argument("--dry-run", action="store_true")
+    signal_refresh = commands.add_parser(
+        "refresh-signal-retention-verification",
+        help=(
+            "Run the allowlisted Stage B signal-retention verification "
+            "reconciliation"
+        ),
+    )
+    signal_refresh.add_argument("--repository", default=".")
+    signal_refresh.add_argument("--task-id")
+    signal_refresh.add_argument(
+        "--trigger", choices=("manual", "scheduled"), default="manual"
+    )
+    signal_refresh.add_argument("--correlation-id", default="")
+    signal_refresh.add_argument("--dry-run", action="store_true")
     return root
 
 
@@ -111,9 +125,11 @@ def main(argv: list[str] | None = None) -> int:
         "refresh-terminal-evidence-verification",
         "sync-terminal-evidence",
         "refresh-early-convergence-verification",
+        "refresh-signal-retention-verification",
     }:
         from app.services.curator_stage_b_reconciliation_service import (
             CuratorEarlyConvergenceStageBReconciliationService,
+            CuratorSignalRetentionStageBReconciliationService,
             CuratorStageBReconciliationService,
             CuratorTerminalEvidenceCurrentEvidenceSyncService,
             CuratorTerminalEvidenceStageBReconciliationService,
@@ -127,6 +143,9 @@ def main(argv: list[str] | None = None) -> int:
             "sync-terminal-evidence": CuratorTerminalEvidenceCurrentEvidenceSyncService,
             "refresh-early-convergence-verification": (
                 CuratorEarlyConvergenceStageBReconciliationService
+            ),
+            "refresh-signal-retention-verification": (
+                CuratorSignalRetentionStageBReconciliationService
             ),
         }
         service_type = service_types[args.command]

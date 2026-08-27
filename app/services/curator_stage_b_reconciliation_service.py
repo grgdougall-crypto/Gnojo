@@ -10,6 +10,14 @@ from pathlib import Path
 from typing import Any, Callable
 from uuid import uuid4
 
+from app.repositories.structural_repair_application_repository import (
+    StructuralRepairApplicationRepository,
+    StructuralRepairApplicationRepositoryError,
+)
+from app.repositories.structural_repair_approval_repository import (
+    StructuralRepairApprovalRepository,
+    StructuralRepairApprovalRepositoryError,
+)
 from app.services.curator_targeted_verification_service import (
     CuratorTargetedVerificationService,
 )
@@ -96,6 +104,12 @@ class CuratorStageBReconciliationService:
         self.journal = StageBJournalRepository(self.root / "curation_memory")
         self.lifecycle = CuratorWorkflowLifecycleService(self.root)
         self.checks = CuratorChecks(self.root)
+        self.approvals = StructuralRepairApprovalRepository(
+            self.root / "curation_memory"
+        )
+        self.applications = StructuralRepairApplicationRepository(
+            self.root / "curation_memory"
+        )
         self.now = now or (lambda: datetime.now(timezone.utc))
         self.lock_timeout = lock_timeout
 
@@ -197,11 +211,7 @@ class CuratorStageBReconciliationService:
                     previous=history[-1] if history else None,
                 )
             task = current.state.get("tasks", {}).get(plan.task_id) or {}
-            committed_in_task = (
-                (task.get("current_verification") or {}).get(
-                    "stage_b_idempotency_key"
-                ) == plan.idempotency_key
-            )
+            committed_in_task = self._committed_in_task(task, plan, history)
             if self.journal.committed(plan.idempotency_key):
                 return self._append_terminal(
                     plan, "SKIPPED", "The exact reconciliation is already committed.",
@@ -511,6 +521,19 @@ class CuratorStageBReconciliationService:
     def _before_commit(self, plan: StageBTaskPlan, attempt: int) -> None:
         """Narrow test seam; production reconciliation performs no action here."""
 
+    def _committed_in_task(
+        self,
+        task: dict[str, Any],
+        plan: StageBTaskPlan,
+        history: tuple[StageBJournalEvent, ...],
+    ) -> bool:
+        del history
+        return (
+            (task.get("current_verification") or {}).get(
+                "stage_b_idempotency_key"
+            ) == plan.idempotency_key
+        )
+
 
 class CuratorTerminalEvidenceStageBReconciliationService(
     CuratorStageBReconciliationService
@@ -739,3 +762,355 @@ class CuratorTerminalEvidenceStageBReconciliationService(
             affected_fingerprint,
         ))
         return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+class CuratorTerminalEvidenceCurrentEvidenceSyncService(
+    CuratorStageBReconciliationService
+):
+    """Synchronize deterministic terminal evidence without lifecycle authority."""
+
+    CAPABILITY_ID = "cur-wr-terminal-evidence-current-evidence-sync"
+    CAPABILITY_VERSION = 1
+    RULE = "CUR-WR-TERMINAL-EVIDENCE"
+    FINDING_TYPE = "workflow_reasoning_evidence_gap"
+    VERIFICATION_CAPABILITY_ID = "cur-wr-terminal-evidence-verification-refresh"
+    VERIFICATION_CAPABILITY_VERSION = 1
+    MUTATION_FIELDS = ("current_evidence", "structured_evidence")
+
+    def _plan(self, snapshot: CuratorMemorySnapshot, task_id: str) -> StageBTaskPlan:
+        state = snapshot.state
+        task = state.get("tasks", {}).get(task_id)
+        if not isinstance(task, dict):
+            return self._skip_plan(snapshot, task_id, {}, "Knowledge Task was not found.")
+        if (
+            task.get("curator_rule") != self.RULE
+            or task.get("finding_type") != self.FINDING_TYPE
+            or task.get("content_type") != "workflow_node"
+        ):
+            return self._skip_plan(
+                snapshot, task_id, task,
+                "Task is not a supported terminal-evidence workflow-node finding.",
+            )
+        if str(task.get("status") or "").casefold() not in self.ACTIONABLE:
+            return self._skip_plan(snapshot, task_id, task, "Task is not actionable.")
+
+        identifier = str(task.get("content_identifier") or "")
+        if identifier.count(":") != 1:
+            return self._skip_plan(
+                snapshot, task_id, task,
+                "Workflow and terminal identity are ambiguous.",
+            )
+        workflow_id, node_id = identifier.split(":", 1)
+        if not workflow_id or not node_id:
+            return self._skip_plan(
+                snapshot, task_id, task,
+                "Workflow and terminal identity are ambiguous.",
+            )
+        related = task.get("related_workflows") or []
+        if related and set(related) != {workflow_id}:
+            return self._skip_plan(
+                snapshot, task_id, task, "Task workflow identity is inconsistent."
+            )
+        drafts = self.lifecycle.drafts(workflow_id)
+        if len(drafts) > 1:
+            return self._skip_plan(
+                snapshot, task_id, task,
+                "Multiple editable workflows match the task.",
+            )
+        target = self.lifecycle.resolve(workflow_id)
+        if not target or target.workflow_id != workflow_id:
+            return self._skip_plan(
+                snapshot, task_id, task, "Authoritative workflow is unavailable."
+            )
+        workflow = target.workflow
+        nodes = workflow.get("nodes")
+        if not isinstance(nodes, dict):
+            return self._skip_plan(
+                snapshot, task_id, task,
+                "Authoritative workflow cannot be analyzed deterministically.",
+            )
+        terminal = nodes.get(node_id)
+        if not isinstance(terminal, dict):
+            return self._skip_plan(
+                snapshot, task_id, task, "Affected terminal node is unavailable."
+            )
+        if terminal.get("type") != "resolution":
+            return self._skip_plan(
+                snapshot, task_id, task,
+                "Affected node is no longer a terminal resolution.",
+            )
+
+        affected_fingerprint = CuratorTargetedVerificationService.fingerprint(workflow)
+        verification = task.get("current_verification")
+        if not isinstance(verification, dict):
+            return self._skip_plan(
+                snapshot, task_id, task,
+                "A fresh Capability 2 verification is required.",
+            )
+        verification_matches = (
+            verification.get("status") == "still_detected"
+            and verification.get("rule") == self.RULE
+            and verification.get("workflow_id") == workflow_id
+            and verification.get("node_id") == node_id
+            and verification.get("stage_b_capability_id")
+            == self.VERIFICATION_CAPABILITY_ID
+            and verification.get("stage_b_capability_version")
+            == self.VERIFICATION_CAPABILITY_VERSION
+            and verification.get("affected_fingerprint_scope") == "whole_workflow"
+            and verification.get("affected_fingerprint") == affected_fingerprint
+            and task.get("last_verified_fingerprint") == affected_fingerprint
+        )
+        if not verification_matches:
+            return self._skip_plan(
+                snapshot, task_id, task,
+                "Capability 2 verification is missing, corrected, stale, or inconsistent.",
+            )
+
+        repair_blocker = self._repair_state_blocker(task_id)
+        if repair_blocker:
+            return self._skip_plan(snapshot, task_id, task, repair_blocker)
+
+        record = InventoryRecord(
+            "workflow", workflow_id, str(workflow.get("name") or workflow_id),
+            target.source_path, str(workflow.get("category") or ""),
+            str(workflow.get("platform") or ""), target.lifecycle, workflow,
+        )
+        exact = [
+            finding for finding in self.checks.run_record(record)
+            if finding.rule == self.RULE
+            and finding.content_identifier == identifier
+            and finding.finding_type == self.FINDING_TYPE
+        ]
+        if not exact:
+            return self._skip_plan(
+                snapshot, task_id, task,
+                "The current finding is absent; evidence was left unchanged.",
+            )
+        if len(exact) != 1:
+            return self._skip_plan(
+                snapshot, task_id, task,
+                "Multiple matching terminal-evidence findings are ambiguous.",
+            )
+        finding = exact[0]
+        stable_finding_id = str(task.get("finding_id") or "")
+        if not stable_finding_id or finding.identifier != stable_finding_id:
+            return self._skip_plan(
+                snapshot, task_id, task,
+                "Current finding identity does not match the task.",
+            )
+        if not self._valid_structured_evidence(
+            finding.structured_evidence, terminal_id=node_id
+        ):
+            return self._skip_plan(
+                snapshot, task_id, task,
+                "Generated structured evidence is incomplete or inconsistent.",
+            )
+
+        current_evidence = list(finding.evidence)
+        structured_evidence = deepcopy(finding.structured_evidence)
+        evidence_payload_fingerprint = self._evidence_payload_fingerprint(
+            current_evidence, structured_evidence
+        )
+        idempotency_key = self._evidence_idempotency_key(
+            task,
+            workflow_id=workflow_id,
+            node_id=node_id,
+            affected_fingerprint=affected_fingerprint,
+            evidence_payload_fingerprint=evidence_payload_fingerprint,
+        )
+        after_task = deepcopy(task)
+        after_task["current_evidence"] = current_evidence
+        after_task["structured_evidence"] = structured_evidence
+        all_changed = {
+            field for field in set(task) | set(after_task)
+            if task.get(field) != after_task.get(field)
+        }
+        if not all_changed.issubset(self.MUTATION_FIELDS):
+            raise StageBReconciliationError(
+                "Terminal-evidence synchronization exceeds its mutation allowlist."
+            )
+        changed = tuple(
+            field for field in self.MUTATION_FIELDS
+            if task.get(field) != after_task.get(field)
+        )
+        after_state = deepcopy(state)
+        after_state["tasks"][task_id] = after_task
+        before_task_fingerprint = self._fingerprint(task)
+        after_task_fingerprint = self._fingerprint(after_task)
+        proposed_delta = {
+            "capability": {
+                "id": self.CAPABILITY_ID,
+                "version": self.CAPABILITY_VERSION,
+            },
+            "identity": {
+                "task_id": task_id,
+                "finding_id": stable_finding_id,
+                "workflow_id": workflow_id,
+                "terminal_node_id": node_id,
+            },
+            "confirmed_presence": "still_detected",
+            "verification_dependency": {
+                "capability_id": self.VERIFICATION_CAPABILITY_ID,
+                "capability_version": self.VERIFICATION_CAPABILITY_VERSION,
+            },
+            "whole_workflow_fingerprint": affected_fingerprint,
+            "evidence_payload_fingerprint": evidence_payload_fingerprint,
+            "current_evidence": {
+                "before": deepcopy(task.get("current_evidence")),
+                "after": deepcopy(current_evidence),
+            },
+            "structured_evidence": {
+                "before": deepcopy(task.get("structured_evidence")),
+                "after": deepcopy(structured_evidence),
+            },
+            "changed_fields": list(changed),
+            "idempotency_key": idempotency_key,
+            "eligibility": "eligible" if changed else "already_synchronized",
+            "unchanged": {
+                "task_lifecycle": True,
+                "ranking_and_debt": True,
+                "trusted_content": True,
+                "publication": True,
+                "approvals": True,
+                "repair_authority": True,
+            },
+        }
+        if not changed:
+            return StageBTaskPlan(
+                task_id, stable_finding_id, False,
+                "Current terminal evidence is already synchronized.",
+                "still_detected", affected_fingerprint, idempotency_key,
+                snapshot.fingerprint, before_task_fingerprint,
+                after_task_fingerprint, (), proposed_delta, None,
+            )
+        return StageBTaskPlan(
+            task_id, stable_finding_id, True,
+            "Deterministic terminal evidence is ready to synchronize.",
+            "still_detected", affected_fingerprint, idempotency_key,
+            snapshot.fingerprint, before_task_fingerprint,
+            after_task_fingerprint, changed, proposed_delta, after_state,
+        )
+
+    def _repair_state_blocker(self, task_id: str) -> str:
+        try:
+            for approval_id in self.approvals.list_approval_ids():
+                value = self.approvals.get(approval_id)
+                approval = value["approval"]
+                if approval.task_id == task_id and value["state"] == "approved":
+                    return "A pending structural repair approval makes evidence synchronization unsafe."
+            for application_id in self.applications.list_application_ids():
+                history = self.applications.get(application_id)
+                if not history or history[-1].task_id != task_id:
+                    continue
+                if history[-1].outcome == "pending":
+                    return "A pending structural repair application makes evidence synchronization unsafe."
+                if history[-1].outcome in {"applied", "already_applied"}:
+                    return "Existing applied repair state makes evidence synchronization ambiguous."
+        except (
+            StructuralRepairApprovalRepositoryError,
+            StructuralRepairApplicationRepositoryError,
+        ):
+            return "Structural repair approval or application state is ambiguous."
+        return ""
+
+    @staticmethod
+    def _valid_structured_evidence(
+        value: Any, *, terminal_id: str
+    ) -> bool:
+        if not isinstance(value, dict):
+            return False
+        requirement = value.get("requirement")
+        missing = value.get("missing")
+        affected_count = value.get("affected_path_count")
+        paths = value.get("affected_paths")
+        edges = value.get("predecessor_edges")
+        if (
+            not isinstance(requirement, str) or not requirement.strip()
+            or value.get("terminal") != terminal_id
+            or not isinstance(missing, list) or not missing
+            or not all(isinstance(item, str) and item.strip() for item in missing)
+            or isinstance(affected_count, bool) or not isinstance(affected_count, int)
+            or affected_count < 1
+            or not isinstance(paths, list) or len(paths) != affected_count
+            or not isinstance(edges, list) or not edges
+        ):
+            return False
+        path_missing: set[str] = set()
+        derived_edges: list[dict[str, str]] = []
+        for path in paths:
+            if not isinstance(path, dict):
+                return False
+            nodes = path.get("nodes")
+            missing_on_path = path.get("missing")
+            edge = path.get("predecessor_edge")
+            if (
+                not isinstance(nodes, list) or not nodes or nodes[-1] != terminal_id
+                or not all(isinstance(item, str) and item for item in nodes)
+                or not isinstance(missing_on_path, list) or not missing_on_path
+                or not all(
+                    isinstance(item, str) and item.strip()
+                    for item in missing_on_path
+                )
+            ):
+                return False
+            path_missing.update(missing_on_path)
+            if (
+                not isinstance(edge, dict)
+                or set(edge) != {"source", "route", "destination"}
+                or not all(isinstance(item, str) and item for item in edge.values())
+                or edge["destination"] != terminal_id
+            ):
+                return False
+            if edge not in derived_edges:
+                derived_edges.append(edge)
+        return set(missing) == path_missing and edges == derived_edges
+
+    @staticmethod
+    def _evidence_payload_fingerprint(
+        current_evidence: list[str], structured_evidence: dict[str, Any]
+    ) -> str:
+        payload = {
+            "current_evidence": current_evidence,
+            "structured_evidence": structured_evidence,
+        }
+        encoded = json.dumps(
+            payload, sort_keys=True, ensure_ascii=False, separators=(",", ":")
+        ).encode("utf-8")
+        return hashlib.sha256(encoded).hexdigest()
+
+    @classmethod
+    def _evidence_idempotency_key(
+        cls,
+        task: dict[str, Any],
+        *,
+        workflow_id: str,
+        node_id: str,
+        affected_fingerprint: str,
+        evidence_payload_fingerprint: str,
+    ) -> str:
+        payload = "|".join((
+            cls.CAPABILITY_ID,
+            str(cls.CAPABILITY_VERSION),
+            str(task.get("task_id") or ""),
+            str(task.get("finding_id") or task.get("durable_identity") or ""),
+            workflow_id,
+            node_id,
+            "still_detected",
+            affected_fingerprint,
+            evidence_payload_fingerprint,
+        ))
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+    def _committed_in_task(
+        self,
+        task: dict[str, Any],
+        plan: StageBTaskPlan,
+        history: tuple[StageBJournalEvent, ...],
+    ) -> bool:
+        task_fingerprint = self._fingerprint(task)
+        return any(
+            event.status == "PREPARED"
+            and event.idempotency_key == plan.idempotency_key
+            and event.after_task_fingerprint == task_fingerprint
+            for event in history
+        )

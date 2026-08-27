@@ -70,6 +70,20 @@ def parser() -> argparse.ArgumentParser:
     )
     terminal_refresh.add_argument("--correlation-id", default="")
     terminal_refresh.add_argument("--dry-run", action="store_true")
+    evidence_sync = commands.add_parser(
+        "sync-terminal-evidence",
+        help=(
+            "Run the allowlisted Stage B terminal-evidence current-evidence "
+            "synchronization"
+        ),
+    )
+    evidence_sync.add_argument("--repository", default=".")
+    evidence_sync.add_argument("--task-id")
+    evidence_sync.add_argument(
+        "--trigger", choices=("manual", "scheduled"), default="manual"
+    )
+    evidence_sync.add_argument("--correlation-id", default="")
+    evidence_sync.add_argument("--dry-run", action="store_true")
     return root
 
 
@@ -81,17 +95,22 @@ def main(argv: list[str] | None = None) -> int:
     if args.command in {
         "refresh-progress-verification",
         "refresh-terminal-evidence-verification",
+        "sync-terminal-evidence",
     }:
         from app.services.curator_stage_b_reconciliation_service import (
             CuratorStageBReconciliationService,
+            CuratorTerminalEvidenceCurrentEvidenceSyncService,
             CuratorTerminalEvidenceStageBReconciliationService,
             StageBReconciliationError,
         )
-        service_type = (
-            CuratorStageBReconciliationService
-            if args.command == "refresh-progress-verification"
-            else CuratorTerminalEvidenceStageBReconciliationService
-        )
+        service_types = {
+            "refresh-progress-verification": CuratorStageBReconciliationService,
+            "refresh-terminal-evidence-verification": (
+                CuratorTerminalEvidenceStageBReconciliationService
+            ),
+            "sync-terminal-evidence": CuratorTerminalEvidenceCurrentEvidenceSyncService,
+        }
+        service_type = service_types[args.command]
         try:
             result = service_type(repository).run(
                 task_id=args.task_id,

@@ -136,7 +136,8 @@ class StageBJournalEvent:
         if self.status not in STAGE_B_STATUSES or not self.at or not self.reason:
             raise StageBJournalError("Stage B journal status, time, or reason is invalid.")
         allowed = {
-            "current_verification", "last_verified_fingerprint", "history"
+            "current_verification", "last_verified_fingerprint", "history",
+            "current_evidence", "structured_evidence",
         }
         if not set(self.declared_mutation_fields).issubset(allowed):
             raise StageBJournalError("Stage B journal declares an unsupported mutation.")

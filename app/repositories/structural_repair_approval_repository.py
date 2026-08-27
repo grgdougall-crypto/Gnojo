@@ -75,6 +75,18 @@ class StructuralRepairApprovalRepository:
         })
         return self.get(approval_id)
 
+    def list_approval_ids(self) -> tuple[str, ...]:
+        if not self.root.exists():
+            return ()
+        values = []
+        for path in sorted(self.root.iterdir()):
+            if not path.is_dir() or not APPROVAL_ID_PATTERN.fullmatch(path.name):
+                raise StructuralRepairApprovalRepositoryError(
+                    "Structural repair approval repository contains an invalid entry."
+                )
+            values.append(path.name)
+        return tuple(values)
+
     def _events(self, directory: Path) -> list[dict[str, Any]]:
         events = []
         for path in sorted(directory.glob("[0-9][0-9][0-9][0-9][0-9][0-9]-*.json")):

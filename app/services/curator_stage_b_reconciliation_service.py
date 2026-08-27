@@ -149,6 +149,10 @@ class CuratorStageBReconciliationService:
             self.CAPABILITY_VERSION, dry_run, results,
         )
 
+    def plan_task(self, task_id: str) -> StageBTaskPlan:
+        """Build one current read-only plan for an explicit runner preflight."""
+        return self._plan(self.memory.snapshot(), task_id)
+
     def _process_task(
         self,
         task_id: str,
@@ -564,6 +568,11 @@ class CuratorStageBReconciliationService:
             return "Curator is globally disabled by a human operator."
         if trigger_source == "scheduled" and controls.get("scheduled_runs_disabled", True):
             return "Scheduled Curator runs are disabled by a human operator."
+        if (
+            trigger_source == "scheduled"
+            and controls.get("stage_b_scheduled_runs_disabled", True)
+        ):
+            return "Scheduled Stage B runs are disabled by a human operator."
         return ""
 
     def _task_ids(

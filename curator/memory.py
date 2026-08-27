@@ -23,7 +23,11 @@ def _growth_defaults() -> dict[str, Any]:
 
 
 def _control_defaults() -> dict[str, Any]:
-    return {"global_disabled": False, "scheduled_runs_disabled": True}
+    return {
+        "global_disabled": False,
+        "scheduled_runs_disabled": True,
+        "stage_b_scheduled_runs_disabled": True,
+    }
 
 
 class CuratorMemoryError(RuntimeError):

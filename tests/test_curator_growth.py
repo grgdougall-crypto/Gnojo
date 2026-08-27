@@ -53,6 +53,7 @@ class CuratorGrowthTests(unittest.TestCase):
         loaded = self.store.load()
         self.assertEqual(loaded["growth"]["event_queue"], [])
         self.assertTrue(loaded["controls"]["scheduled_runs_disabled"])
+        self.assertTrue(loaded["controls"]["stage_b_scheduled_runs_disabled"])
 
     def test_proposal_is_human_gated_and_cannot_skip_lifecycle(self):
         proposal = self.service.propose("audit_rule", self.proposal_data())
@@ -223,6 +224,14 @@ class CuratorGrowthTests(unittest.TestCase):
         controls = self.service.set_control("global_disabled", False, reviewer="Greg",
                                             reason="Incident reviewed.")
         self.assertFalse(controls["global_disabled"])
+
+    def test_human_can_govern_stage_b_scheduled_runs_independently(self):
+        controls = self.service.set_control(
+            "stage_b_scheduled_runs_disabled", False,
+            reviewer="Greg", reason="Approved bounded scheduled rollout.",
+        )
+        self.assertFalse(controls["stage_b_scheduled_runs_disabled"])
+        self.assertTrue(controls["scheduled_runs_disabled"])
 
     def test_event_queue_is_targeted_and_never_requests_broad_sync(self):
         event = self.service.enqueue_event("workflow_changed", "workflow:printer",

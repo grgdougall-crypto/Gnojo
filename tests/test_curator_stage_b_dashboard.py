@@ -18,6 +18,7 @@ from app.services.curator_stage_b_reconciliation_service import (
 )
 from curator.memory import CuratorMemoryStore
 from curator.reconciliation import StageBJournalEvent, StageBJournalRepository
+from curator.stage_b_scheduled_repository import StageBScheduledRunRepository
 
 
 class CuratorStageBDashboardServiceTests(unittest.TestCase):
@@ -28,6 +29,7 @@ class CuratorStageBDashboardServiceTests(unittest.TestCase):
         self.state = self.memory.load()
         self.state["controls"]["global_disabled"] = False
         self.state["controls"]["scheduled_runs_disabled"] = False
+        self.state["controls"]["stage_b_scheduled_runs_disabled"] = False
         self.memory.save(self.state)
         self.journal = StageBJournalRepository(self.root / "curation_memory")
 
@@ -188,12 +190,49 @@ class CuratorStageBDashboardServiceTests(unittest.TestCase):
         self.assertFalse(projection["controls"]["global_disabled"])
         self.assertFalse(projection["controls"]["scheduled_runs_disabled"])
         self.assertFalse(
+            projection["controls"]["stage_b_scheduled_runs_disabled"]
+        )
+        self.assertFalse(
             projection["controls"]["stage_b_scheduling_configured"]
         )
         self.assertEqual(
             projection["controls"]["stage_b_scheduling_message"],
             "Stage B scheduled execution is not configured.",
         )
+
+    def test_latest_scheduled_runner_result_is_projected_read_only(self):
+        repository = StageBScheduledRunRepository(self.root / "curation_memory")
+        value = {
+            "schema_version": 1,
+            "runner_id": "STBS-DASHBOARD",
+            "correlation_id": "COR-DASHBOARD",
+            "trigger_source": "scheduled",
+            "started_at": "2026-08-28T20:15:00+00:00",
+            "completed_at": "2026-08-28T20:15:02+00:00",
+            "status": "SUCCEEDED",
+            "allowlisted_capabilities": [
+                {"id": "cur-wr-early-convergence-verification-refresh", "version": 1},
+                {"id": "cur-wr-signal-retention-verification-refresh", "version": 1},
+            ],
+            "discovered_count": 2,
+            "preflight_skipped_count": 0,
+            "committed_no_op_count": 0,
+            "committed_count": 2,
+            "runtime_skipped_count": 0,
+            "failed_count": 0,
+            "per_capability_counts": {},
+            "last_processed_task": "GKT-SIGNAL",
+            "failure_reason": "",
+        }
+        repository.create_running(dict(value, status="RUNNING", completed_at=""))
+        repository.finalize(value["runner_id"], value)
+        before = repository.get(value["runner_id"])
+
+        projection = self._project()
+
+        self.assertEqual(projection["scheduled_run"], value)
+        self.assertEqual(projection["scheduled_run_error"], "")
+        self.assertEqual(repository.get(value["runner_id"]), before)
 
     def test_dashboard_projection_is_read_only_and_preserves_stage_a_projection(self):
         before = sorted(
@@ -251,8 +290,29 @@ class CuratorStageBDashboardTemplateTests(unittest.TestCase):
                 at="2026-08-27T12:01:00+00:00", status="COMMITTED",
                 reason="Verification state refreshed without lifecycle changes.",
             ))
+            run_repository = StageBScheduledRunRepository(root / "curation_memory")
+            scheduled = {
+                "schema_version": 1, "runner_id": "STBS-TEMPLATE",
+                "correlation_id": "COR-TEMPLATE", "trigger_source": "scheduled",
+                "started_at": "2026-08-27T20:15:00+00:00",
+                "completed_at": "2026-08-27T20:15:01+00:00",
+                "status": "SUCCEEDED", "allowlisted_capabilities": [
+                    {"id": "cur-wr-early-convergence-verification-refresh", "version": 1},
+                    {"id": "cur-wr-signal-retention-verification-refresh", "version": 1},
+                ],
+                "discovered_count": 1, "preflight_skipped_count": 0,
+                "committed_no_op_count": 0, "committed_count": 1,
+                "runtime_skipped_count": 0, "failed_count": 0,
+                "per_capability_counts": {}, "last_processed_task": "GKT-ACCEPT",
+                "failure_reason": "",
+            }
+            run_repository.create_running(
+                dict(scheduled, status="RUNNING", completed_at="")
+            )
+            run_repository.finalize(scheduled["runner_id"], scheduled)
             projection = CuratorStageBDashboardService(root).project(
-                controls={"global_disabled": False, "scheduled_runs_disabled": False}
+                controls={"global_disabled": False, "scheduled_runs_disabled": False,
+                          "stage_b_scheduled_runs_disabled": False}
             )
 
             with app.test_request_context():
@@ -272,6 +332,11 @@ class CuratorStageBDashboardTemplateTests(unittest.TestCase):
         self.assertIn("STB-ACCEPT", html)
         self.assertIn("COR-ACCEPT", html)
         self.assertIn("Stage B scheduled execution is not configured.", html)
+        self.assertIn("Stage B scheduled authority", html)
+        self.assertIn("Latest scheduled Stage B run", html)
+        self.assertIn("STBS-TEMPLATE", html)
+        self.assertIn("COR-TEMPLATE", html)
+        self.assertIn("GKT-ACCEPT", html)
         self.assertIn("Recent Curator Observations", html)
 
 

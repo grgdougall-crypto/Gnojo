@@ -35,6 +35,7 @@ class CuratorStageBSignalRetentionTests(unittest.TestCase):
         self.write_workflow(self.workflow())
         state = self.store.load()
         state["controls"]["scheduled_runs_disabled"] = False
+        state["controls"]["stage_b_scheduled_runs_disabled"] = False
         state["tasks"] = {"GKT-SIGNAL": self.task_for_current_finding()}
         self.store.save(state)
 
@@ -167,6 +168,18 @@ class CuratorStageBSignalRetentionTests(unittest.TestCase):
             after["last_verified_fingerprint"],
             CuratorTargetedVerificationService.fingerprint(self.workflow()),
         )
+        self.assert_preserved(before, after)
+
+    def test_scheduled_execution_uses_existing_supervised_mutation_boundary(self):
+        before = copy.deepcopy(self.current_task())
+        result = self.service().run(
+            task_id="GKT-SIGNAL", trigger_source="scheduled",
+            correlation_id="COR-SCHEDULED-SIGNAL",
+        )
+        after = self.current_task()
+        self.assertEqual(result.task_results[0].status, "COMMITTED")
+        self.assertEqual(after["status"], before["status"])
+        self.assertEqual(after["current_verification"]["status"], "still_detected")
         self.assert_preserved(before, after)
 
     def test_distinct_downstream_handling_appears_corrected_with_new_fingerprint(self):

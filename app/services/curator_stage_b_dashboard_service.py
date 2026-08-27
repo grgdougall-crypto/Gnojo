@@ -9,6 +9,10 @@ from curator.reconciliation import (
     StageBJournalEvent,
     StageBJournalRepository,
 )
+from curator.stage_b_scheduled_repository import (
+    StageBScheduledRunRepository,
+    StageBScheduledRunRepositoryError,
+)
 
 
 class CuratorStageBDashboardService:
@@ -43,12 +47,15 @@ class CuratorStageBDashboardService:
     )
 
     def __init__(self, repository_root: Path):
+        root = Path(repository_root).resolve()
         self.repository = StageBJournalRepository(
-            Path(repository_root).resolve() / "curation_memory"
+            root / "curation_memory"
         )
+        self.scheduled_runs = StageBScheduledRunRepository(root / "curation_memory")
 
     def project(self, *, controls: dict[str, Any] | None = None) -> dict[str, Any]:
         control_projection = self._controls(controls or {})
+        scheduled_run, scheduled_error = self._scheduled_run()
         try:
             events = self._events()
         except (StageBJournalError, OSError) as error:
@@ -62,6 +69,8 @@ class CuratorStageBDashboardService:
                     for capability in self.CAPABILITIES
                 ],
                 "controls": control_projection,
+                "scheduled_run": scheduled_run,
+                "scheduled_run_error": scheduled_error,
             }
 
         incomplete = self._incomplete(events)
@@ -76,7 +85,15 @@ class CuratorStageBDashboardService:
                 for capability in self.CAPABILITIES
             ],
             "controls": control_projection,
+            "scheduled_run": scheduled_run,
+            "scheduled_run_error": scheduled_error,
         }
+
+    def _scheduled_run(self) -> tuple[dict[str, Any] | None, str]:
+        try:
+            return self.scheduled_runs.latest(), ""
+        except (StageBScheduledRunRepositoryError, OSError) as error:
+            return None, str(error)
 
     def _events(self) -> tuple[StageBJournalEvent, ...]:
         self.repository.validate_all()
@@ -174,6 +191,9 @@ class CuratorStageBDashboardService:
             "global_disabled": bool(controls.get("global_disabled")),
             "scheduled_runs_disabled": bool(
                 controls.get("scheduled_runs_disabled", True)
+            ),
+            "stage_b_scheduled_runs_disabled": bool(
+                controls.get("stage_b_scheduled_runs_disabled", True)
             ),
             "stage_b_scheduling_configured": False,
             "stage_b_scheduling_message": (

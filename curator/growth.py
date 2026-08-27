@@ -296,7 +296,11 @@ class CuratorGrowthService:
         return {"passed": True, "reason": "The latest shadow result passed; separate human approval is still required."}
 
     def set_control(self, control: str, disabled: bool, *, reviewer: str, reason: str) -> dict[str, Any]:
-        if control not in {"global_disabled", "scheduled_runs_disabled"}:
+        if control not in {
+            "global_disabled",
+            "scheduled_runs_disabled",
+            "stage_b_scheduled_runs_disabled",
+        }:
             raise CuratorGrowthError("Unsupported Curator control.")
         reviewer, reason = self._require_human(reviewer, reason)
         state = self.store.load()

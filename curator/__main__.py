@@ -112,6 +112,14 @@ def parser() -> argparse.ArgumentParser:
     )
     signal_refresh.add_argument("--correlation-id", default="")
     signal_refresh.add_argument("--dry-run", action="store_true")
+    scheduled_stage_b = commands.add_parser(
+        "stage-b-scheduled",
+        help="Run the code-allowlisted scheduled Stage B reconciliation set",
+    )
+    scheduled_stage_b.add_argument("--repository", default=".")
+    scheduled_stage_b.add_argument("--dry-run", action="store_true")
+    scheduled_stage_b.add_argument("--correlation-id", default="")
+    scheduled_stage_b.add_argument("--max-candidates", type=int, default=5)
     return root
 
 
@@ -120,6 +128,29 @@ def main(argv: list[str] | None = None) -> int:
     repository = Path(args.repository).resolve()
     memory_path = Path(getattr(args, "memory", "curation_memory"))
     memory_path = memory_path if memory_path.is_absolute() else repository / memory_path
+    if args.command == "stage-b-scheduled":
+        from curator.stage_b_scheduled_runner import (
+            CuratorStageBScheduledRunner,
+            StageBScheduledRunnerError,
+        )
+        from curator.stage_b_scheduled_repository import (
+            StageBScheduledRunRepositoryError,
+        )
+        try:
+            result = CuratorStageBScheduledRunner(repository).run(
+                dry_run=args.dry_run,
+                correlation_id=args.correlation_id,
+                max_candidates=args.max_candidates,
+            )
+        except (
+            CuratorMemoryError,
+            StageBScheduledRunnerError,
+            StageBScheduledRunRepositoryError,
+        ) as error:
+            print(json.dumps({"status": "FAILED", "error": str(error)}), file=sys.stderr)
+            return 2
+        print(json.dumps(asdict(result), sort_keys=True))
+        return 2 if result.status in {"FAILED", "PARTIAL_FAILED"} else 0
     if args.command in {
         "refresh-progress-verification",
         "refresh-terminal-evidence-verification",

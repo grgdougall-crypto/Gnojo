@@ -36,7 +36,7 @@
       {% endfor %}
     </div>
   </section>
-  {% set stage_b = dashboard.stage_b|default({'journal_status': 'HEALTHY', 'journal_status_label': 'Healthy', 'journal_error': '', 'counts': {'incomplete_prepared': 0, 'committed': 0, 'failed': 0, 'skipped': 0}, 'controls': {'global_disabled': false, 'scheduled_runs_disabled': true, 'stage_b_scheduling_configured': false, 'stage_b_scheduling_message': 'Stage B scheduled execution is not configured.'}, 'capabilities': []}) %}
+  {% set stage_b = dashboard.stage_b|default({'journal_status': 'HEALTHY', 'journal_status_label': 'Healthy', 'journal_error': '', 'counts': {'incomplete_prepared': 0, 'committed': 0, 'failed': 0, 'skipped': 0}, 'controls': {'global_disabled': false, 'scheduled_runs_disabled': true, 'stage_b_scheduled_runs_disabled': true, 'stage_b_scheduling_configured': false, 'stage_b_scheduling_message': 'Stage B scheduled execution is not configured.'}, 'capabilities': [], 'scheduled_run': none, 'scheduled_run_error': ''}) %}
   <section class="quality-section" id="stage-b-reconciliation" aria-labelledby="stageBReconciliationTitle">
     <div class="quality-section__heading">
       <div><span class="section-eyebrow">Read-only operational state</span><h2 id="stageBReconciliationTitle">Stage B Reconciliation</h2><p>Persisted reconciliation evidence only. Viewing this panel does not run a capability or change Curator state.</p></div>
@@ -48,6 +48,18 @@
       <article><span>Journal events</span><strong>{{ stage_b.counts.committed }} committed</strong><small>{{ stage_b.counts.failed }} failed &middot; {{ stage_b.counts.skipped }} skipped &middot; {{ stage_b.counts.incomplete_prepared }} incomplete</small></article>
       <article><span>Global Curator</span><strong>{{ 'Disabled' if stage_b.controls.global_disabled else 'Enabled' }}</strong><small>Read from current Curator controls.</small></article>
       <article><span>Scheduled runs</span><strong>{{ 'Disabled' if stage_b.controls.scheduled_runs_disabled else 'Enabled' }}</strong><small>{{ stage_b.controls.stage_b_scheduling_message }}</small></article>
+      <article><span>Stage B scheduled authority</span><strong>{{ 'Disabled' if stage_b.controls.stage_b_scheduled_runs_disabled else 'Enabled' }}</strong><small>{{ stage_b.controls.stage_b_scheduling_message }}</small></article>
+    </div>
+    <div class="mt-3">
+      <h3 class="h6">Latest scheduled Stage B run</h3>
+      {% if stage_b.scheduled_run_error %}<p class="text-danger mb-0">Runner results unavailable: {{ stage_b.scheduled_run_error }}</p>
+      {% elif stage_b.scheduled_run %}{% set run = stage_b.scheduled_run %}
+      <p class="mb-1"><strong>{{ run.status|replace('_', ' ')|title }}</strong> &middot; Trigger: {{ run.trigger_source|title }} &middot; Started {{ run.started_at }}{% if run.completed_at %} &middot; Completed {{ run.completed_at }}{% endif %}</p>
+      <p class="mb-1">Discovered {{ run.discovered_count }} &middot; Committed {{ run.committed_count }} &middot; No-op {{ run.committed_no_op_count }} &middot; Preflight skipped {{ run.preflight_skipped_count }} &middot; Runtime skipped {{ run.runtime_skipped_count }} &middot; Failed {{ run.failed_count }}</p>
+      <p class="mb-1"><small>Runner <code>{{ run.runner_id }}</code> &middot; Correlation <code>{{ run.correlation_id }}</code>{% if run.last_processed_task %} &middot; Last task <code>{{ run.last_processed_task }}</code>{% endif %}</small></p>
+      <p class="mb-1"><small>Allowlist: {% for capability in run.allowlisted_capabilities %}<code>{{ capability.id }} v{{ capability.version }}</code>{% if not loop.last %}, {% endif %}{% endfor %}</small></p>
+      {% if run.failure_reason %}<p class="text-danger mb-0">{{ run.failure_reason }}</p>{% endif %}
+      {% else %}<p class="text-secondary mb-0">No scheduled Stage B run recorded yet.</p>{% endif %}
     </div>
     <div class="curator-status-grid mt-3">
       {% for capability in stage_b.capabilities %}

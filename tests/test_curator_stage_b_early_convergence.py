@@ -34,6 +34,7 @@ class CuratorStageBEarlyConvergenceTests(unittest.TestCase):
         self.write_workflow(self.workflow())
         state = self.store.load()
         state["controls"]["scheduled_runs_disabled"] = False
+        state["controls"]["stage_b_scheduled_runs_disabled"] = False
         state["tasks"] = {"GKT-EARLY": self.task_for_current_finding()}
         self.store.save(state)
 
@@ -162,6 +163,18 @@ class CuratorStageBEarlyConvergenceTests(unittest.TestCase):
             after["last_verified_fingerprint"],
             CuratorTargetedVerificationService.fingerprint(self.workflow()),
         )
+        self.assert_preserved(before, after)
+
+    def test_scheduled_execution_uses_existing_supervised_mutation_boundary(self):
+        before = copy.deepcopy(self.current_task())
+        result = self.service().run(
+            task_id="GKT-EARLY", trigger_source="scheduled",
+            correlation_id="COR-SCHEDULED-EARLY",
+        )
+        after = self.current_task()
+        self.assertEqual(result.task_results[0].status, "COMMITTED")
+        self.assertEqual(after["status"], before["status"])
+        self.assertEqual(after["current_verification"]["status"], "still_detected")
         self.assert_preserved(before, after)
 
     def test_corrected_and_downstream_only_change_refreshes_new_result(self):

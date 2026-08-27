@@ -31,6 +31,7 @@ class CuratorStageBReconciliationTests(unittest.TestCase):
         self.store = CuratorMemoryStore(self.root / "curation_memory")
         state = self.store.load()
         state["controls"]["scheduled_runs_disabled"] = False
+        state["controls"]["stage_b_scheduled_runs_disabled"] = False
         self.write_workflow(self.workflow())
         self.finding_id = self.progress_finding_id()
         state["tasks"] = {"GKT-PROGRESS": self.task()}
@@ -348,6 +349,30 @@ class CuratorStageBReconciliationTests(unittest.TestCase):
         self.assertEqual(result.task_results[0].status, "FAILED")
         self.assertIn("Scheduled Curator runs are disabled", result.task_results[0].reason)
         self.assertNotIn("current_verification", self.current_task())
+
+    def test_stage_b_scheduled_control_is_rechecked_inside_lock(self):
+        service = self.service()
+
+        def disable_stage_b(plan, attempt):
+            if attempt == 0:
+                state = self.store.load()
+                state["controls"]["stage_b_scheduled_runs_disabled"] = True
+                self.store.save(state)
+
+        service._before_commit = disable_stage_b
+        result = service.run(
+            task_id="GKT-PROGRESS", trigger_source="scheduled"
+        )
+        self.assertEqual(result.task_results[0].status, "FAILED")
+        self.assertIn("Scheduled Stage B runs are disabled", result.task_results[0].reason)
+        self.assertNotIn("current_verification", self.current_task())
+
+    def test_manual_execution_ignores_stage_b_scheduled_control(self):
+        state = self.store.load()
+        state["controls"]["stage_b_scheduled_runs_disabled"] = True
+        self.store.save(state)
+        result = self.service().run(task_id="GKT-PROGRESS", trigger_source="manual")
+        self.assertEqual(result.task_results[0].status, "COMMITTED")
 
     def test_shared_lock_overlap_fails_closed(self):
         with self.store.locked():

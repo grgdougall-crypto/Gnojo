@@ -56,6 +56,20 @@ def parser() -> argparse.ArgumentParser:
     refresh.add_argument("--trigger", choices=("manual", "scheduled"), default="manual")
     refresh.add_argument("--correlation-id", default="")
     refresh.add_argument("--dry-run", action="store_true")
+    terminal_refresh = commands.add_parser(
+        "refresh-terminal-evidence-verification",
+        help=(
+            "Run the allowlisted Stage B terminal-evidence verification "
+            "reconciliation"
+        ),
+    )
+    terminal_refresh.add_argument("--repository", default=".")
+    terminal_refresh.add_argument("--task-id")
+    terminal_refresh.add_argument(
+        "--trigger", choices=("manual", "scheduled"), default="manual"
+    )
+    terminal_refresh.add_argument("--correlation-id", default="")
+    terminal_refresh.add_argument("--dry-run", action="store_true")
     return root
 
 
@@ -64,13 +78,22 @@ def main(argv: list[str] | None = None) -> int:
     repository = Path(args.repository).resolve()
     memory_path = Path(getattr(args, "memory", "curation_memory"))
     memory_path = memory_path if memory_path.is_absolute() else repository / memory_path
-    if args.command == "refresh-progress-verification":
+    if args.command in {
+        "refresh-progress-verification",
+        "refresh-terminal-evidence-verification",
+    }:
         from app.services.curator_stage_b_reconciliation_service import (
             CuratorStageBReconciliationService,
+            CuratorTerminalEvidenceStageBReconciliationService,
             StageBReconciliationError,
         )
+        service_type = (
+            CuratorStageBReconciliationService
+            if args.command == "refresh-progress-verification"
+            else CuratorTerminalEvidenceStageBReconciliationService
+        )
         try:
-            result = CuratorStageBReconciliationService(repository).run(
+            result = service_type(repository).run(
                 task_id=args.task_id,
                 trigger_source=args.trigger,
                 correlation_id=args.correlation_id,

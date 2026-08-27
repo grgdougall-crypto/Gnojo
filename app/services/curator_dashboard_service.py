@@ -16,6 +16,9 @@ from app.services.curator_dashboard_presentation_service import CuratorDashboard
 from app.services.curator_observation_dashboard_service import (
     CuratorObservationDashboardService,
 )
+from app.services.curator_stage_b_dashboard_service import (
+    CuratorStageBDashboardService,
+)
 from app.services.knowledge_integrity_service import KnowledgeIntegrityService
 
 
@@ -81,6 +84,9 @@ class CuratorDashboardService:
             "observations": CuratorObservationDashboardService(
                 self.repository_root
             ).project(),
+            "stage_b": CuratorStageBDashboardService(
+                self.repository_root
+            ).project(controls=state.get("controls", {})),
         }
 
     def _latest_report(self) -> dict[str, Any]:

@@ -36,6 +36,42 @@
       {% endfor %}
     </div>
   </section>
+  {% set stage_b = dashboard.stage_b|default({'journal_status': 'HEALTHY', 'journal_status_label': 'Healthy', 'journal_error': '', 'counts': {'incomplete_prepared': 0, 'committed': 0, 'failed': 0, 'skipped': 0}, 'controls': {'global_disabled': false, 'scheduled_runs_disabled': true, 'stage_b_scheduling_configured': false, 'stage_b_scheduling_message': 'Stage B scheduled execution is not configured.'}, 'capabilities': []}) %}
+  <section class="quality-section" id="stage-b-reconciliation" aria-labelledby="stageBReconciliationTitle">
+    <div class="quality-section__heading">
+      <div><span class="section-eyebrow">Read-only operational state</span><h2 id="stageBReconciliationTitle">Stage B Reconciliation</h2><p>Persisted reconciliation evidence only. Viewing this panel does not run a capability or change Curator state.</p></div>
+      <span class="badge {% if stage_b.journal_status == 'HEALTHY' %}text-bg-success{% elif stage_b.journal_status == 'INCOMPLETE' %}text-bg-warning{% else %}text-bg-danger{% endif %}">{{ stage_b.journal_status_label }}</span>
+    </div>
+    {% if stage_b.journal_error %}<div class="alert alert-danger" role="status"><strong>Stage B journal is blocked.</strong> {{ stage_b.journal_error }}</div>{% endif %}
+    <div class="curator-status-grid">
+      <article><span>Journal validation</span><strong>{{ stage_b.journal_status_label }}</strong><small>No repair is attempted from this dashboard.</small></article>
+      <article><span>Journal events</span><strong>{{ stage_b.counts.committed }} committed</strong><small>{{ stage_b.counts.failed }} failed &middot; {{ stage_b.counts.skipped }} skipped &middot; {{ stage_b.counts.incomplete_prepared }} incomplete</small></article>
+      <article><span>Global Curator</span><strong>{{ 'Disabled' if stage_b.controls.global_disabled else 'Enabled' }}</strong><small>Read from current Curator controls.</small></article>
+      <article><span>Scheduled runs</span><strong>{{ 'Disabled' if stage_b.controls.scheduled_runs_disabled else 'Enabled' }}</strong><small>{{ stage_b.controls.stage_b_scheduling_message }}</small></article>
+    </div>
+    <div class="curator-status-grid mt-3">
+      {% for capability in stage_b.capabilities %}
+      <article>
+        <div class="d-flex justify-content-between align-items-start gap-2"><span>{{ capability.label }}</span><span class="badge {% if capability.acceptance == 'COMMITTED_ACCEPTANCE' %}text-bg-success{% elif capability.acceptance == 'FAILED_ONLY' %}text-bg-danger{% elif capability.acceptance == 'INCOMPLETE' %}text-bg-warning{% else %}text-bg-secondary{% endif %}">{{ capability.acceptance_label }}</span></div>
+        <small><code>{{ capability.capability_id }}</code> &middot; v{{ capability.capability_version }}</small>
+        {% if capability.latest %}
+          <strong class="h6 mt-2">Latest: {{ capability.latest.status|replace('_', ' ')|title }}</strong>
+          <small>{{ capability.latest.at|friendly_datetime }} &middot; Task <code>{{ capability.latest.task_id }}</code></small>
+          <small>Finding <code>{{ capability.latest.finding_id }}</code></small>
+          <small>Run <code>{{ capability.latest.run_id }}</code>{% if capability.latest.correlation_id %} &middot; Correlation <code>{{ capability.latest.correlation_id }}</code>{% endif %}</small>
+          <small>{{ capability.latest.reason }}</small>
+        {% else %}<strong class="h6 mt-2">No journal evidence recorded</strong>{% endif %}
+        <details class="mt-2"><summary>Journal event details</summary><div class="pt-2">
+          <small>Latest committed: {% if capability.latest_committed %}{{ capability.latest_committed.at|friendly_datetime }} &middot; {{ capability.latest_committed.task_id }}{% else %}None recorded{% endif %}</small>
+          <small>Latest failed: {% if capability.latest_failed %}{{ capability.latest_failed.at|friendly_datetime }} &middot; {{ capability.latest_failed.reason }}{% else %}None recorded{% endif %}</small>
+          <small>Latest skipped: {% if capability.latest_skipped %}{{ capability.latest_skipped.at|friendly_datetime }} &middot; {{ capability.latest_skipped.reason }}{% else %}None recorded{% endif %}</small>
+          <small>Incomplete prepared: {{ capability.incomplete_prepared|length }}</small>
+          {% for prepared in capability.incomplete_prepared %}<small><code>{{ prepared.run_id }}</code> &middot; {{ prepared.task_id }} &middot; {{ prepared.at|friendly_datetime }}</small>{% endfor %}
+        </div></details>
+      </article>
+      {% endfor %}
+    </div>
+  </section>
   <section class="quality-section curator-assisted-batch" id="assisted-resolution-batch" aria-labelledby="assistedBatchTitle">
     <div><span class="section-eyebrow">Assisted resolution</span><h2 id="assistedBatchTitle">First Assisted Resolution Batch</h2><p>Prepare review packages without creating drafts, links, or publications.</p></div>
     <form method="post" action="{{ url_for('curator_assisted_resolution_batch') }}"><button class="btn btn-info"><i class="bi bi-stars me-2" aria-hidden="true"></i>Prepare First Assisted Resolution Batch</button></form>

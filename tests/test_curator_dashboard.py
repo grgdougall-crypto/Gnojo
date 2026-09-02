@@ -103,6 +103,36 @@ class CuratorDashboardPageTests(unittest.TestCase):
             'return_to=/curator%23knowledge-tasks"', html,
         )
 
+    @patch("app.app.CuratorBatchService")
+    @patch("app.app.CuratorDashboardService")
+    def test_actionable_work_precedes_operational_telemetry(
+            self, dashboard_service, batch_service):
+        dashboard = dict(self.dashboard)
+        dashboard["integrity"] = {"counts": {
+            "broken_relationships": 0, "duplicate_groups": 0,
+            "missing_review_metadata": 0, "orphaned_articles": 0,
+        }}
+        dashboard_service.return_value.dashboard.return_value = dashboard
+        batch_service.return_value.latest.return_value = {}
+
+        html = self.client.get("/curator").get_data(as_text=True)
+        ordered_labels = [
+            "From evidence to supervised maintenance",
+            "Prioritized Knowledge Tasks",
+            "Operational Health",
+            "Recent Curator Observations",
+            "Stage B Reconciliation",
+            "First Assisted Resolution Batch",
+            "Secondary operational context",
+            "Identity and Relationships",
+        ]
+        positions = [html.index(label) for label in ordered_labels]
+
+        self.assertEqual(positions, sorted(positions))
+        self.assertLess(html.index("Actionable tasks"), html.index("Prioritized Knowledge Tasks"))
+        self.assertEqual(html.count('id="knowledge-tasks"'), 1)
+        self.assertIn('href="/curator#knowledge-tasks">Clear</a>', html)
+
     @patch("app.app.CuratorDashboardService")
     def test_run_button_executes_audit_and_redirects(self, service):
         service.return_value.run_audit.return_value = {"run_id": "RUN-1"}

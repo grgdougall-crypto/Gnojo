@@ -224,7 +224,7 @@ class CuratorTaskService:
         identifier = task.get("content_identifier", "")
         task_id = task.get("task_id", "")
         task_query = {"curator_session": session_id, "return_to": return_to, "origin": origin,
-                      "category": category, "verify": "1"}
+                      "category": category}
         task_query = {key: value for key, value in task_query.items() if value}
         task_return = f"/curator/tasks/{quote(task_id)}"
         if task_query:

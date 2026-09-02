@@ -129,29 +129,74 @@ class CuratorFixWizardTests(unittest.TestCase):
     def test_real_fix_wizard_post_redirect_get_round_trip_and_refresh(self):
         service = CuratorFixSessionService(self.root)
         baseline = self.baseline()
+        reconciler = Mock()
         flask_app.config.update(TESTING=True)
         with patch("app.app.CuratorFixSessionService", return_value=service), \
              patch("app.app.KnowledgeIntegrityService.report", return_value=baseline), \
              patch("app.app.CuratorRepairPlanner.build", return_value=[]), \
-             patch("app.app.CuratorSessionReconciliationService.reconcile",
-                   side_effect=lambda session_id, trigger="resume": service.get(session_id)), \
+             patch("app.app.CuratorSessionReconciliationService", return_value=reconciler), \
              patch("app.app.CuratorMemoryStore.load", return_value={"audits": [{"run_id": "AUD-RUNTIME"}]}):
             with flask_app.test_client() as client:
                 self.assertEqual(client.get("/curator/fix").status_code, 200)
                 response = client.post("/curator/fix", data={"reviewer": "Browser Reviewer"})
                 self.assertEqual(response.status_code, 302)
                 target = response.headers["Location"]
+                session_path = service.directory / f"{service.list_sessions()[0]['session_id']}.json"
+                before_get = session_path.read_bytes()
                 page = client.get(target)
                 self.assertEqual(page.status_code, 200)
                 self.assertIn(b"Browser Reviewer", page.data)
                 self.assertIn(b"Starting review queue", page.data)
                 self.assertEqual(client.get(target).status_code, 200)
+                self.assertEqual(session_path.read_bytes(), before_get)
+                reconciler.reconcile.assert_not_called()
                 duplicate = client.post("/curator/fix", data={"reviewer": "Browser Reviewer"})
                 self.assertEqual(duplicate.status_code, 302)
                 self.assertEqual(len(service.list_sessions()), 1)
         persisted = service.get(service.list_sessions()[0]["session_id"])
         self.assertEqual(persisted["started_by"], "Browser Reviewer")
         self.assertEqual(persisted["starting_integrity"], baseline)
+
+    def test_fix_wizard_get_does_not_append_reconciliation_event(self):
+        service = CuratorFixSessionService(self.root)
+        session = service.create(
+            started_by="Read-only Reviewer", originating_audit_id="AUD-READ-ONLY",
+            queue=[{"item_id": "FIX-READ-ONLY", "status": "open",
+                    "finding_type": "editorial_opportunity", "classification": "HUMAN_REVIEW",
+                    "affected_content": {"id": "example"}}],
+            baseline=self.baseline(),
+        )
+        path = service.directory / f"{session['session_id']}.json"
+        protected_paths = {
+            "curator_memory": self.root / "curation_memory" / "memory.json",
+            "workflow": self.root / "app" / "workflow_drafts" / "flow.json",
+            "publication": self.root / "workflow_publications" / "flow" / "manifest.json",
+            "stage_b": self.root / "curation_memory" / "stage_b_reconciliations" / "journal.jsonl",
+        }
+        for marker, protected_path in protected_paths.items():
+            protected_path.parent.mkdir(parents=True, exist_ok=True)
+            protected_path.write_bytes(f"{marker}-sentinel".encode("utf-8"))
+        protected_before = {name: value.read_bytes() for name, value in protected_paths.items()}
+        before = path.read_bytes()
+        before_events = list(service.get(session["session_id"])["events"])
+        flask_app.config.update(TESTING=True)
+        with patch("app.app.CuratorFixSessionService", return_value=service), \
+             patch("app.app.CuratorSessionReconciliationService") as reconciler:
+            with flask_app.test_client() as client:
+                for _ in range(3):
+                    response = client.get(f"/curator/fix/{session['session_id']}")
+                    self.assertEqual(response.status_code, 200)
+                self.assertEqual(
+                    client.get(f"/curator/fix/{session['session_id']}/refresh").status_code,
+                    405,
+                )
+        self.assertEqual(path.read_bytes(), before)
+        self.assertEqual(
+            {name: value.read_bytes() for name, value in protected_paths.items()},
+            protected_before,
+        )
+        self.assertEqual(service.get(session["session_id"])["events"], before_events)
+        reconciler.return_value.reconcile.assert_not_called()
 
     def test_manual_refresh_redirect_reports_changed_and_unchanged_truthfully(self):
         flask_app.config.update(TESTING=True)

@@ -125,6 +125,88 @@ class CuratorTaskLifecycleTests(unittest.TestCase):
         self.assertEqual(after["evidence"], before["evidence"])
         self.assertTrue(after["current_verification"]["affected_fingerprint"])
 
+    def test_task_detail_get_is_read_only_even_with_legacy_verify_parameter(self):
+        verifier = Mock()
+        protected_paths = {
+            "curator_memory": self.root / "curation_memory" / "memory.json",
+            "workflow": self.root / "app" / "workflow_drafts" / "flow.json",
+            "publication": self.root / "workflow_publications" / "flow" / "manifest.json",
+            "stage_b": self.root / "curation_memory" / "stage_b_reconciliations" / "journal.jsonl",
+        }
+        for marker, protected_path in protected_paths.items():
+            if not protected_path.exists():
+                protected_path.parent.mkdir(parents=True, exist_ok=True)
+                protected_path.write_bytes(f"{marker}-sentinel".encode("utf-8"))
+        before = {name: value.read_bytes() for name, value in protected_paths.items()}
+        flask_app.config.update(TESTING=True)
+        with patch("app.app.CuratorTaskService", return_value=self.service), \
+             patch("app.app.CuratorTargetedVerificationService", return_value=verifier):
+            with flask_app.test_client() as client:
+                for path in (
+                    "/curator/tasks/GKT-TEST",
+                    "/curator/tasks/GKT-TEST?verify=1&origin=knowledge_tasks&return_to=/curator%23knowledge-tasks",
+                ):
+                    response = client.get(path)
+                    self.assertEqual(response.status_code, 200)
+                self.assertEqual(client.get("/curator/tasks/GKT-TEST/verify").status_code, 405)
+        self.assertEqual(
+            {name: value.read_bytes() for name, value in protected_paths.items()},
+            before,
+        )
+        verifier.verify.assert_not_called()
+
+    def test_explicit_verify_post_preserves_task_lifecycle_and_workflow_bytes(self):
+        drafts = self.root / "app" / "workflow_drafts"
+        drafts.mkdir(parents=True)
+        workflow_path = drafts / "flow.json"
+        workflow_path.write_text(json.dumps({
+            "workflow_id": "flow", "name": "Flow", "start_node": "restart",
+            "nodes": {"restart": {"type": "instruction", "title": "Restart",
+                                    "instruction": "Save work, then restart Windows."}},
+        }), encoding="utf-8")
+        workflow_before = workflow_path.read_bytes()
+        task_before = self.store.load()["tasks"]["GKT-TEST"]
+        history_before = len(task_before["history"])
+        verifier = CuratorTargetedVerificationService(self.root)
+        flask_app.config.update(TESTING=True)
+        with patch("app.app.CuratorTaskService", return_value=self.service), \
+             patch("app.app.CuratorTargetedVerificationService", return_value=verifier):
+            with flask_app.test_client() as client:
+                response = client.post("/curator/tasks/GKT-TEST/verify", data={
+                    "origin": "knowledge_tasks",
+                    "return_to": "/curator#knowledge-tasks",
+                })
+        self.assertEqual(response.status_code, 302)
+        task = self.store.load()["tasks"]["GKT-TEST"]
+        self.assertEqual(task["status"], "open")
+        self.assertEqual(len(task["history"]), history_before + 1)
+        self.assertEqual(task["history"][-1]["event"], "targeted_verification")
+        for field in ("owner", "priority", "classification", "evidence", "finding_id"):
+            self.assertEqual(task[field], task_before[field])
+        self.assertEqual(workflow_path.read_bytes(), workflow_before)
+
+    def test_affected_workflow_return_url_preserves_context_without_verification(self):
+        drafts = self.root / "app" / "workflow_drafts"
+        drafts.mkdir(parents=True)
+        (drafts / "flow.json").write_text(json.dumps({
+            "workflow_id": "flow", "name": "Flow", "start_node": "restart",
+            "nodes": {"restart": {"type": "instruction", "title": "Restart"}},
+        }), encoding="utf-8")
+        from app.services.workflow_draft_service import WorkflowDraftService
+        with patch(
+            "app.services.curator_task_service.WorkflowDraftService",
+            return_value=WorkflowDraftService(drafts),
+        ):
+            task = self.service.get(
+                "GKT-TEST", origin="knowledge_tasks", return_to="/curator#knowledge-tasks"
+            )
+        target = task["navigation"]["url"]
+        self.assertIn("/workflow-editor/flow.json?", target)
+        self.assertIn("curator_task=GKT-TEST", target)
+        self.assertIn("curator_return=", target)
+        self.assertNotIn("verify%3D1", target)
+        self.assertNotIn("verify=1", target)
+
     def test_unknown_rule_requires_human_review_instead_of_claiming_correction(self):
         state = self.store.load()
         state["tasks"]["GKT-TEST"]["curator_rule"] = "CUSTOM-HUMAN-RULE"

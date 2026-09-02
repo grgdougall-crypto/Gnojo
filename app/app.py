@@ -1705,8 +1705,6 @@ def curator_task_detail(task_id):
     session_id = request.args.get("curator_session", "")
     category = request.args.get("category", "all")
     try:
-        if request.args.get("verify") == "1":
-            CuratorTargetedVerificationService().verify(task_id)
         task = CuratorTaskService(repository_root).get(
             task_id, session_id=session_id,
             return_to=return_to, category=category, origin=origin,
@@ -2374,8 +2372,7 @@ def curator_fix_start():
 @app.route("/curator/fix/<session_id>")
 def curator_fix_session(session_id):
     try:
-        trigger = "manual_refresh" if request.args.get("refresh") == "1" else "resume"
-        session = CuratorSessionReconciliationService().reconcile(session_id, trigger=trigger)
+        session = CuratorFixSessionService().get(session_id)
     except CuratorFixSessionError:
         abort(404)
     item_id = request.args.get("item", "")

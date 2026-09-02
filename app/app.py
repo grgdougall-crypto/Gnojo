@@ -3,7 +3,7 @@ import os
 import re
 import secrets
 from copy import deepcopy
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import quote, urlsplit
 from uuid import uuid4
@@ -67,6 +67,11 @@ from app.services.workflow_runtime_compatibility_service import (
 )
 from app.services.workflow_lifecycle_projection_service import (
     WorkflowLifecycleProjectionService,
+)
+from app.repositories.workflow_publication_review_repository import (
+    WorkflowPublicationReasoningReview,
+    WorkflowPublicationReviewRepository,
+    WorkflowPublicationReviewRepositoryError,
 )
 
 from app.services.workflow_draft_service import (
@@ -2623,7 +2628,8 @@ def copy_builtin_workflow(workflow_id):
 @app.route("/workflow-editor/<filename>")
 def workflow_editor(filename):
 
-    draft_service = WorkflowDraftService()
+    repository_root = _workflow_repository_root()
+    draft_service = WorkflowDraftService(repository_root / "app" / "workflow_drafts")
 
     workflow = draft_service.get_draft(
         filename
@@ -2633,7 +2639,7 @@ def workflow_editor(filename):
         abort(404)
 
     lifecycle_projection = WorkflowLifecycleProjectionService(
-        Path(__file__).resolve().parents[1]
+        repository_root
     ).project(str(workflow.get("workflow_id") or ""))
     lifecycle_view = workflow_lifecycle_view(lifecycle_projection)
 
@@ -2669,6 +2675,8 @@ def workflow_editor(filename):
         curator_category=request.args.get("category", "all"),
         lifecycle_projection=lifecycle_projection,
         lifecycle_view=lifecycle_view,
+        publication_review_csrf=_publication_review_csrf_token(),
+        publication_review_status=request.args.get("publication_review_status", ""),
         return_to=return_to,
         return_label=(
             "Back to Content Quality"
@@ -2676,6 +2684,73 @@ def workflow_editor(filename):
             else "Back to Workflow Studio"
         ),
     )
+
+
+def _workflow_repository_root() -> Path:
+    configured = app.config.get("WORKFLOW_REPOSITORY_ROOT")
+    return Path(configured).resolve() if configured else Path(app.root_path).parent.resolve()
+
+
+def _publication_review_csrf_token() -> str:
+    token = session.get("workflow_publication_review_csrf")
+    if not isinstance(token, str) or len(token) < 32:
+        token = secrets.token_urlsafe(32)
+        session["workflow_publication_review_csrf"] = token
+    return token
+
+
+def _require_publication_review_csrf() -> None:
+    supplied = str(request.form.get("csrf_token") or "")
+    expected = str(session.get("workflow_publication_review_csrf") or "")
+    if not supplied or not expected or not secrets.compare_digest(supplied, expected):
+        abort(400)
+
+
+@app.post("/workflow-editor/<filename>/publication-reasoning-review")
+def workflow_publication_reasoning_review(filename):
+    _require_publication_review_csrf()
+    root = _workflow_repository_root()
+    workflow = WorkflowDraftService(root / "app" / "workflow_drafts").get_draft(filename)
+    if workflow is None:
+        abort(404)
+    workflow_id = str(workflow.get("workflow_id") or "")
+    projection = WorkflowLifecycleProjectionService(root).project(workflow_id)
+    finding_id = str(request.form.get("finding_id") or "").strip()
+    expected_fingerprint = str(request.form.get("draft_semantic_fingerprint") or "").strip()
+    reviewer = str(request.form.get("reviewer") or "").strip()
+    note = str(request.form.get("note") or "").strip()
+    finding = next(
+        (item for item in projection.reasoning_reviews if item.finding_id == finding_id), None
+    )
+    status = "invalid"
+    try:
+        if (projection.reasoning_review_error or not finding
+                or finding.review_status == "accepted"
+                or expected_fingerprint != projection.draft_semantic_fingerprint):
+            raise WorkflowPublicationReviewRepositoryError(
+                "The publication review no longer matches the current draft."
+            )
+        review = WorkflowPublicationReasoningReview.create(
+            workflow_id=workflow_id,
+            draft_semantic_fingerprint=projection.draft_semantic_fingerprint,
+            finding_id=finding.finding_id,
+            rule=finding.rule,
+            finding_type=finding.finding_type,
+            content_identifier=finding.content_identifier,
+            node_id=finding.node_id,
+            reviewer=reviewer,
+            reviewed_at=datetime.now(timezone.utc).isoformat(),
+            note=note,
+        )
+        WorkflowPublicationReviewRepository(root / "curation_memory").add(review)
+        status = "accepted"
+    except WorkflowPublicationReviewRepositoryError:
+        status = "invalid"
+    return redirect(url_for(
+        "workflow_editor", filename=filename,
+        publication_review_status=status,
+        _anchor="workflowReasoningPublicationReview",
+    ))
 
 
 def workflow_lifecycle_view(projection):
@@ -2740,16 +2815,27 @@ def workflow_lifecycle_view(projection):
         "readiness_reasons": list(projection.readiness_reasons),
         "ambiguity_reasons": list(projection.ambiguity_reasons),
         "has_unattributed_changes": authored_count > 0,
+        "validation_clean": bool(
+            projection.validation.schema_valid
+            and projection.validation.graph_valid
+            and not projection.validation.errors
+            and not projection.validation.warnings
+            and projection.validation.quality_status != "ERROR"
+        ),
+        "draft_semantic_fingerprint": projection.draft_semantic_fingerprint,
+        "reasoning_review_error": projection.reasoning_review_error,
+        "reasoning_reviews": [asdict(item) for item in projection.reasoning_reviews],
     }
 
 
 @app.route("/api/workflow-drafts/<filename>/lifecycle")
 def workflow_lifecycle_status(filename):
-    workflow = WorkflowDraftService().get_draft(filename)
+    root = _workflow_repository_root()
+    workflow = WorkflowDraftService(root / "app" / "workflow_drafts").get_draft(filename)
     if workflow is None:
         return {"ok": False, "error": "Workflow draft not found."}, 404
     projection = WorkflowLifecycleProjectionService(
-        Path(__file__).resolve().parents[1]
+        root
     ).project(str(workflow.get("workflow_id") or ""))
     return {
         "ok": True,
@@ -3016,21 +3102,31 @@ def export_workflow_draft(filename, export_format):
 
 @app.route("/api/workflow-drafts/<filename>/publication")
 def workflow_publication_status(filename):
-    workflow = WorkflowDraftService().get_draft(filename)
+    root = _workflow_repository_root()
+    workflow = WorkflowDraftService(root / "app" / "workflow_drafts").get_draft(filename)
     if workflow is None:
         return {"ok": False, "error": "Workflow draft not found."}, 404
 
     try:
-        publication_service = WorkflowPublicationService()
+        publication_service = WorkflowPublicationService(
+            root / "app" / "workflow_publications"
+        )
         status = publication_service.status(workflow.get("workflow_id"))
     except WorkflowPublicationError as error:
         return {"ok": False, "error": str(error)}, 400
 
     latest_hash = status["versions"][0]["content_hash"] if status["versions"] else None
+    lifecycle = WorkflowLifecycleProjectionService(root).project(
+        str(workflow.get("workflow_id") or "")
+    )
     return {
         "ok": True,
         **status,
         "has_unpublished_changes": latest_hash != publication_service.content_hash(workflow),
+        "publication_reasoning_review_ready": (
+            not lifecycle.reasoning_review_error
+            and all(item.review_status == "accepted" for item in lifecycle.reasoning_reviews)
+        ),
     }
 
 
@@ -3039,7 +3135,8 @@ def workflow_publication_status(filename):
     methods=["POST"],
 )
 def publish_workflow_draft(filename):
-    workflow = WorkflowDraftService().get_draft(filename)
+    root = _workflow_repository_root()
+    workflow = WorkflowDraftService(root / "app" / "workflow_drafts").get_draft(filename)
     if workflow is None:
         return {"ok": False, "error": "Workflow draft not found."}, 404
 
@@ -3051,8 +3148,20 @@ def publish_workflow_draft(filename):
     if label is not None and not isinstance(label, str):
         return {"ok": False, "error": "Version label must be text."}, 400
 
+    lifecycle = WorkflowLifecycleProjectionService(root).project(
+        str(workflow.get("workflow_id") or "")
+    )
+    if (lifecycle.reasoning_review_error
+            or any(item.review_status != "accepted" for item in lifecycle.reasoning_reviews)):
+        return {
+            "ok": False,
+            "error": "Current deterministic reasoning findings require explicit publication acceptance.",
+        }, 409
+
     try:
-        publication_service = WorkflowPublicationService()
+        publication_service = WorkflowPublicationService(
+            root / "app" / "workflow_publications"
+        )
         status = publication_service.publish(
             workflow,
             source_filename=filename,

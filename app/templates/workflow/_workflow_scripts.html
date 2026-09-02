@@ -60,6 +60,37 @@
     const element = (id) => document.getElementById(id);
     const value = (id) => element(id).value.trim();
     const hasChanges = () => originalNode && JSON.stringify(buildPayload()) !== JSON.stringify(buildPayload(originalNode));
+    const publicationReviewWorkspace = element("workflowReasoningPublicationReview");
+    const publicationReviewButton = element("reviewPublicationReadinessButton");
+    const publicationReviewPanels = Array.from(document.querySelectorAll('[data-workflow-panel-name="browser"], [data-workflow-panel-name="details"]'));
+    let publicationReviewReturnPanel = "browser";
+    let publicationReviewReturnFocus = null;
+
+    const openPublicationReview = () => {
+        const activeMobileButton = mobilePanelButtons.find((button) => button.getAttribute("aria-pressed") === "true");
+        publicationReviewReturnPanel = activeMobileButton?.dataset.workflowPanel || "browser";
+        publicationReviewReturnFocus = document.activeElement;
+        designer.classList.add("is-publication-reviewing");
+        publicationReviewPanels.forEach((panel) => panel.classList.add("is-publication-review-hidden"));
+        publicationReviewWorkspace.hidden = false;
+        publicationReviewButton.setAttribute("aria-expanded", "true");
+        window.requestAnimationFrame(() => publicationReviewWorkspace.focus({preventScroll: true}));
+    };
+
+    const closePublicationReview = () => {
+        designer.classList.remove("is-publication-reviewing");
+        publicationReviewWorkspace.hidden = true;
+        publicationReviewPanels.forEach((panel) => panel.classList.remove("is-publication-review-hidden"));
+        publicationReviewButton.setAttribute("aria-expanded", "false");
+        if (mobilePanelQuery.matches) activateMobilePanel(publicationReviewReturnPanel);
+        const returnTarget = publicationReviewReturnFocus?.isConnected
+            ? publicationReviewReturnFocus
+            : publicationReviewButton;
+        window.requestAnimationFrame(() => returnTarget.focus({preventScroll: true}));
+    };
+
+    publicationReviewButton.addEventListener("click", openPublicationReview);
+    document.querySelectorAll("[data-close-publication-review]").forEach((button) => button.addEventListener("click", closePublicationReview));
 
     const filterNodes = () => {
         const query = (search?.value || "").trim().toLocaleLowerCase();
@@ -505,6 +536,32 @@
         renderLifecycleReasons("workflowLifecycleAmbiguity", view.ambiguity_reasons);
         renderLifecycleReasons("workflowLifecycleReasons", view.readiness_reasons);
         element("workflowLifecycleHumanReview").hidden = !view.has_unattributed_changes;
+        publicationStatus.publication_reasoning_review_ready = (
+            !view.reasoning_review_error
+            && (view.reasoning_reviews || []).every((item) => item.review_status === "accepted")
+        );
+        const reasoningSection = element("workflowReasoningPublicationReview");
+        const reasoningList = element("workflowReasoningPublicationReviewList");
+        const reasoningStale = element("workflowReasoningPublicationReviewStale");
+        const renderedFingerprint = reasoningSection.dataset.renderedFingerprint || "";
+        const displayedReviewIsStale = Boolean(
+            renderedFingerprint && renderedFingerprint !== view.draft_semantic_fingerprint
+        );
+        reasoningStale.hidden = !displayedReviewIsStale;
+        reasoningList.hidden = displayedReviewIsStale;
+        const reasoningItems = view.reasoning_reviews || [];
+        const acceptedReasoningCount = reasoningItems.filter((item) => item.review_status === "accepted").length;
+        const reasoningReviewComplete = Boolean(
+            reasoningItems.length
+            && acceptedReasoningCount === reasoningItems.length
+            && !view.reasoning_review_error
+        );
+        element("workflowPublicationReviewChangeCount").textContent = view.change_count;
+        element("workflowPublicationReviewFindingSummary").textContent = `${reasoningItems.length} reasoning finding${reasoningItems.length === 1 ? "" : "s"} ${reasoningReviewComplete ? "reviewed" : "require review"}`;
+        element("workflowPublicationReviewValidationSummary").textContent = view.validation_clean ? "Validation clean" : "Validation needs attention";
+        element("workflowPublicationReviewCompletion").hidden = !reasoningReviewComplete;
+        element("workflowReasoningReviewComplete").hidden = !reasoningReviewComplete;
+        publicationReviewButton.textContent = reasoningReviewComplete ? "View publication review" : "Review publication readiness";
         const details = element("workflowLifecycleChanges");
         details.hidden = !view.changes.length;
         details.querySelector("summary").textContent = `Review ${view.change_count} unpublished change${view.change_count === 1 ? "" : "s"}`;
@@ -529,6 +586,7 @@
             list.appendChild(item);
         });
         element("workflowLifecycleNoChanges").hidden = view.change_count !== 0;
+        updatePublishAvailability();
     };
 
     const loadLifecycleProjection = async () => {
@@ -543,10 +601,13 @@
     };
 
     function updatePublishAvailability() {
-        const canPublish = validationPassed && publicationStatus.has_unpublished_changes;
+        const reasoningReady = publicationStatus.publication_reasoning_review_ready !== false;
+        const canPublish = validationPassed && publicationStatus.has_unpublished_changes && reasoningReady;
         publishButton.disabled = !canPublish;
         publishButton.title = canPublish
             ? "Publish a new immutable version"
+            : !reasoningReady
+                ? "Accept each current deterministic reasoning finding for this draft before publishing"
             : publicationStatus.has_unpublished_changes
                 ? "Validate the workflow before publishing"
                 : "The current draft is already published";
@@ -629,7 +690,8 @@
     };
 
     const publishWorkflow = async () => {
-        if (!validationPassed || !publicationStatus.has_unpublished_changes) return;
+        if (!validationPassed || !publicationStatus.has_unpublished_changes
+                || publicationStatus.publication_reasoning_review_ready === false) return;
         const confirmButton = element("confirmPublicationButton");
         element("publicationMessage").classList.remove("is-error");
         confirmButton.disabled = true;
@@ -1106,6 +1168,7 @@
     element("closeAIDialog").addEventListener("click", () => aiDialog.close());
     aiDialog.addEventListener("click", (event) => { if (event.target === aiDialog) aiDialog.close(); });
     workflowSettingsState = readSettingsForm();
+    if (window.location.hash === "#workflowReasoningPublicationReview") openPublicationReview();
     loadPublicationStatus();
     loadLifecycleProjection();
     window.addEventListener("beforeunload", (event) => {

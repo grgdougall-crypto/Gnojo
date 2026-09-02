@@ -15,11 +15,18 @@ from app.repositories.structural_repair_recovery_repository import (
     StructuralRepairRecoveryRepository,
     StructuralRepairRecoveryRepositoryError,
 )
+from app.repositories.workflow_publication_review_repository import (
+    ACCEPT_FOR_PUBLICATION,
+    WorkflowPublicationReviewRepository,
+    WorkflowPublicationReviewRepositoryError,
+)
 from app.services.curator_structural_repair_governance import StructuralRepairFingerprint
 from app.services.curator_workflow_lifecycle_service import CuratorWorkflowLifecycleService
 from app.services.workflow_runtime_compatibility_service import runtime_overlay_present
 from app.services.workflow_validation_service import WorkflowValidationService
 from curator.workflow_reasoning import WorkflowReasoningAuditor
+from curator.checks import FindingFactory
+from curator.models import InventoryRecord
 
 
 MATCHES_PUBLISHED = "MATCHES_PUBLISHED"
@@ -65,6 +72,24 @@ class WorkflowRuntimeProjection:
 
 
 @dataclass(frozen=True)
+class WorkflowReasoningReviewProjection:
+    finding_id: str
+    rule: str
+    rule_label: str
+    finding_type: str
+    node_id: str
+    content_identifier: str
+    title: str
+    explanation: str
+    evidence: tuple[str, ...]
+    review_status: str
+    review_id: str = ""
+    reviewer: str = ""
+    reviewed_at: str = ""
+    note: str = ""
+
+
+@dataclass(frozen=True)
 class WorkflowLifecycleProjection:
     lifecycle_state: str
     publication_review_state: str
@@ -83,6 +108,8 @@ class WorkflowLifecycleProjection:
     readiness_reasons: tuple[str, ...]
     ambiguity_reasons: tuple[str, ...]
     evaluated_at: str
+    reasoning_reviews: tuple[WorkflowReasoningReviewProjection, ...] = ()
+    reasoning_review_error: str = ""
 
 
 @dataclass(frozen=True)
@@ -137,6 +164,7 @@ class WorkflowLifecycleProjectionService:
         *,
         application_repository: Any | None = None,
         recovery_repository: Any | None = None,
+        publication_review_repository: Any | None = None,
         runtime_selector: Callable[[str, int, dict[str, Any]], WorkflowRuntimeProjection] | None = None,
         now: Callable[[], datetime] | None = None,
     ):
@@ -144,6 +172,10 @@ class WorkflowLifecycleProjectionService:
         curator_root = self.root / "curation_memory"
         self.applications = application_repository or StructuralRepairApplicationRepository(curator_root)
         self.recoveries = recovery_repository or StructuralRepairRecoveryRepository(curator_root)
+        self.publication_reviews = (
+            publication_review_repository
+            or WorkflowPublicationReviewRepository(curator_root)
+        )
         self.runtime_selector = runtime_selector or self._runtime_selection
         self.now = now or (lambda: datetime.now(timezone.utc))
 
@@ -161,6 +193,9 @@ class WorkflowLifecycleProjectionService:
 
         workflow = draft.workflow if draft else {}
         validation = self._validation(workflow) if draft else self._empty_validation()
+        reasoning_reviews, reasoning_review_error = (
+            self._reasoning_reviews(draft) if draft else ((), "")
+        )
         delta = self._semantic_delta(publication.workflow, workflow) if publication and draft else ()
         if publication and draft and delta:
             lifecycle, delta, governed, authored, provenance_ambiguity = self._provenance(
@@ -190,7 +225,8 @@ class WorkflowLifecycleProjectionService:
             lifecycle = MATCHES_PUBLISHED
 
         reasons = self._readiness_reasons(
-            lifecycle, publication, draft, delta, validation, runtime, ambiguity
+            lifecycle, publication, draft, delta, validation, runtime, ambiguity,
+            reasoning_reviews, reasoning_review_error,
         )
         review_state = (
             NO_UNPUBLISHED_CHANGES if lifecycle == MATCHES_PUBLISHED
@@ -205,7 +241,97 @@ class WorkflowLifecycleProjectionService:
             publication.semantic_fingerprint if publication else "", runtime, delta,
             governed, authored, validation, tuple(reasons),
             tuple(dict.fromkeys(ambiguity)), self.now().isoformat(),
+            reasoning_reviews, reasoning_review_error,
         )
+
+    def _reasoning_reviews(
+        self, draft: _DraftSnapshot,
+    ) -> tuple[tuple[WorkflowReasoningReviewProjection, ...], str]:
+        workflow = draft.workflow
+        workflow_id = str(workflow.get("workflow_id") or "")
+        source_path = self._relative(draft.path)
+        record = InventoryRecord(
+            "workflow", workflow_id,
+            str(workflow.get("name") or workflow.get("title") or workflow_id),
+            source_path, str(workflow.get("category") or ""),
+            self._platform(workflow), "draft", workflow,
+        )
+        findings = []
+        for observation in WorkflowReasoningAuditor().analyze(workflow):
+            node_id = str(observation.node_id or "")
+            node = workflow.get("nodes", {}).get(node_id, {}) if node_id else {}
+            affected = (
+                InventoryRecord(
+                    "workflow_node", f"{workflow_id}:{node_id}",
+                    str(node.get("title") or node.get("question") or node_id),
+                    source_path, record.category, record.platform, "draft", node,
+                )
+                if node_id else record
+            )
+            findings.append((observation, FindingFactory.create(
+                finding_type=observation.finding_type,
+                severity=observation.severity,
+                confidence=observation.confidence,
+                record=affected,
+                title=observation.title,
+                explanation=observation.explanation,
+                evidence=observation.evidence,
+                rule=observation.rule,
+                action=observation.action,
+                domain="workflow",
+                classification=observation.classification,
+                structured_evidence=observation.structural,
+            )))
+        try:
+            stored = self.publication_reviews.list_for_workflow(workflow_id)
+        except WorkflowPublicationReviewRepositoryError as error:
+            return tuple(self._pending_review(item, finding) for item, finding in findings), str(error)
+
+        projected = []
+        for observation, finding in findings:
+            identity = (
+                finding.identifier, observation.rule, observation.finding_type,
+                finding.content_identifier, observation.node_id,
+            )
+            related = [item for item in stored if (
+                item.finding_id, item.rule, item.finding_type,
+                item.content_identifier, item.node_id,
+            ) == identity]
+            exact = [item for item in related if (
+                item.draft_semantic_fingerprint == draft.semantic_fingerprint
+                and item.disposition == ACCEPT_FOR_PUBLICATION
+            )]
+            if len(exact) > 1:
+                return tuple(self._pending_review(item, value) for item, value in findings), (
+                    f"Multiple publication-review acceptances match finding {finding.identifier}."
+                )
+            review = exact[0] if exact else None
+            status = "accepted" if review else "stale" if related else "pending"
+            projected.append(WorkflowReasoningReviewProjection(
+                finding.identifier, observation.rule,
+                WorkflowReasoningAuditor.RULE_LABELS.get(observation.rule, observation.rule),
+                observation.finding_type, observation.node_id,
+                finding.content_identifier, observation.title, observation.explanation,
+                tuple(observation.evidence), status,
+                review.review_id if review else "", review.reviewer if review else "",
+                review.reviewed_at if review else "", review.note if review else "",
+            ))
+        return tuple(projected), ""
+
+    @staticmethod
+    def _pending_review(observation: Any, finding: Any) -> WorkflowReasoningReviewProjection:
+        return WorkflowReasoningReviewProjection(
+            finding.identifier, observation.rule,
+            WorkflowReasoningAuditor.RULE_LABELS.get(observation.rule, observation.rule),
+            observation.finding_type, observation.node_id,
+            finding.content_identifier, observation.title, observation.explanation,
+            tuple(observation.evidence), "pending",
+        )
+
+    @staticmethod
+    def _platform(workflow: dict[str, Any]) -> str:
+        value = workflow.get("platform") or workflow.get("platforms") or ""
+        return ", ".join(str(item) for item in value) if isinstance(value, list) else str(value)
 
     def _drafts(self, workflow_id: str, ambiguity: list[str]) -> tuple[_DraftSnapshot, ...]:
         directory = self.root / "app" / "workflow_drafts"
@@ -404,6 +530,8 @@ class WorkflowLifecycleProjectionService:
         draft: _DraftSnapshot | None, delta: tuple[SemanticDeltaOperation, ...],
         validation: WorkflowValidationProjection, runtime: WorkflowRuntimeProjection,
         ambiguity: list[str],
+        reasoning_reviews: tuple[WorkflowReasoningReviewProjection, ...],
+        reasoning_review_error: str,
     ) -> list[str]:
         reasons = list(dict.fromkeys(ambiguity))
         if not publication:
@@ -423,7 +551,14 @@ class WorkflowLifecycleProjectionService:
             reasons.append("Workflow progress-integrity validation is not clean.")
         if validation.quality_status == "ERROR":
             reasons.append("Workflow quality validation contains blocking errors.")
-        if validation.reasoning_findings:
+        if reasoning_review_error:
+            reasons.append(
+                "Publication reasoning-review records are malformed or ambiguous."
+            )
+        elif validation.reasoning_findings and (
+            len(reasoning_reviews) != len(validation.reasoning_findings)
+            or any(item.review_status != "accepted" for item in reasoning_reviews)
+        ):
             reasons.append("Deterministic workflow reasoning findings require review.")
         if publication and not runtime.matches_active_publication:
             reasons.append("Runtime selection is not coherent with the active publication.")

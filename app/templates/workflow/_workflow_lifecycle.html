@@ -27,18 +27,18 @@
     </div>
     <p id="workflowLifecycleHumanReview" class="workflow-lifecycle__notice"{% if not lifecycle_view.has_unattributed_changes %} hidden{% endif %}>Authored or unattributed changes require human review and are not eligible for future automated publication.</p>
 
-    <details id="workflowLifecycleChanges" class="workflow-lifecycle__changes"{% if not lifecycle_view.changes %} hidden{% endif %}>
-        <summary>Review <span id="workflowLifecycleDetailsCount">{{ lifecycle_view.change_count }}</span> unpublished change{% if lifecycle_view.change_count != 1 %}s{% endif %}</summary>
-        <ul id="workflowLifecycleChangeList">
-            {% for change in lifecycle_view.changes %}
-            <li class="workflow-lifecycle__change">
-                <span class="workflow-lifecycle__tag">{{ change.category }}</span>
-                <span class="workflow-lifecycle__tag workflow-lifecycle__tag--{{ 'governed' if change.provenance == 'governed' else 'authored' }}">{{ 'Governed' if change.provenance == 'governed' else 'Authored/unattributed' }}</span>
-                <code>{{ change.operation }} {{ change.path }}</code>
-                <span class="workflow-lifecycle__delta">{{ change.before }} → {{ change.after }}</span>
-            </li>
-            {% endfor %}
+    {% set accepted_reviews = lifecycle_view.reasoning_reviews|selectattr('review_status', 'equalto', 'accepted')|list|length %}
+    {% set review_complete = lifecycle_view.reasoning_reviews|length > 0 and accepted_reviews == lifecycle_view.reasoning_reviews|length and not lifecycle_view.reasoning_review_error %}
+    <section id="workflowPublicationReviewSummary" class="workflow-publication-summary" aria-labelledby="workflowPublicationReviewSummaryTitle">
+        <h4 id="workflowPublicationReviewSummaryTitle">Publication review</h4>
+        <ul>
+            <li><span id="workflowPublicationReviewChangeCount">{{ lifecycle_view.change_count }}</span> unpublished change{% if lifecycle_view.change_count != 1 %}s{% endif %}</li>
+            <li id="workflowPublicationReviewFindingSummary">{{ lifecycle_view.reasoning_reviews|length }} reasoning finding{% if lifecycle_view.reasoning_reviews|length != 1 %}s{% endif %} {{ 'reviewed' if review_complete else 'require review' }}</li>
+            <li id="workflowPublicationReviewValidationSummary">{{ 'Validation clean' if lifecycle_view.validation_clean else 'Validation needs attention' }}</li>
         </ul>
-    </details>
-    <p id="workflowLifecycleNoChanges" class="workflow-lifecycle__empty"{% if lifecycle_view.change_count %} hidden{% endif %}>No unpublished changes.</p>
+        <p id="workflowPublicationReviewCompletion"{% if not review_complete %} hidden{% endif %}>Ready for publication review</p>
+        <button id="reviewPublicationReadinessButton" class="btn btn-sm btn-outline-primary" type="button" aria-controls="workflowReasoningPublicationReview" aria-expanded="false">
+            {{ 'View publication review' if review_complete else 'Review publication readiness' }}
+        </button>
+    </section>
 </section>

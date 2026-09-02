@@ -1,0 +1,109 @@
+{% set accepted_reviews = lifecycle_view.reasoning_reviews|selectattr('review_status', 'equalto', 'accepted')|list|length %}
+{% set review_complete = lifecycle_view.reasoning_reviews|length > 0 and accepted_reviews == lifecycle_view.reasoning_reviews|length and not lifecycle_view.reasoning_review_error %}
+<section id="workflowReasoningPublicationReview" class="workflow-publication-workspace" data-rendered-fingerprint="{{ lifecycle_view.draft_semantic_fingerprint }}" aria-labelledby="workflowReasoningPublicationReviewTitle" tabindex="-1" hidden>
+    <header class="workflow-publication-workspace__header">
+        <div>
+            <span class="workflow-panel__eyebrow">Governed release checkpoint</span>
+            <h2 id="workflowReasoningPublicationReviewTitle">Publication review</h2>
+            <p>{{ workflow.name }}</p>
+            <small>{% if lifecycle_view.active_version %}Draft based on Published v{{ lifecycle_view.active_version }}{% else %}Draft has no active publication{% endif %}</small>
+        </div>
+        <button class="btn btn-sm btn-outline-secondary" type="button" data-close-publication-review>
+            <i class="bi bi-arrow-left" aria-hidden="true"></i> Return to workflow
+        </button>
+    </header>
+
+    <div class="workflow-publication-workspace__body">
+        {% if publication_review_status == 'accepted' %}<p class="alert alert-success" role="status">The finding was accepted for publication review of this exact draft.</p>{% elif publication_review_status == 'invalid' %}<p class="alert alert-danger" role="alert">The publication acceptance was not recorded. Recheck the current finding, reviewer, reason, and draft state.</p>{% endif %}
+        <p id="workflowReasoningPublicationReviewStale" class="alert alert-warning" role="status" hidden>The editable draft changed. These review details describe an earlier draft; reload the Designer before making another decision.</p>
+        {% if lifecycle_view.reasoning_review_error %}<p class="alert alert-danger" role="alert">Publication-review records are malformed or ambiguous. Publication readiness remains blocked.</p>{% endif %}
+
+        <ol class="workflow-publication-workspace__checkpoints" aria-label="Publication review checkpoints">
+            <li>
+                <span>1</span><div><strong>Changes</strong><small>{{ lifecycle_view.change_count }} unpublished change{% if lifecycle_view.change_count != 1 %}s{% endif %}</small></div>
+            </li>
+            <li>
+                <span>2</span><div><strong>Validation</strong><small>{{ 'Workflow validation clean' if lifecycle_view.validation_clean else 'Workflow validation needs attention' }}</small></div>
+            </li>
+            <li>
+                <span>3</span><div><strong>Deterministic reasoning</strong><small>{{ lifecycle_view.reasoning_reviews|length }} finding{% if lifecycle_view.reasoning_reviews|length != 1 %}s{% endif %} {{ 'reviewed' if review_complete else 'require review' }}</small></div>
+            </li>
+        </ol>
+
+        <details id="workflowLifecycleChanges" class="workflow-publication-workspace__changes"{% if not lifecycle_view.changes %} hidden{% endif %}>
+            <summary>Review <span id="workflowLifecycleDetailsCount">{{ lifecycle_view.change_count }}</span> unpublished change{% if lifecycle_view.change_count != 1 %}s{% endif %}</summary>
+            <ul id="workflowLifecycleChangeList">
+                {% for change in lifecycle_view.changes %}
+                <li class="workflow-lifecycle__change">
+                    <span class="workflow-lifecycle__tag">{{ change.category }}</span>
+                    <span class="workflow-lifecycle__tag workflow-lifecycle__tag--{{ 'governed' if change.provenance == 'governed' else 'authored' }}">{{ 'Governed' if change.provenance == 'governed' else 'Authored/unattributed' }}</span>
+                    <code>{{ change.operation }} {{ change.path }}</code>
+                    <span class="workflow-lifecycle__delta">{{ change.before }} → {{ change.after }}</span>
+                </li>
+                {% endfor %}
+            </ul>
+        </details>
+        <p id="workflowLifecycleNoChanges" class="workflow-lifecycle__empty"{% if lifecycle_view.change_count %} hidden{% endif %}>No unpublished changes.</p>
+
+        <section class="workflow-publication-workspace__reasoning" aria-labelledby="workflowReasoningFindingsTitle">
+            <div class="workflow-publication-workspace__section-heading">
+                <div><span class="workflow-panel__eyebrow">Human decision required</span><h3 id="workflowReasoningFindingsTitle">Deterministic reasoning</h3></div>
+                <span>{{ accepted_reviews }} of {{ lifecycle_view.reasoning_reviews|length }} reviewed</span>
+            </div>
+            <div id="workflowReasoningReviewComplete" class="workflow-publication-workspace__complete" role="status"{% if not review_complete %} hidden{% endif %}>
+                <i class="bi bi-check-circle-fill" aria-hidden="true"></i>
+                <div><strong>Reasoning review complete</strong><p>All {{ lifecycle_view.reasoning_reviews|length }} deterministic reasoning findings have been explicitly reviewed for the current draft.</p></div>
+            </div>
+            <div id="workflowReasoningPublicationReviewList" class="workflow-publication-workspace__findings">
+            {% for finding in lifecycle_view.reasoning_reviews %}
+                {% set affected_node = workflow.nodes.get(finding.node_id, {}) if finding.node_id else {} %}
+                <article class="workflow-publication-finding workflow-publication-finding--{{ finding.review_status }}" data-reasoning-finding-id="{{ finding.finding_id }}">
+                    <header class="workflow-publication-finding__header">
+                        <div><h4>{{ finding.rule_label }}</h4><p>Affected step: {{ affected_node.get('title') or affected_node.get('question') or finding.node_id or 'Workflow' }}</p></div>
+                        <span class="workflow-publication-review__status workflow-publication-review__status--{{ finding.review_status }}">{{ 'Needs review' if finding.review_status == 'pending' else finding.review_status|title }}</span>
+                    </header>
+                    <p class="workflow-publication-finding__lead">{{ finding.title }}.</p>
+                    <div class="workflow-publication-finding__explanation">
+                        <h5>Why this was flagged</h5>
+                        <p>{{ finding.explanation }}</p>
+                        {% if finding.evidence %}<h5>What happens here</h5><ul>{% for item in finding.evidence %}<li>{{ item }}</li>{% endfor %}</ul>{% endif %}
+                    </div>
+                    <details class="workflow-publication-finding__technical">
+                        <summary>View technical evidence</summary>
+                        <dl>
+                            <div><dt>Rule</dt><dd><code>{{ finding.rule }}</code></dd></div>
+                            <div><dt>Finding ID</dt><dd><code>{{ finding.finding_id }}</code></dd></div>
+                            <div><dt>Node ID</dt><dd><code>{{ finding.node_id or 'workflow' }}</code></dd></div>
+                            <div><dt>Draft fingerprint</dt><dd><code>{{ lifecycle_view.draft_semantic_fingerprint }}</code></dd></div>
+                        </dl>
+                    </details>
+                    {% if finding.review_status == 'accepted' %}
+                        <div class="workflow-publication-finding__accepted" role="status">
+                            <i class="bi bi-check-circle-fill" aria-hidden="true"></i>
+                            <div><strong>Accepted for this publication</strong><span>{{ finding.reviewer }} · {{ finding.reviewed_at|friendly_datetime }}</span></div>
+                        </div>
+                        <details class="workflow-publication-finding__review-record"><summary>View review</summary><p><strong>Reason:</strong> {{ finding.note }}</p><p>This acceptance applies only to this current draft fingerprint. Any semantic draft change requires fresh review.</p></details>
+                    {% else %}
+                        {% if finding.review_status == 'stale' %}<p class="workflow-publication-finding__stale" role="status">This finding was reviewed against an earlier draft and must be reviewed again.</p>{% endif %}
+                        <section class="workflow-publication-finding__decision" aria-labelledby="reviewDecision{{ loop.index }}">
+                            <h5 id="reviewDecision{{ loop.index }}">Review decision</h5>
+                            <p>This finding may remain in the workflow if you determine it is intentional and appropriate for this publication. Acceptance applies only to the current draft; it does not resolve, suppress, or change Curator.</p>
+                            <form class="workflow-publication-review__form" method="post" action="{{ url_for('workflow_publication_reasoning_review', filename=filename) }}">
+                                <input type="hidden" name="csrf_token" value="{{ publication_review_csrf }}">
+                                <input type="hidden" name="finding_id" value="{{ finding.finding_id }}">
+                                <input type="hidden" name="draft_semantic_fingerprint" value="{{ lifecycle_view.draft_semantic_fingerprint }}">
+                                <label>Reviewer identity<input class="form-control" name="reviewer" maxlength="200" required></label>
+                                <label>Required reason<textarea class="form-control" name="note" rows="5" maxlength="2000" required></textarea></label>
+                                <div class="workflow-publication-finding__actions">
+                                    <button class="btn btn-sm btn-primary" type="submit">{{ 'Review again' if finding.review_status == 'stale' else 'Accept for this publication' }}</button>
+                                    <button class="btn btn-sm btn-outline-secondary" type="button" data-close-publication-review>Return to workflow</button>
+                                </div>
+                            </form>
+                        </section>
+                    {% endif %}
+                </article>
+            {% endfor %}
+            </div>
+        </section>
+    </div>
+</section>

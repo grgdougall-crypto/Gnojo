@@ -38,7 +38,7 @@
   </form>
   {% else %}
   <div class="curator-action-grid">
-    <a class="btn btn-primary" href="{{ url_for('curator_confusing_step_improvement_handoff', task_id=task.task_id, origin=task_origin, return_to=task_navigation.return_url) }}">Open affected step in Workflow Studio</a>
+    <a class="btn btn-primary" href="{{ url_for('curator_confusing_step_improvement_handoff', task_id=task.task_id, origin=task_origin, return_to=task_navigation.return_url) }}">Open affected step in Workflow Designer</a>
     {% if not proposal.published_version %}
     <form method="post" action="{{ url_for('curator_confusing_step_improvement', task_id=task.task_id) }}"><input type="hidden" name="origin" value="{{ task_origin }}"><input type="hidden" name="return_to" value="{{ task_navigation.return_url }}"><button class="btn btn-outline-primary" name="action" value="record_published">Record published version</button></form>
     {% else %}

@@ -173,11 +173,11 @@ class ContentQualityPageTests(unittest.TestCase):
         self.assertIn("Knowledge and Learning are content-derived coverage measures", html)
         self.assertIn("Percentage of instructional steps linked to supporting articles", html)
         self.assertIn("Percentage of questions and instructions with specific help text", html)
-        self.assertIn("Open in Workflow Studio", html)
+        self.assertIn("Open in Workflow Designer", html)
         self.assertIn("Run workflow", html)
         self.assertTrue(
             'aria-label="Run Higher-Layer Connectivity Diagnostics workflow"' in html
-            or 'aria-label="Open Higher-Layer Connectivity Diagnostics in Workflow Studio"' in html
+            or 'aria-label="Open Higher-Layer Connectivity Diagnostics in Workflow Designer"' in html
         )
 
     def test_editor_supports_direct_node_selection(self):
@@ -201,7 +201,7 @@ class ContentQualityPageTests(unittest.TestCase):
         self.assertIn("Send to Curator", before)
         self.assertIn("Open affected step", before)
         self.assertIn(
-            'aria-label="Open Computer Running Slowly affected step in Workflow Studio"',
+            'aria-label="Open Computer Running Slowly affected step in Workflow Designer"',
             before,
         )
         self.assertIn("/workflow-editor/windows_slow.json?node=confirm_windows", before)

@@ -30,16 +30,26 @@ class LandingPageActionTests(unittest.TestCase):
         self.assertIn("Command Library", html)
         self.assertIn("Browse Commands", html)
         self.assertIn('href="/commands"', html)
+        self.assertIn("Command Builder", html)
+        self.assertIn("Open Command Builder", html)
+        self.assertIn('href="/commands/builder"', html)
+        self.assertNotIn("Knowledge Studio", html)
         self.assertEqual(self.client.get("/commands").status_code, 200)
         for destination in (
             "Search Gnojo Knowledge",
-            "Knowledge Studio",
             "Review Drafts",
             "Published Articles",
             "Learning Library",
         ):
             with self.subTest(destination=destination):
                 self.assertIn(destination, html)
+
+    def test_command_builder_identifies_itself_truthfully(self):
+        html = self.client.get("/commands/builder").get_data(as_text=True)
+        self.assertIn("<title>\nCommand Builder | Gnojo", html)
+        self.assertIn("Content Studio", html)
+        self.assertIn("Command Builder", html)
+        self.assertNotIn("Knowledge Studio", html)
 
     def test_service_areas_link_to_focused_searches(self):
         self.assertIn("Windows+macOS+applications+printers+user+access", self.html)

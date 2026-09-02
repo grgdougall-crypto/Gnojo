@@ -132,17 +132,17 @@ class CuratorConfusingStepImprovementTests(unittest.TestCase):
             client = app.test_client()
             before = client.get(f"/curator/tasks/{self.task['task_id']}").get_data(as_text=True)
             self.assertIn("Prepare help-text proposal", before)
-            self.assertNotIn("Open affected step in Workflow Studio", before)
+            self.assertNotIn("Open affected step in Workflow Designer", before)
             self.service.prepare(self.task["task_id"])
             proposed = client.get(f"/curator/tasks/{self.task['task_id']}").get_data(as_text=True)
             self.assertIn("Proposed help text", proposed)
-            self.assertNotIn("Open affected step in Workflow Studio", proposed)
+            self.assertNotIn("Open affected step in Workflow Designer", proposed)
             self.service.edit(self.task["task_id"], "Clearer DNS context.")
             self.service.approve(
                 self.task["task_id"], reviewer="Alex Reviewer", note="Reviewed for clarity."
             )
             approved = client.get(f"/curator/tasks/{self.task['task_id']}").get_data(as_text=True)
-            self.assertIn("Open affected step in Workflow Studio", approved)
+            self.assertIn("Open affected step in Workflow Designer", approved)
             self.assertIn("Alex Reviewer", approved)
 
     def test_publication_association_validates_version_node_and_approved_wording(self):

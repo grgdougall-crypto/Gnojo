@@ -55,6 +55,8 @@ class ScriptBuilderTests(unittest.TestCase):
         self.assertIn("Article Builder Preview", self.client.get("/knowledge/builder").get_data(as_text=True))
         self.assertIn("Open Command Builder", studio)
         self.assertIn("Open Script Builder", studio)
+        self.assertIn("Build and review automation and diagnostic scripts.", studio)
+        self.assertNotIn("Use reviewed automation and diagnostic scripts.", studio)
         self.assertIn('href="/scripts/builder"', library)
         self.assertEqual(builder.status_code, 200)
         self.assertIn("Validate and preview", builder.get_data(as_text=True))

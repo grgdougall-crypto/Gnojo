@@ -77,7 +77,7 @@ class CuratorUxPassOneTests(unittest.TestCase):
 
     def test_maintenance_language_and_completion_actions_are_clear(self):
         wizard = (TEMPLATES / "curator_fix_wizard.html").read_text(encoding="utf-8")
-        for label in ["Ready to address now", "Repairs applied in this session", "Resolved outside this maintenance session", "Remaining review items", "Deferred for later", "Current knowledge debt"]:
+        for label in ["Starting queue (baseline)", "Added during session", "Currently actionable", "Completed in this session", "Resolved externally", "Remaining open items", "Deferred for later", "Current knowledge debt"]:
             self.assertIn(label, wizard)
         complete = (TEMPLATES / "curator_fix_complete.html").read_text(encoding="utf-8")
         for action in ["Run Full Curator Audit", "View Remaining Work", "Return to Curator Dashboard", "Start Another Fix Wizard Session"]:

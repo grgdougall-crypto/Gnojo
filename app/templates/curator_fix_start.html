@@ -22,6 +22,19 @@
       <button class="btn btn-primary btn-lg" type="submit">{{ 'Resume Fix Wizard Session' if sessions|selectattr('ended_at', 'none')|list else 'Start Fix Wizard Session' }}</button>
     </form>
   </section>
-  {% if sessions %}<section class="quality-section mt-4" aria-labelledby="resumeTitle"><h2 id="resumeTitle">Resume a Fix Wizard Session</h2><div class="d-grid gap-2">{% for session in sessions if not session.ended_at %}<a class="integrity-record text-decoration-none" href="{{ url_for('curator_fix_session', session_id=session.session_id) }}" aria-label="Resume Fix Wizard session {{ session.session_id }}"><strong>{{ session.session_id }}</strong><span class="d-block">Reviewer {{ session.started_by }} &middot; {{ session.handled }} of {{ session.finding_count }} reviewed &middot; Current debt {{ session.current_debt }}</span></a>{% endfor %}</div></section>{% endif %}
+  {% if sessions %}
+  <section class="quality-section mt-4" aria-labelledby="resumeTitle">
+    <h2 id="resumeTitle">Resume a Fix Wizard Session</h2>
+    <div class="d-grid gap-2">
+      {% for session in sessions if not session.ended_at %}
+      <a class="integrity-record curator-fix-session-card text-decoration-none" href="{{ url_for('curator_fix_session', session_id=session.session_id) }}" aria-label="Resume Fix Wizard session {{ session.session_id }} for {{ session.started_by }}: {{ session.progress.original_queue }} starting, {{ session.progress.discovered_during_session }} added, {{ session.progress.remaining }} remaining, {{ session.progress.handled }} handled, {{ session.progress.session_repairs }} completed in this session, {{ session.progress.external_resolutions }} resolved externally">
+        <span class="curator-fix-session-card__heading"><strong>Reviewer {{ session.started_by }}</strong><code>{{ session.session_id }}</code></span>
+        <span class="curator-fix-session-card__metrics"><span><strong>{{ session.progress.original_queue }}</strong> starting</span><span><strong>{{ session.progress.discovered_during_session }}</strong> added</span><span><strong>{{ session.progress.remaining }}</strong> remaining</span></span>
+        <span class="curator-fix-session-card__outcomes"><span>{{ session.progress.handled }} handled</span><span>{{ session.progress.session_repairs }} completed in this session</span><span>{{ session.progress.external_resolutions }} resolved externally</span></span>
+      </a>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
 </main>
 {% endblock %}

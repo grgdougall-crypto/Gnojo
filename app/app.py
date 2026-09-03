@@ -2493,7 +2493,11 @@ def curator_fix_complete(session_id):
         session = sessions.finish(session_id, KnowledgeIntegrityService().report()) if request.method == "POST" else sessions.get(session_id)
     except CuratorFixSessionError:
         abort(404)
-    return render_template("curator_fix_complete.html", session=session)
+    return render_template(
+        "curator_fix_complete.html",
+        session=session,
+        progress=sessions.progress(session),
+    )
 
 @app.route("/curator/integrity")
 def knowledge_integrity_dashboard():

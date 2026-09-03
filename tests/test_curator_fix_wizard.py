@@ -146,7 +146,7 @@ class CuratorFixWizardTests(unittest.TestCase):
                 page = client.get(target)
                 self.assertEqual(page.status_code, 200)
                 self.assertIn(b"Browser Reviewer", page.data)
-                self.assertIn(b"Starting review queue", page.data)
+                self.assertIn(b"Starting queue (baseline)", page.data)
                 self.assertEqual(client.get(target).status_code, 200)
                 self.assertEqual(session_path.read_bytes(), before_get)
                 reconciler.reconcile.assert_not_called()
@@ -156,6 +156,141 @@ class CuratorFixWizardTests(unittest.TestCase):
         persisted = service.get(service.list_sessions()[0]["session_id"])
         self.assertEqual(persisted["started_by"], "Browser Reviewer")
         self.assertEqual(persisted["starting_integrity"], baseline)
+
+    def test_resume_card_uses_dynamic_queue_counters_without_impossible_progress(self):
+        service = CuratorFixSessionService(self.root)
+        session = service.create(
+            started_by="Greg Dougall", originating_audit_id="AUD-DYNAMIC",
+            queue=[
+                {"item_id": "FIX-1", "status": "completed"},
+                {"item_id": "FIX-2", "status": "resolved_external"},
+            ],
+            baseline=self.baseline(),
+        )
+        session["repair_queue"].extend([
+            {"item_id": "FIX-3", "status": "deferred", "introduced_after_start": True},
+            {"item_id": "FIX-4", "status": "open", "introduced_after_start": True},
+            {"item_id": "FIX-5", "status": "completed", "introduced_after_start": True},
+        ])
+        service.save(session)
+        path = service.directory / f"{session['session_id']}.json"
+        before = path.read_bytes()
+        flask_app.config.update(TESTING=True)
+        with patch("app.app.CuratorFixSessionService", return_value=service), \
+             patch("app.app.KnowledgeIntegrityService.report", return_value=self.baseline()):
+            with flask_app.test_client() as client:
+                response = client.get("/curator/fix")
+
+        self.assertEqual(response.status_code, 200)
+        page = response.get_data(as_text=True)
+        self.assertIn("Reviewer Greg Dougall", page)
+        self.assertIn("2</strong> starting", page)
+        self.assertIn("3</strong> added", page)
+        self.assertIn("1</strong> remaining", page)
+        self.assertIn("4 handled", page)
+        self.assertIn("2 completed in this session", page)
+        self.assertIn("1 resolved externally", page)
+        self.assertNotIn("4 of 2 reviewed", page)
+        self.assertNotIn(" of 2 reviewed", page)
+        self.assertEqual(path.read_bytes(), before)
+
+    def test_resume_card_handles_zero_added_and_zero_remaining_states(self):
+        service = CuratorFixSessionService(self.root)
+        no_added = service.create(
+            started_by="No Added", originating_audit_id=None,
+            queue=[{"item_id": "FIX-A", "status": "open"}], baseline=self.baseline(),
+        )
+        finished_queue = service.create(
+            started_by="Queue Finished", originating_audit_id=None,
+            queue=[{"item_id": "FIX-B", "status": "completed"}], baseline=self.baseline(),
+        )
+        finished_queue["repair_queue"].append(
+            {"item_id": "FIX-C", "status": "resolved_external", "introduced_after_start": True}
+        )
+        service.save(finished_queue)
+        flask_app.config.update(TESTING=True)
+        with patch("app.app.CuratorFixSessionService", return_value=service), \
+             patch("app.app.KnowledgeIntegrityService.report", return_value=self.baseline()):
+            with flask_app.test_client() as client:
+                page = client.get("/curator/fix").get_data(as_text=True)
+
+        self.assertIn("1</strong> starting", page)
+        self.assertIn("0</strong> added", page)
+        self.assertIn("1</strong> remaining", page)
+        self.assertIn("1</strong> added", page)
+        self.assertIn("0</strong> remaining", page)
+        self.assertIn(no_added["session_id"], page)
+        self.assertIn(finished_queue["session_id"], page)
+
+    def test_detail_and_completion_status_use_authoritative_dynamic_progress_read_only(self):
+        service = CuratorFixSessionService(self.root)
+        session = service.create(
+            started_by="Status Reviewer", originating_audit_id=None,
+            queue=[
+                {"item_id": "FIX-1", "status": "completed", "finding_type": "safety_risk"},
+                {"item_id": "FIX-2", "status": "resolved_external", "finding_type": "safety_risk"},
+            ],
+            baseline=self.baseline(),
+        )
+        session["repair_queue"].extend([
+            {"item_id": "FIX-3", "status": "deferred", "finding_type": "safety_risk",
+             "introduced_after_start": True},
+            {"item_id": "FIX-4", "status": "open", "finding_type": "editorial_opportunity",
+             "classification": "MANUAL", "safe_automatic": False, "priority": "Medium",
+             "knowledge_debt": 1, "confidence": 80, "estimated_effort": "Low",
+             "recommended_action": "Review the finding.", "what_will_change": "Nothing yet.",
+             "what_will_not_change": "Content remains unchanged.",
+             "affected_content": {"task_id": "GKT-4", "content_identifier": "example",
+                                  "evidence": "Example evidence."},
+             "introduced_after_start": True},
+        ])
+        service.save(session)
+        path = service.directory / f"{session['session_id']}.json"
+        before = path.read_bytes()
+        flask_app.config.update(TESTING=True)
+        with patch("app.app.CuratorFixSessionService") as session_service_class, \
+             patch("app.app.CuratorSessionReconciliationService") as reconciler:
+            session_service_class.return_value = service
+            session_service_class.progress.side_effect = CuratorFixSessionService.progress
+            with flask_app.test_client() as client:
+                detail = client.get(f"/curator/fix/{session['session_id']}")
+                complete = client.get(f"/curator/fix/{session['session_id']}/complete")
+
+        for page in (detail.get_data(as_text=True), complete.get_data(as_text=True)):
+            self.assertIn("Starting queue (baseline)", page)
+            self.assertIn("Added during session", page)
+            self.assertIn("Resolved externally", page)
+            self.assertIn("Deferred for later", page)
+            self.assertIn("Remaining open items", page)
+            self.assertIn("Resolved externally</span><strong>1", page)
+            self.assertIn("Deferred for later</span><strong>1", page)
+            self.assertIn("Remaining open items</span><strong>1", page)
+        self.assertIn("Items handled", complete.get_data(as_text=True))
+        self.assertIn("Items handled</span><strong>3", complete.get_data(as_text=True))
+        self.assertIn("Completed in this session</span><strong>1", complete.get_data(as_text=True))
+        self.assertNotIn("Human review remains", complete.get_data(as_text=True))
+        self.assertEqual(path.read_bytes(), before)
+        reconciler.return_value.reconcile.assert_not_called()
+
+    def test_finish_session_authority_and_completion_event_are_unchanged(self):
+        service = CuratorFixSessionService(self.root)
+        session = service.create(
+            started_by="Finishing Reviewer", originating_audit_id=None,
+            queue=[{"item_id": "FIX-1", "status": "open"}], baseline=self.baseline(),
+        )
+        flask_app.config.update(TESTING=True)
+        with patch("app.app.CuratorFixSessionService", return_value=service), \
+             patch("app.app.KnowledgeIntegrityService.report", return_value=self.baseline()):
+            with flask_app.test_client() as client:
+                response = client.post(f"/curator/fix/{session['session_id']}/complete")
+
+        self.assertEqual(response.status_code, 200)
+        persisted = service.get(session["session_id"])
+        self.assertIsNotNone(persisted["ended_at"])
+        self.assertEqual(
+            [event["event"] for event in persisted["events"]].count("session_completed"),
+            1,
+        )
 
     def test_fix_wizard_get_does_not_append_reconciliation_event(self):
         service = CuratorFixSessionService(self.root)
@@ -739,7 +874,9 @@ class CuratorFixWizardTests(unittest.TestCase):
         start = (templates / "curator_fix_start.html").read_text(encoding="utf-8")
         self.assertIn('id="main-content"', wizard)
         self.assertIn('aria-label="Breadcrumb"', wizard)
-        self.assertIn('aria-label="Session status"', wizard)
+        self.assertIn('aria-label="Fix Wizard session status"', wizard)
+        self.assertIn('aria-describedby="sessionStatusHelp"', wizard)
+        self.assertIn('aria-label="Resume Fix Wizard session', start)
         self.assertIn("Leave Fix Wizard", wizard)
         self.assertIn("Progress is already saved.", wizard)
         self.assertNotIn("Exit / Save Session", wizard)

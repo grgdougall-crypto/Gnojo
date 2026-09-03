@@ -6,18 +6,19 @@
   <nav aria-label="Breadcrumb"><a href="{{ url_for('curator_dashboard') }}">Curator</a> / <a href="{{ url_for('knowledge_integrity_dashboard') }}">Knowledge Integrity</a> / Fix Wizard</nav>
   <header class="curator-heading"><div><span class="section-eyebrow">Curator maintenance session</span><h1>Fix Wizard</h1><p><strong>Reviewer:</strong> {{ session.started_by }} &middot; <strong>Session:</strong> <code>{{ session.session_id }}</code> &middot; Started {{ session.started_at }} &middot; Last reconciled {{ session.last_reconciled_at or 'not yet' }}.</p></div><nav class="curator-action-scope curator-action-scope--navigation" aria-label="Fix Wizard session navigation"><span>Session navigation</span><div><form method="post" action="{{ url_for('curator_fix_refresh', session_id=session.session_id) }}"><button class="btn btn-outline-success">Refresh Session State</button></form><a class="btn btn-outline-primary" href="{{ url_for('curator_dashboard') }}">Back to Curator</a><a class="btn btn-outline-primary" href="{{ url_for('knowledge_integrity_dashboard') }}">Back to Knowledge Integrity</a><a class="btn btn-outline-info" href="{{ url_for('curator_fix_start') }}">Leave Fix Wizard</a></div><small>Progress is already saved.</small></nav></header>
   {% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% elif status == 'task_resolved' %}<div class="alert alert-success" role="status">Task resolved and session reconciled. {{ progress.current_actionable }} actionable {{ 'item remains' if progress.current_actionable == 1 else 'items remain' }}; the next open repair in this filter is shown below.</div>{% elif status == 'reconciled_changed' %}<div class="alert alert-success" role="status">Session state updated from current Knowledge Task and repository evidence. {{ progress.current_actionable }} actionable {{ 'item remains' if progress.current_actionable == 1 else 'items remain' }}.</div>{% elif status == 'reconciled_unchanged' %}<div class="alert alert-info" role="status">Session state is already synchronized. No queue or counter changes were required.</div>{% elif status %}<div class="alert alert-success" role="status">Maintenance item {{ status|replace('_',' ') }}. Targeted verification controls debt reduction.</div>{% endif %}
-  <section class="curator-metrics" aria-label="Session status">
-    <article><span>Starting review queue</span><strong>{{ progress.original_queue }}</strong></article>
-    <article><span>New during session</span><strong>{{ progress.discovered_during_session }}</strong></article>
-    <article><span>Ready to address now</span><strong>{{ progress.current_actionable or 0 }}</strong></article>
-    <article><span>Repairs applied in this session</span><strong>{{ progress.session_repairs or 0 }}</strong></article>
-    <article><span>Resolved outside this maintenance session</span><strong>{{ progress.external_resolutions or 0 }}</strong></article>
-    <article><span>Unavailable during external verification</span><strong>{{ progress.external_unavailable or 0 }}</strong></article>
+  <p class="form-text mb-2" id="sessionStatusHelp">The starting queue is a fixed baseline. Added and remaining items reflect the session's current queue; outcomes distinguish work handled here from changes made elsewhere.</p>
+  <section class="curator-metrics" aria-label="Fix Wizard session status" aria-describedby="sessionStatusHelp">
+    <article><span>Starting queue (baseline)</span><strong>{{ progress.original_queue }}</strong></article>
+    <article><span>Added during session</span><strong>{{ progress.discovered_during_session }}</strong></article>
+    <article><span>Currently actionable</span><strong>{{ progress.current_actionable or 0 }}</strong></article>
+    <article><span>Completed in this session</span><strong>{{ progress.session_repairs or 0 }}</strong></article>
+    <article><span>Resolved externally</span><strong>{{ progress.external_resolutions or 0 }}</strong></article>
+    <article><span>Unavailable after external verification</span><strong>{{ progress.external_unavailable or 0 }}</strong></article>
     <article><span>Deferred for later</span><strong>{{ progress.deferred or 0 }}</strong></article>
-    <article><span>Remaining review items</span><strong>{{ progress.remaining or 0 }}</strong></article>
+    <article><span>Remaining open items</span><strong>{{ progress.remaining or 0 }}</strong></article>
     <article><span>Starting knowledge debt</span><strong>{{ session.starting_debt }}</strong></article>
     <article><span>Current knowledge debt</span><strong>{{ session.current_debt }}</strong></article>
-    <article><span>Debt reduced by session repairs</span><strong>{{ session.session_debt_reduced or 0 }}</strong></article>
+    <article><span>Debt reduced by session work</span><strong>{{ session.session_debt_reduced or 0 }}</strong></article>
     <article><span>Debt reduced by external changes</span><strong>{{ session.external_debt_reduced or 0 }}</strong></article>
     <article><span>Total knowledge debt reduced</span><strong>{{ session.debt_reduced }}</strong></article>
   </section>
@@ -29,7 +30,7 @@
   </nav>
   {% if item %}
   <section class="quality-section" aria-labelledby="findingTitle">
-    <div class="quality-section__heading"><div><span class="badge text-bg-secondary">{{ item.finding_type|replace('_',' ')|title }}</span><h2 id="findingTitle">{{ item.classification|replace('_',' ')|title }}</h2></div><div><span class="badge {{ 'text-bg-success' if item.safe_automatic else 'text-bg-secondary' if item.classification in ['CREATE_ARTICLE_REQUIRED','MANUAL'] else 'text-bg-warning' }}">{{ 'SAFE' if item.safe_automatic else 'MANUAL' if item.classification in ['CREATE_ARTICLE_REQUIRED','MANUAL'] else 'REVIEW REQUIRED' }}</span><span class="d-block">Open repair {{ progress.current_position }} of {{ progress.filtered_actionable }}</span><small class="text-secondary">Within the current {{ category|replace('_',' ') }} filter</small></div></div>
+    <div class="quality-section__heading"><div><span class="badge text-bg-secondary">{{ item.finding_type|replace('_',' ')|title }}</span><h2 id="findingTitle">{{ item.classification|replace('_',' ')|title }}</h2></div><div><span class="badge {{ 'text-bg-success' if item.safe_automatic else 'text-bg-secondary' if item.classification in ['CREATE_ARTICLE_REQUIRED','MANUAL'] else 'text-bg-warning' }}">{{ 'SAFE' if item.safe_automatic else 'MANUAL' if item.classification in ['CREATE_ARTICLE_REQUIRED','MANUAL'] else 'REVIEW REQUIRED' }}</span><span class="d-block">Open item {{ progress.current_position }} of {{ progress.filtered_actionable }} in this filter</span><small class="text-secondary">{{ category|replace('_',' ')|title }} items currently available</small></div></div>
     <div class="curator-status-grid">
       <article><span>Priority</span><strong>{{ item.priority }}</strong></article><article><span>Knowledge debt</span><strong>{{ item.knowledge_debt }}</strong></article><article><span>Confidence</span><strong>{{ item.confidence }}%</strong></article><article><span>Effort</span><strong>{{ item.estimated_effort }}</strong></article>
     </div>

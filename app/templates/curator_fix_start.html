@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Fix Wizard | Gnojo{% endblock %}
 {% block content %}
-<main class="container curator-page" id="main-content">
+<div class="container curator-page" id="main-content">
   {% with curator_active='maintenance' %}{% include 'partials/_curator_nav.html' %}{% endwith %}
   <nav aria-label="Breadcrumb"><a href="{{ url_for('curator_dashboard') }}">Curator</a> / <a href="{{ url_for('knowledge_integrity_dashboard') }}">Knowledge Integrity</a> / Fix Wizard</nav>
   <header class="curator-heading"><div><span class="section-eyebrow">Curator maintenance</span><h1>Fix Wizard</h1><p>Start or resume a guided maintenance session to review one current integrity finding at a time. Nothing changes until you preview and confirm a supported repair.</p></div></header>
@@ -36,5 +36,5 @@
     </div>
   </section>
   {% endif %}
-</main>
+</div>
 {% endblock %}

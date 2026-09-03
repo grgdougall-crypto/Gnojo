@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Fix Wizard Complete | Gnojo{% endblock %}
 {% block content %}
-<main class="container curator-page" id="main-content">
+<div class="container curator-page" id="main-content">
 {% with curator_active='maintenance' %}{% include 'partials/_curator_nav.html' %}{% endwith %}
 <header class="curator-heading"><div><span class="section-eyebrow">Curator maintenance session</span><h1>Fix Wizard Complete</h1><p>{{ session.session_id }} preserves every decision and verification result.</p></div></header>
 <p class="form-text mb-2" id="completedSessionStatusHelp">The starting queue is the fixed baseline. Added items and outcomes reflect everything tracked during this session.</p>
@@ -12,5 +12,5 @@
 <div class="col-md-6"><article class="integrity-record"><h3 class="h5">Continue this session</h3><p>Return to work that was deferred, skipped, or still requires review.</p><a class="btn btn-outline-primary" href="{{ url_for('curator_fix_session', session_id=session.session_id) }}">View Remaining Work</a></article></div>
 <div class="col-md-6"><article class="integrity-record"><h3 class="h5">Review Curator operations</h3><p>Return to the overview, audit controls, and Knowledge Tasks.</p><a class="btn btn-outline-primary" href="{{ url_for('curator_dashboard') }}">Return to Curator Dashboard</a></article></div>
 <div class="col-md-6"><article class="integrity-record"><h3 class="h5">Begin another Fix Wizard session</h3><p>Start a new supervised maintenance session from current repository evidence.</p><a class="btn btn-outline-info" href="{{ url_for('curator_fix_start') }}">Start Another Fix Wizard Session</a></article></div>
-</div></section></main>
+</div></section></div>
 {% endblock %}

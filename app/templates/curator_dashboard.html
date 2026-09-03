@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Curator Dashboard | Gnojo{% endblock %}
 {% block content %}
-<main class="container curator-page" aria-labelledby="curatorTitle">
+<div class="container curator-page" aria-labelledby="curatorTitle">
   {% with curator_active='overview' %}{% include 'partials/_curator_nav.html' %}{% endwith %}
   <header class="curator-heading">
     <div><span class="section-eyebrow">Knowledge operations</span><h1 id="curatorTitle">Curator Dashboard</h1><p>See what needs attention, choose the next knowledge task, and monitor Curator's operational health.</p></div>
@@ -139,6 +139,6 @@
   </section>
   {% if dashboard.integrity is defined %}<section class="quality-section" aria-labelledby="integrityTitle"><div class="quality-section__heading"><div><span class="section-eyebrow">Deterministic Knowledge Integrity</span><h2 id="integrityTitle">Identity and Relationships</h2><p>These narrower checks cover canonical identities, publication provenance, and workflow links from Gnojo's authoritative stores; they are distinct from the broader Curator finding count above.</p></div><a class="btn btn-outline-primary" href="{{ url_for('knowledge_integrity_dashboard') }}">Open Knowledge Integrity</a></div><div class="curator-status-grid"><article><span>Broken relationships</span><strong>{{ dashboard.integrity.counts.broken_relationships }}</strong></article><article><span>Duplicate groups</span><strong>{{ dashboard.integrity.counts.duplicate_groups }}</strong></article><article><span>Missing review metadata</span><strong>{{ dashboard.integrity.counts.missing_review_metadata }}</strong></article><article><span>Orphaned articles</span><strong>{{ dashboard.integrity.counts.orphaned_articles }}</strong></article></div></section>{% endif %}
   {% endif %}
-</main>
+</div>
 <script>(()=>{const f=document.getElementById('curatorAuditForm'),b=document.getElementById('curatorAuditButton');if(!f||!b)return;f.addEventListener('submit',()=>{b.disabled=true;b.setAttribute('aria-busy','true');const s=b.querySelector('span');if(s)s.textContent='Running Curator Audit…';});})();</script>
 {% endblock %}

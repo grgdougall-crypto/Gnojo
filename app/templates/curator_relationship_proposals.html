@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Relationship Proposals | Curator | Gnojo{% endblock %}
 {% block content %}
-<main class="container" aria-labelledby="relationshipQueueTitle">
+<div class="container" aria-labelledby="relationshipQueueTitle">
   {% if not harness_mode %}{% with curator_active='relationships' %}{% include 'partials/_curator_nav.html' %}{% endwith %}{% endif %}
 
   {% if harness_mode %}<div class="alert alert-warning" role="alert"><strong>Temporary Phase 3 development/test fixtures.</strong> This page uses an isolated temporary repository and temporary Curator memory. It is not production Curator state.<form class="mt-2" method="post" action="{{ url_for('phase3_relationship_harness_reset') }}"><button class="btn btn-sm btn-warning" type="submit">Reset all fixture cases</button></form></div>{% endif %}
@@ -34,5 +34,5 @@
       </article></div>{% endfor %}
     </div>{% else %}<div class="alert alert-info" role="status">{% if queue.actionable_count %}No relationship repair proposals match the selected filters.{% else %}No relationship repair proposals currently require review.{% endif %}</div>{% endif %}
   </section>
-</main>
+</div>
 {% endblock %}

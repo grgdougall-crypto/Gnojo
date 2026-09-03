@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Knowledge Integrity | Gnojo{% endblock %}
 {% block content %}
-<main class="container curator-page">
+<div class="container curator-page">
   {% with curator_active='integrity' %}{% include 'partials/_curator_nav.html' %}{% endwith %}
   <header class="curator-heading"><div><span class="section-eyebrow">Curator operations</span><h1>Knowledge Integrity</h1><p>One view of canonical identities, workflow relationships, publication provenance, and lifecycle health.</p></div><div class="d-flex flex-wrap gap-2"><a class="btn btn-success" href="{{ url_for('curator_fix_start') }}">Open Fix Wizard</a><a class="btn btn-outline-primary" href="{{ url_for('curator_dashboard') }}">Back to Curator</a></div></header>
   {% if status == 'reindexed' %}<div class="alert alert-success">Knowledge inventory rebuilt from the current canonical records.</div>{% elif status == 'normalized' %}<div class="alert alert-success">Canonical identity metadata normalized for {{ request.args.get('changed', '0') }} records and the index was rebuilt.</div>{% elif status == 'merged' %}<div class="alert alert-success">Duplicate records merged, references updated, and superseded copies archived.</div>{% endif %}
@@ -44,5 +44,5 @@
     {% else %}<pre class="integrity-evidence">{{ integrity[key]|tojson(indent=2) }}</pre>{% endif %}
   {% endif %}</section>
   {% endif %}{% endfor %}
-</main>
+</div>
 {% endblock %}

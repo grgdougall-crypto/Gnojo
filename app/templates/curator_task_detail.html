@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{{ task.task_id }} | Curator | Gnojo{% endblock %}
 {% block content %}
-<main class="container curator-task-page" aria-labelledby="taskTitle">
+<div class="container curator-task-page" aria-labelledby="taskTitle">
   {% if not task_navigation %}{% set task_navigation = namespace(origin='overview', return_url=url_for('curator_dashboard'), return_label='Return to Curator Overview') %}{% endif %}
   {% set task_origin = task_origin|default(task_navigation.origin) %}
   {% set task_return_context = task_return_context|default(none) %}
@@ -144,5 +144,5 @@
     </div>
 
   </div>
-</main>
+</div>
 {% endblock %}

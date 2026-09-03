@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Coverage Campaigns | Gnojo{% endblock %}
 {% block content %}
-<main class="container curator-page" id="main-content" aria-labelledby="campaignsTitle">
+<div class="container curator-page" id="main-content" aria-labelledby="campaignsTitle">
   {% with curator_active='growth' %}{% include 'partials/_curator_nav.html' %}{% endwith %}
   <nav aria-label="Breadcrumb"><a href="{{ url_for('curator_growth_dashboard') }}">Curator Growth</a> / Coverage Campaigns</nav>
   <header class="curator-heading"><div><span class="section-eyebrow">Knowledge Factory</span><h1 id="campaignsTitle">Coverage Campaigns</h1><p>Plan knowledge expansion from Gnojo's current inventory. Analysis is deterministic and never creates or publishes content.</p></div><a class="btn btn-outline-primary" href="{{ url_for('curator_growth_dashboard') }}">Back to Growth</a></header>
@@ -22,5 +22,5 @@
     <div class="quality-section__heading"><div><span class="section-eyebrow">Persistent plans</span><h2 id="campaignListTitle">Campaign Inventory</h2></div><span>{{ campaigns|length }} campaigns</span></div>
     {% for campaign in campaigns %}<article class="integrity-record mb-3"><div class="quality-section__heading"><div><span class="badge text-bg-secondary">{{ campaign.status|replace('_', ' ')|title }}</span><h3>{{ campaign.title }}</h3></div><a class="btn btn-outline-primary" href="{{ url_for('knowledge_coverage_campaign_detail', campaign_id=campaign.campaign_id) }}">Open Campaign</a></div><p>{{ campaign.objective }}</p><p class="text-muted mb-0">{{ campaign.scope }} · {{ campaign.platforms|join(', ') }} · {{ campaign.campaign_id }}</p></article>{% else %}<p class="text-muted mb-0">No coverage campaigns have been created.</p>{% endfor %}
   </section>
-</main>
+</div>
 {% endblock %}

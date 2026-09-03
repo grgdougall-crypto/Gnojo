@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Fix Wizard {{ session.session_id }} | Gnojo{% endblock %}
 {% block content %}
-<main class="container curator-page" id="main-content">
+<div class="container curator-page" id="main-content">
   {% with curator_active='maintenance' %}{% include 'partials/_curator_nav.html' %}{% endwith %}
   <nav aria-label="Breadcrumb"><a href="{{ url_for('curator_dashboard') }}">Curator</a> / <a href="{{ url_for('knowledge_integrity_dashboard') }}">Knowledge Integrity</a> / Fix Wizard</nav>
   <header class="curator-heading"><div><span class="section-eyebrow">Curator maintenance session</span><h1>Fix Wizard</h1><p><strong>Reviewer:</strong> {{ session.started_by }} &middot; <strong>Session:</strong> <code>{{ session.session_id }}</code> &middot; Started {{ session.started_at }} &middot; Last reconciled {{ session.last_reconciled_at or 'not yet' }}.</p></div><nav class="curator-action-scope curator-action-scope--navigation" aria-label="Fix Wizard session navigation"><span>Session navigation</span><div><form method="post" action="{{ url_for('curator_fix_refresh', session_id=session.session_id) }}"><button class="btn btn-outline-success">Refresh Session State</button></form><a class="btn btn-outline-primary" href="{{ url_for('curator_dashboard') }}">Back to Curator</a><a class="btn btn-outline-primary" href="{{ url_for('knowledge_integrity_dashboard') }}">Back to Knowledge Integrity</a><a class="btn btn-outline-info" href="{{ url_for('curator_fix_start') }}">Leave Fix Wizard</a></div><small>Progress is already saved.</small></nav></header>
@@ -60,5 +60,5 @@
   </section>
   {% else %}<section class="quality-section"><h2>Queue reviewed</h2><p>Every item in this Fix Wizard session now has an outcome.</p></section>{% endif %}
   <section class="quality-section curator-action-scope curator-action-scope--session" aria-labelledby="sessionActionsTitle"><div class="curator-action-scope__heading"><span class="section-eyebrow">Entire Fix Wizard session</span><h2 id="sessionActionsTitle">Session actions</h2><p>These controls affect the complete Fix Wizard queue, not only the finding shown above.</p></div><div class="d-flex flex-wrap justify-content-between gap-2"><a class="btn btn-outline-info" href="{{ url_for('curator_fix_safe_items', session_id=session.session_id) }}">Repair All Safe Items</a><form method="post" action="{{ url_for('curator_fix_complete', session_id=session.session_id) }}"><button class="btn btn-primary">Finish Fix Wizard Session</button></form></div></section>
-</main>
+</div>
 {% endblock %}

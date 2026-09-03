@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Campaign Control Center | Gnojo{% endblock %}
 {% block content %}
-<main class="container curator-page" id="main-content" aria-labelledby="controlTitle">
+<div class="container curator-page" id="main-content" aria-labelledby="controlTitle">
   {% with curator_active='growth' %}{% include 'partials/_curator_nav.html' %}{% endwith %}
   <nav aria-label="Breadcrumb"><a href="{{ url_for('knowledge_coverage_campaign_detail', campaign_id=orchestration.campaign_id) }}">Coverage Campaign</a> / Control Center</nav>
   <header class="curator-heading"><div><span class="section-eyebrow">Supervised Knowledge Factory</span><h1 id="controlTitle">Campaign Control Center</h1><p>{{ orchestration.campaign_objective }}</p></div>
@@ -43,5 +43,5 @@
   <section class="quality-section" aria-labelledby="staleTitle"><span class="section-eyebrow">Stale dependencies</span><h2 id="staleTitle">Upstream Changes</h2>{% for item in orchestration.stale_dependencies %}<article class="integrity-record mb-2"><strong>{{ item.changed }}</strong><p>{{ item.explanation }}</p><p class="mb-0">Downstream: {{ item.downstream_impact|join(' → ') }}</p></article>{% else %}<p class="text-muted mb-0">No stale dependency chains are recorded.</p>{% endfor %}</section>
   <section class="quality-section" aria-labelledby="graphTitle"><span class="section-eyebrow">Traceability</span><h2 id="graphTitle">Dependency Graph</h2><ul>{% for edge in orchestration.dependency_graph.edges %}<li><code>{{ edge.from }}</code> → <code>{{ edge.to }}</code></li>{% else %}<li>No dependencies recorded.</li>{% endfor %}</ul></section>
   <section class="quality-section" aria-labelledby="historyTitle"><span class="section-eyebrow">History</span><h2 id="historyTitle">Orchestration Runs</h2><ol>{% for event in orchestration.history|reverse %}<li><strong>{{ event.event|replace('_',' ')|title }}</strong> · {{ event.at }} · {{ event.actor }}</li>{% endfor %}</ol></section>
-</main>
+</div>
 {% endblock %}

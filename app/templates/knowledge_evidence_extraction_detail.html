@@ -1,7 +1,7 @@
-﻿{% extends "base.html" %}
+{% extends "base.html" %}
 {% block title %}Evidence Review | {{ package.source_title }}{% endblock %}
 {% block content %}
-<main class="container curator-page evidence-review" id="main-content" aria-labelledby="extractionTitle">
+<div class="container curator-page evidence-review" id="main-content" aria-labelledby="extractionTitle">
   {% with curator_active='growth' %}{% include 'partials/_curator_nav.html' %}{% endwith %}
   <nav class="d-flex justify-content-between align-items-center gap-3 flex-wrap" aria-label="Breadcrumb">
     <span><a href="{{ url_for('knowledge_source_research_detail', package_id=package.research_package_id) }}">Source Research</a> / Evidence Review</span>
@@ -116,5 +116,5 @@
     <details><summary>Approved source and extraction history</summary><dl class="integrity-detail-grid mt-3"><dt>Canonical URL</dt><dd><a href="{{ package.canonical_source_url }}" target="_blank" rel="noopener noreferrer">{{ package.canonical_source_url }}</a></dd><dt>Authority</dt><dd>Tier {{ package.authority_tier }}</dd><dt>Retrieval</dt><dd>{{ package.retrieval.result if package.retrieval else 'Not started' }}</dd><dt>Fingerprint</dt><dd><code>{{ package.source_fingerprint or 'Not captured' }}</code></dd></dl><ol>{% for event in package.history|reverse %}<li>{{ event.event|replace('_',' ')|title }} Â· {{ event.at }} Â· {{ event.actor }}</li>{% endfor %}</ol>{% if package.evidence_revisions %}<p>{{ package.evidence_revisions|length }} prior evidence revision(s) preserved.</p>{% endif %}</details>
     {% if reextraction.available %}<div class="alert alert-warning mt-3 mb-0"><p>Updated deterministic extraction rules or source content are available. Re-extraction preserves the previous revision and resets active evidence to human review.</p><form method="post" action="{{ url_for('knowledge_evidence_reextract', extraction_id=package.extraction_id) }}"><button class="btn btn-warning" type="submit">Run Extraction Again</button></form></div>{% endif %}
   </section>
-</main>
+</div>
 {% endblock %}

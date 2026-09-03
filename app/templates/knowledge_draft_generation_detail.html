@@ -2,7 +2,7 @@
 {% block title %}{{ package.proposed_title }} | Draft Package{% endblock %}
 {% block content %}
 {% set refinement = package.refinement or {} %}
-<main class="container curator-page" id="main-content" aria-labelledby="draftPackageTitle">
+<div class="container curator-page" id="main-content" aria-labelledby="draftPackageTitle">
   {% with curator_active='growth' %}{% include 'partials/_curator_nav.html' %}{% endwith %}
   <nav aria-label="Breadcrumb"><a href="{{ url_for('knowledge_coverage_campaign_detail', campaign_id=package.campaign_id) }}">Coverage Campaign</a> / {{ package.package_id }}</nav>
   <header class="curator-heading">
@@ -48,5 +48,5 @@
     {% if package.generation_status not in ['accepted_into_content_studio','rejected','superseded'] %}<form class="d-inline" method="post" action="{{ url_for('knowledge_draft_generation_reject', package_id=package.package_id) }}"><button class="btn btn-outline-danger" type="submit">Reject Package</button></form>{% endif %}
     {% if package.generation_status == 'accepted_into_content_studio' %}<a class="btn btn-primary" href="{{ url_for('review_draft', article_id=package.content_studio_article_id) }}">Open Content Studio Draft</a>{% endif %}
   </section>
-</main>
+</div>
 {% endblock %}

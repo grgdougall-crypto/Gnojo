@@ -5,7 +5,7 @@
 {% block content %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/workflow_designer.css') }}">
 
-<main
+<div
     class="workflow-designer container-fluid"
     aria-labelledby="workflow-title"
     data-node-save-url="{{ url_for('update_workflow_node', filename=filename, node_id='__NODE_ID__') }}"
@@ -49,7 +49,7 @@
         {% include "workflow/_node_details.html" %}
         {% include "workflow/_workflow_publication_review.html" %}
     </div>
-</main>
+</div>
 
 <dialog id="workflowExportDialog" class="workflow-publication-dialog" aria-labelledby="exportDialogTitle">
     <div class="publication-dialog__header">
@@ -96,9 +96,9 @@
     </div>
     <div class="simulator-profile-controls" aria-label="Simulation device profile">
         <span>Test as</span>
-        <select id="simulatorPlatform"><option value="">No profile</option>{% for value in ['Windows','macOS','Linux','ChromeOS','Other'] %}<option>{{ value }}</option>{% endfor %}</select>
-        <select id="simulatorDeviceType"><option value="Laptop">Laptop</option>{% for value in ['Desktop','Server','Tablet','Virtual machine','Other'] %}<option>{{ value }}</option>{% endfor %}</select>
-        <select id="simulatorConnection"><option value="Wi-Fi">Wi-Fi</option>{% for value in ['Ethernet','Cellular','VPN','Offline','Other'] %}<option>{{ value }}</option>{% endfor %}</select>
+        <select id="simulatorPlatform" aria-label="Simulation platform"><option value="">No profile</option>{% for value in ['Windows','macOS','Linux','ChromeOS','Other'] %}<option>{{ value }}</option>{% endfor %}</select>
+        <select id="simulatorDeviceType" aria-label="Simulation device type"><option value="Laptop">Laptop</option>{% for value in ['Desktop','Server','Tablet','Virtual machine','Other'] %}<option>{{ value }}</option>{% endfor %}</select>
+        <select id="simulatorConnection" aria-label="Simulation connection type"><option value="Wi-Fi">Wi-Fi</option>{% for value in ['Ethernet','Cellular','VPN','Offline','Other'] %}<option>{{ value }}</option>{% endfor %}</select>
     </div>
     <div id="simulatorPath" class="simulator-path" aria-label="Simulated path"></div>
     <div id="simulatorContent" class="simulator-content"></div>

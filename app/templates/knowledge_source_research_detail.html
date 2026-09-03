@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Source Research | {{ package.target_coverage_area|title }}{% endblock %}
 {% block content %}
-<main class="container curator-page" id="main-content" aria-labelledby="researchTitle">
+<div class="container curator-page" id="main-content" aria-labelledby="researchTitle">
   {% with curator_active='growth' %}{% include 'partials/_curator_nav.html' %}{% endwith %}
   <nav aria-label="Breadcrumb"><a href="{{ url_for('knowledge_coverage_campaign_detail', campaign_id=package.campaign_id) }}">Coverage Campaign</a> / {{ package.package_id }}</nav>
   <header class="curator-heading"><div><span class="section-eyebrow">Authoritative source research</span><h1 id="researchTitle">{{ package.target_coverage_area|replace('-',' ')|title }}</h1><p>Supervised evidence research for {{ package.coverage_facet|replace('_',' ') }}. Candidates do not alter production content.</p></div><span class="badge text-bg-info">{{ package.status|replace('_',' ')|title }}</span></header>
@@ -17,5 +17,5 @@
   <section class="quality-section" aria-labelledby="reviewTitle"><span class="section-eyebrow">Human authority</span><h2 id="reviewTitle">Package Review</h2><form method="post" action="{{ url_for('knowledge_source_package_review', package_id=package.package_id) }}"><label class="form-label" for="researchNotes">Review notes</label><textarea class="form-control mb-3" id="researchNotes" name="notes" rows="4">{{ package.research_notes }}</textarea><div class="d-flex gap-2 flex-wrap"><button class="btn btn-success" name="status" value="approved" type="submit">Approve Research Package</button><button class="btn btn-outline-warning" name="status" value="needs_refresh" type="submit">Mark Needs Refresh</button><button class="btn btn-outline-danger" name="status" value="rejected" type="submit">Reject Package</button><button class="btn btn-outline-secondary" name="status" value="archived" type="submit">Archive</button></div></form><p class="text-muted mt-3 mb-0">Approval records reviewer intent only. It does not attach sources to articles or publish content.</p></section>
 
   <section class="quality-section" aria-labelledby="historyTitle"><span class="section-eyebrow">Traceability</span><h2 id="historyTitle">Research History</h2><ol>{% for event in package.history|reverse %}<li>{{ event.event|replace('_',' ')|title }} · {{ event.at }} · {{ event.actor }}</li>{% endfor %}</ol></section>
-</main>
+</div>
 {% endblock %}

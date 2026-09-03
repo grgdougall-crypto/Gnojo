@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{{ plan.article_title }} | Evidence Plan{% endblock %}
 {% block content %}
-<main class="container curator-page" id="main-content" aria-labelledby="claimPlanTitle">
+<div class="container curator-page" id="main-content" aria-labelledby="claimPlanTitle">
   {% with curator_active='growth' %}{% include 'partials/_curator_nav.html' %}{% endwith %}
   <nav aria-label="Breadcrumb">{% if plan.target_asset_type == 'workflow' %}<a href="{{ url_for('knowledge_coverage_campaign_detail', campaign_id=plan.campaign_id) }}">Coverage Campaign</a>{% else %}<a href="{{ url_for('knowledge_draft_generation_detail', package_id=plan.kdg_package_id) }}">Draft Package</a>{% endif %} / {{ plan.claim_plan_id }}</nav>
   <header class="curator-heading"><div><span class="section-eyebrow">Supervised evidence-to-claim planning</span><h1 id="claimPlanTitle">{{ plan.article_title }}</h1><p>Review deterministic mappings before any claim becomes drafting authority.</p></div><span class="badge text-bg-info">{{ plan.status|replace('_',' ')|title }}</span></header>
@@ -29,5 +29,5 @@
 
   <section class="quality-section"><span class="section-eyebrow">Drafting boundary</span><h2>Next Step</h2>{% if plan.status == 'ready_for_drafting' and plan.target_asset_type == 'workflow' %}<div class="alert alert-success">Approved workflow claims are ready for governed Phase 8 workflow generation. Return to the campaign and continue the supervised run.</div>{% elif plan.status == 'ready_for_drafting' %}<form method="post" action="{{ url_for('knowledge_draft_assembly_create', plan_id=plan.claim_plan_id) }}"><button class="btn btn-success" type="submit">Assemble Draft</button></form>{% else %}<div class="alert alert-warning">Only a complete plan with human-approved claims can cross the drafting boundary.</div>{% endif %}</section>
   <section class="quality-section"><span class="section-eyebrow">Traceable lifecycle</span><h2>History</h2><ol>{% for event in plan.history|reverse %}<li><strong>{{ event.event|replace('_',' ')|title }}</strong> &middot; {{ event.at }} &middot; {{ event.actor }}</li>{% endfor %}</ol></section>
-</main>
+</div>
 {% endblock %}

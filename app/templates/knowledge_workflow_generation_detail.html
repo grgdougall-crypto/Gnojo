@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Governed Workflow Generation | Gnojo{% endblock %}
 {% block content %}
-<main class="container curator-page" id="main-content" aria-labelledby="kwgTitle">
+<div class="container curator-page" id="main-content" aria-labelledby="kwgTitle">
   {% with curator_active='growth' %}{% include 'partials/_curator_nav.html' %}{% endwith %}
   <nav aria-label="Breadcrumb"><a href="{{ url_for('knowledge_coverage_campaigns') }}">Coverage Campaigns</a> / {{ package.generation_id }}</nav>
   <header class="curator-heading"><div><span class="section-eyebrow">Knowledge Factory Phase 8</span><h1 id="kwgTitle">Governed Workflow Generation</h1><p>Plan, validate, and review a traceable workflow before sending it to Content Studio.</p></div><span class="badge text-bg-info">{{ (package.effective_status or package.status)|replace('_',' ')|title }}</span></header>
@@ -19,5 +19,5 @@
   {% if package.status in ['draft_ready','needs_revision'] %}<section class="quality-section"><span class="section-eyebrow">Human review</span><h2>Review Decision</h2><form method="post" action="{{ url_for('knowledge_workflow_generation_review', generation_id=package.generation_id) }}"><textarea class="form-control mb-2" name="notes" placeholder="Record the review decision."></textarea><button class="btn btn-success" name="decision" value="approved" type="submit" {% if package.status != 'draft_ready' %}disabled{% endif %}>Approve for Content Studio</button> <button class="btn btn-warning" name="decision" value="needs_revision" type="submit">Needs Revision</button> <button class="btn btn-outline-danger" name="decision" value="rejected" type="submit">Reject</button></form></section>{% endif %}
   {% if package.status == 'approved_for_handoff' %}<section class="quality-section"><span class="section-eyebrow">Explicit handoff</span><h2>Send to Content Studio</h2><p>This creates or updates an editable draft. It does not publish.</p><form method="post" action="{{ url_for('knowledge_workflow_generation_handoff', generation_id=package.generation_id) }}"><button class="btn btn-primary" type="submit">Send to Content Studio</button></form></section>{% endif %}
   <section class="quality-section"><span class="section-eyebrow">Traceability</span><h2>Package History</h2><ol>{% for event in package.history|reverse %}<li><strong>{{ event.event|replace('_',' ')|title }}</strong> · {{ event.at }} · {{ event.actor }}</li>{% endfor %}</ol></section>
-</main>
+</div>
 {% endblock %}

@@ -297,7 +297,7 @@
             class="btn btn-outline-primary"
         >
             <i class="bi bi-arrow-left me-2"></i>
-            {{ 'Back to Search Results' if return_to.startswith('/search') else 'Back to Command Library' }}
+            {{ return_label or ('Back to Search Results' if return_to.startswith('/search') else 'Back to Command Library') }}
         </a>
 
     </div>

@@ -52,7 +52,20 @@ class CuratorUxPassThreeTests(unittest.TestCase):
             self.assertIn(required, source)
         self.assertIn("task.repair_eligibility is defined", source)
         self.assertIn("Structural repair preview available", source)
-        self.assertIn("no structural repair has been applied", source)
+        self.assertIn("no repair has been applied", source)
+
+    def test_related_content_disclosure_has_clear_native_affordance(self):
+        source = (TEMPLATES / "curator_task_detail.html").read_text(encoding="utf-8")
+        styles = (ROOT / "app" / "static" / "css" / "style.css").read_text(encoding="utf-8")
+        self.assertIn('<details class="quality-section mt-4 curator-related-disclosure"', source)
+        self.assertIn("Related Knowledge and Tasks", source)
+        self.assertIn("Show related items", source)
+        self.assertIn("Hide related items", source)
+        self.assertIn('class="bi bi-chevron-down" aria-hidden="true"', source)
+        self.assertIn(".curator-related-disclosure > summary:hover", styles)
+        self.assertIn(".curator-related-disclosure > summary:focus-visible", styles)
+        self.assertIn(".curator-related-disclosure[open] .curator-related-disclosure__hide", styles)
+        self.assertIn("overflow-wrap: anywhere", styles)
 
     def test_dashboard_distinguishes_broad_curator_defects_from_knowledge_integrity(self):
         source = (TEMPLATES / "curator_dashboard.html").read_text(encoding="utf-8")

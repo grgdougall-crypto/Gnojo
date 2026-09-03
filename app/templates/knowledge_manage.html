@@ -1,7 +1,8 @@
 {% extends "base.html" %}
 {% block title %}Manage {{ policy.article.title }} | Gnojo{% endblock %}
 {% block content %}
-<main class="container curator-page"><header class="curator-heading"><div><span class="section-eyebrow">Knowledge lifecycle</span><h1>{{ policy.article.title }}</h1><p><code>{{ policy.article.id }}</code> &middot; {{ policy.state|title }}</p></div><a class="btn btn-outline-primary" href="{{ url_for('knowledge_integrity_dashboard') }}">Knowledge Integrity</a></header>
+<main class="container curator-page"><header class="curator-heading"><div><span class="section-eyebrow">Knowledge Integrity</span><h1>{{ policy.article.title }}</h1><p><code>{{ policy.article.id }}</code> &middot; {{ policy.state|title }}</p></div><div class="d-flex flex-wrap gap-2"><a class="btn btn-outline-primary" href="{{ return_to }}" aria-label="{{ return_label }}">{{ return_label }}</a><a class="btn btn-outline-secondary" href="{{ url_for('knowledge_integrity_dashboard') }}">Integrity dashboard</a></div></header>
+<div class="alert alert-info" role="status"><strong>You are managing this published article in Knowledge Integrity.</strong> Review its references and lifecycle safeguards before taking any action.</div>
 {% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
 <section class="quality-section"><h2>References and dependencies</h2><p>{{ policy.references|length }} workflow reference(s) &middot; {{ policy.aliases|length }} dependent alias(es)</p><details><summary>Inspect dependencies</summary><pre>{{ {'references': policy.references, 'aliases': policy.aliases}|tojson(indent=2) }}</pre></details></section>
 <section class="quality-section"><h2>Available actions</h2>

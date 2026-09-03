@@ -59,7 +59,8 @@ class LibraryFilterTests(unittest.TestCase):
         self.assertIn("Showing 1 of 3 published articles.", html)
         self.assertIn("Back to Knowledge Center", html)
         self.assertIn('aria-label="View article: DNS Basics"', html)
-        self.assertIn('aria-label="Manage article: DNS Basics"', html)
+        self.assertIn('aria-label="Manage article in Knowledge Integrity: DNS Basics"', html)
+        self.assertIn("Manage in Integrity", html)
         self.assertIn(
             "return_to=/knowledge/published?q%3Ddns%26category%3Dnetworking",
             html,
@@ -141,6 +142,34 @@ class LibraryFilterTests(unittest.TestCase):
             empty_commands = self.client.get("/commands").get_data(as_text=True)
         self.assertIn("No commands found", empty_commands)
         self.assertNotIn("No commands match these filters", empty_commands)
+
+    def test_manage_article_explicitly_enters_integrity_and_preserves_safe_inventory_return(self):
+        policy = {
+            "article": {"id": "dns-basics", "title": "DNS Basics"},
+            "state": "published", "references": [], "aliases": [],
+            "can_archive": False, "archive_reasons": ["Referenced"],
+            "can_soft_delete": False, "soft_delete_reasons": ["Published"],
+            "can_permanent_delete": False, "permanent_delete_reasons": ["Published"],
+        }
+        with patch(
+            "app.app.KnowledgeIntegrityService.lifecycle_policy", return_value=policy,
+        ):
+            response = self.client.get(
+                "/knowledge/manage/dns-basics?return_to="
+                "%2Fknowledge%2Fpublished%3Fq%3Ddns%26category%3DNetworking"
+            )
+            unsafe = self.client.get(
+                "/knowledge/manage/dns-basics?return_to=https%3A%2F%2Fevil.example"
+            )
+        html = response.get_data(as_text=True)
+        self.assertIn("You are managing this published article in Knowledge Integrity", html)
+        self.assertIn("Integrity dashboard", html)
+        self.assertIn("Return to Published Articles", html)
+        self.assertIn('href="/knowledge/published?q=dns&amp;category=Networking"', html)
+        self.assertIn('aria-label="Return to Published Articles"', html)
+        unsafe_html = unsafe.get_data(as_text=True)
+        self.assertIn('href="/knowledge/published"', unsafe_html)
+        self.assertNotIn("evil.example", unsafe_html)
 
 
 if __name__ == "__main__":

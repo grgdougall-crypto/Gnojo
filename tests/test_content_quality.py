@@ -142,16 +142,24 @@ class ContentQualityPageTests(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory()
         self.history = TroubleshootingHistoryService(Path(self.temporary.name))
         self.bridge = CuratorContentQualityBridgeService(Path(self.temporary.name) / "repository")
+        self.previous_repository_root = app.config.get("STRUCTURAL_REPAIR_REPOSITORY_ROOT")
         self.history_patch = patch("app.app.TroubleshootingHistoryService", return_value=self.history)
         self.bridge_patch = patch("app.app.CuratorContentQualityBridgeService", return_value=self.bridge)
         self.history_patch.start()
         self.bridge_patch.start()
-        app.config.update(TESTING=True)
+        app.config.update(
+            TESTING=True,
+            STRUCTURAL_REPAIR_REPOSITORY_ROOT=str(Path(self.temporary.name) / "repository"),
+        )
         self.client = app.test_client()
 
     def tearDown(self):
         self.bridge_patch.stop()
         self.history_patch.stop()
+        if self.previous_repository_root is None:
+            app.config.pop("STRUCTURAL_REPAIR_REPOSITORY_ROOT", None)
+        else:
+            app.config["STRUCTURAL_REPAIR_REPOSITORY_ROOT"] = self.previous_repository_root
         self.temporary.cleanup()
 
     def test_content_studio_links_to_quality_dashboard(self):
@@ -224,6 +232,21 @@ class ContentQualityPageTests(unittest.TestCase):
         self.assertNotIn("Send to Curator", html)
         self.assertIn("/workflow-editor/windows_slow.json?node=confirm_windows", html)
         task = next(iter(self.bridge.store.load()["tasks"].values()))
+        tracked_url = (
+            f"/curator/tasks/{task['task_id']}?origin=content_quality"
+            "&amp;return_to=/content-quality%23queueTitle"
+        )
+        self.assertIn(tracked_url, html)
+        self.assertIn(
+            'aria-label="Open tracked Curator task and return to Content Quality"', html,
+        )
+        detail = self.client.get(
+            f"/curator/tasks/{task['task_id']}"
+            "?origin=content_quality&return_to=/content-quality%23queueTitle"
+        )
+        self.assertEqual(detail.status_code, 200)
+        self.assertIn(b"Return to Content Quality", detail.data)
+        self.assertIn(b'href="/content-quality#queueTitle"', detail.data)
         self.assertNotIn("private first comment", json.dumps(task))
         self.assertNotIn("private second comment", json.dumps(task))
 

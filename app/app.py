@@ -775,7 +775,10 @@ def content_quality():
         workflow_data, records, drafts, workflow_versions=versions
     )
     CuratorContentQualityBridgeService().mark_tracked(report)
-    return render_template("content_quality.html", report=report)
+    return render_template(
+        "content_quality.html", report=report,
+        curator_return_context="/content-quality#queueTitle",
+    )
 
 
 @app.post("/content-quality/confusing-step/curator")
@@ -1763,6 +1766,12 @@ def curator_task_detail(task_id):
         session_task_actionable=session_task_actionable,
         return_to=return_to, curator_session=session_id, category=category,
         task_navigation=task_navigation, task_origin=origin,
+        task_return_context=CuratorTaskNavigationService.task_return(
+            task_id, task_navigation, session_id=session_id, category=category,
+        ),
+        previous_task_return_context=CuratorTaskNavigationService.previous_task_return(
+            task_id, task_navigation, session_id=session_id, category=category,
+        ),
     )
 
 
@@ -2546,7 +2555,20 @@ def manage_knowledge_article(article_id):
         policy = KnowledgeIntegrityService().lifecycle_policy(article_id)
     except KnowledgeIntegrityError:
         abort(404)
-    return render_template("knowledge_manage.html", policy=policy, error=request.args.get("error", ""))
+    requested_return = request.args.get("return_to", "")
+    return_to = (
+        CuratorTaskNavigationService.valid_published_context(requested_return)
+        or "/knowledge/published"
+    )
+    return render_template(
+        "knowledge_manage.html", policy=policy, error=request.args.get("error", ""),
+        return_to=return_to,
+        return_label=(
+            "Return to article"
+            if return_to.startswith("/knowledge/published/")
+            else "Return to Published Articles"
+        ),
+    )
 
 
 @app.post("/knowledge/manage/<article_id>/<action>")
@@ -3617,8 +3639,10 @@ def view_command(command_id):
     related_commands,
 )
 
-    return_to = safe_internal_return(
-        request.args.get("return_to", ""), ("/commands", "/search")
+    requested_return = request.args.get("return_to", "")
+    task_return = CuratorTaskNavigationService.valid_task_return(requested_return)
+    return_to = task_return or safe_internal_return(
+        requested_return, ("/commands", "/search")
     )
     return render_template(
         "command.html",
@@ -3627,6 +3651,11 @@ def view_command(command_id):
         related_commands=related_commands,
         explanation=explanation,
         return_to=return_to,
+        return_label=(
+            "Return to Curator task" if task_return
+            else "Back to Search Results" if return_to.startswith("/search")
+            else "Back to Command Library"
+        ),
     )
 
 
@@ -4091,7 +4120,8 @@ def view_published(article_id):
         template_name = "published_command.html"
 
     requested_return = request.args.get("return_to", "")
-    return_to = (
+    task_return = CuratorTaskNavigationService.valid_task_return(requested_return)
+    return_to = task_return or (
         CuratorTaskNavigationService.valid_assisted_return(requested_return)
         or CuratorTaskNavigationService.valid_maintenance_return(requested_return)
     )
@@ -4105,6 +4135,24 @@ def view_published(article_id):
         related_articles=related_articles,
         related_commands=related_commands,
         return_to=return_to,
+        manage_return_context=url_for(
+            "view_published", article_id=article["id"],
+            return_to=(
+                return_to
+                if (
+                    CuratorTaskNavigationService.valid_published_context(return_to)
+                    or CuratorTaskNavigationService.valid_task_return(return_to)
+                )
+                else None
+            ),
+        ),
+        return_label=(
+            "Return to Curator task" if task_return
+            else "Back to Assisted Resolution" if return_to.startswith("/curator/tasks/")
+            else "Back to Fix Wizard" if return_to.startswith("/curator/fix")
+            else "Back to Search Results" if return_to.startswith("/search")
+            else "Back to Published Articles"
+        ),
     )
 
 

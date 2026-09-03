@@ -11,6 +11,7 @@ from curator.calibration import ReasoningCalibrationService
 
 from app.services.workflow_draft_service import WorkflowDraftService
 from app.services.curator_workflow_lifecycle_service import CuratorWorkflowLifecycleService
+from app.services.curator_task_navigation_service import CuratorTaskNavigationService
 
 
 class CuratorTaskService:
@@ -223,12 +224,10 @@ class CuratorTaskService:
         kind = task.get("content_type", "")
         identifier = task.get("content_identifier", "")
         task_id = task.get("task_id", "")
-        task_query = {"curator_session": session_id, "return_to": return_to, "origin": origin,
-                      "category": category}
-        task_query = {key: value for key, value in task_query.items() if value}
-        task_return = f"/curator/tasks/{quote(task_id)}"
-        if task_query:
-            task_return += "?" + urlencode(task_query)
+        navigation = CuratorTaskNavigationService.resolve(origin, return_to, task_id=task_id)
+        task_return = CuratorTaskNavigationService.task_return(
+            task_id, navigation, session_id=session_id, category=category,
+        )
         return_path = quote(task_return, safe="")
         if kind in {"workflow", "workflow_node"}:
             workflow_id, _, node_id = identifier.partition(":")

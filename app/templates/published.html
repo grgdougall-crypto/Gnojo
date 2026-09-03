@@ -157,7 +157,7 @@
                                         >
                                             View Article
                                             <i class="bi bi-arrow-right ms-2"></i>
-                                        </a><a class="btn btn-outline-secondary" href="{{ url_for('manage_knowledge_article', article_id=article.id) }}" aria-label="Manage article: {{ article.title }}">Manage</a></div>
+                                        </a><a class="btn btn-outline-secondary" href="{{ url_for('manage_knowledge_article', article_id=article.id, return_to=request.full_path.rstrip('?')) }}" aria-label="Manage article in Knowledge Integrity: {{ article.title }}">Manage in Integrity</a></div>
 
                                     </div>
 

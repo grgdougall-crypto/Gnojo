@@ -1168,9 +1168,20 @@ dialog { max-height: calc(100dvh - 1rem); max-width: calc(100vw - 1rem); }
 .curator-history-disclosure > summary, .curator-technical-disclosure > summary, .curator-related-disclosure > summary { color: var(--bs-primary); cursor: pointer; font-weight: 700; }
 .curator-history-disclosure > summary { display: flex; gap: 1rem; justify-content: space-between; }
 .curator-history-disclosure > summary small, .curator-related-disclosure > summary small { color: var(--sp-muted); font-weight: 400; }
-.curator-related-disclosure > summary { align-items: center; display: flex; gap: 1rem; justify-content: space-between; list-style-position: inside; }
-.curator-related-disclosure > summary > span { display: flex; flex-direction: column; }
-.curator-related-disclosure[open] > summary { margin-bottom: 1rem; }
+.curator-related-disclosure > summary { align-items: center; background: color-mix(in srgb, var(--sp-surface) 88%, var(--sp-background)); border: 1px solid var(--sp-border); border-radius: .75rem; color: var(--sp-text); display: grid; gap: 1rem; grid-template-columns: minmax(0, 1fr) auto; justify-content: space-between; list-style: none; margin: -.35rem; min-width: 0; padding: .9rem 1rem; transition: background-color .15s ease, border-color .15s ease, box-shadow .15s ease; }
+.curator-related-disclosure > summary::-webkit-details-marker { display: none; }
+.curator-related-disclosure > summary::marker { content: ""; }
+.curator-related-disclosure > summary:hover { background: color-mix(in srgb, var(--sp-surface) 78%, var(--sp-blue)); border-color: color-mix(in srgb, var(--sp-border) 45%, var(--sp-blue)); box-shadow: var(--sp-shadow); }
+.curator-related-disclosure__heading { display: flex; flex-direction: column; min-width: 0; }
+.curator-related-disclosure__heading strong { font-size: 1.05rem; overflow-wrap: anywhere; }
+.curator-related-disclosure__heading small { margin-top: .2rem; overflow-wrap: anywhere; }
+.curator-related-disclosure__toggle { align-items: center; border: 1px solid color-mix(in srgb, var(--sp-border) 55%, var(--sp-blue)); border-radius: 999px; color: var(--bs-primary); display: inline-flex; flex-direction: row; font-size: .8rem; gap: .45rem; padding: .45rem .7rem; white-space: nowrap; }
+.curator-related-disclosure__toggle i { transition: transform .15s ease; }
+.curator-related-disclosure__hide { display: none; }
+.curator-related-disclosure[open] > summary { margin: -.35rem -.35rem 1rem; }
+.curator-related-disclosure[open] .curator-related-disclosure__show { display: none; }
+.curator-related-disclosure[open] .curator-related-disclosure__hide { display: inline; }
+.curator-related-disclosure[open] .curator-related-disclosure__toggle i { transform: rotate(180deg); }
 .curator-technical-disclosure code, .curator-related-disclosure code { overflow-wrap: anywhere; white-space: normal; }
 .curator-secondary { background: var(--sp-surface); border: 1px solid var(--sp-border); border-radius: .75rem; margin-top: 1.5rem; padding: 1rem; }
 .curator-secondary__item { border-top: 1px solid var(--sp-border); padding: .85rem 0; }
@@ -1280,6 +1291,8 @@ dialog { max-height: calc(100dvh - 1rem); max-width: calc(100vw - 1rem); }
     .curator-evidence-lifecycle, .integrity-healthy { grid-template-columns: 1fr; }
     .curator-decision-column { position: static; }
     .curator-review-state__footer, .curator-related-disclosure > summary, .curator-secondary__item > summary { align-items: stretch; flex-direction: column; }
+    .curator-related-disclosure > summary { grid-template-columns: minmax(0, 1fr); }
+    .curator-related-disclosure__toggle { justify-self: start; }
     .curator-review-state__footer .btn, .curator-task-context-actions, .curator-task-context-actions .btn { align-items: stretch; width: 100%; }
 }
 .command-library-card {

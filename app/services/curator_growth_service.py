@@ -5,6 +5,7 @@ from typing import Any
 
 from curator.growth import CuratorGrowthService as GrowthStoreService
 from curator.memory import CuratorMemoryStore
+from curator.workflow_reasoning import WorkflowReasoningAuditor
 
 
 class CuratorGrowthService:
@@ -16,7 +17,34 @@ class CuratorGrowthService:
         self.growth = GrowthStoreService(self.store)
 
     def dashboard(self) -> dict[str, Any]:
-        return self.growth.dashboard()
+        dashboard = self.growth.dashboard()
+        dashboard["lessons"] = [self._present_lesson(lesson) for lesson in dashboard["lessons"]]
+        return dashboard
+
+    @staticmethod
+    def _present_lesson(lesson: dict[str, Any]) -> dict[str, Any]:
+        """Add reviewer labels without changing the stored Growth lesson identity."""
+        value = dict(lesson)
+        raw_identity = str(lesson.get("pattern_observed") or "").strip()
+        parts = raw_identity.split(":")
+        if len(parts) == 4 and parts[0].casefold() == "reasoning_calibration":
+            rule_id = parts[1].upper()
+            rule_label = WorkflowReasoningAuditor.RULE_LABELS.get(rule_id)
+            value.update({
+                "display_category": "Reasoning Calibration",
+                "display_title": rule_label or CuratorGrowthService._humanize(raw_identity),
+                "rule_id": rule_id,
+                "calibration_id": parts[2].upper(),
+                "raw_identity": raw_identity,
+            })
+        else:
+            value["display_title"] = CuratorGrowthService._humanize(raw_identity)
+        return value
+
+    @staticmethod
+    def _humanize(value: str) -> str:
+        label = value.replace("_", " ").replace("-", " ").strip()
+        return label.title() if label else "Unspecified pattern"
 
     def decide(self, subject_type: str, subject_id: str, status: str, *, reviewer: str,
                reason: str) -> dict[str, Any]:

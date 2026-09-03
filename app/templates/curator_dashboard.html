@@ -55,7 +55,7 @@
       <h3 class="h6">Latest scheduled Stage B run</h3>
       {% if stage_b.scheduled_run_error %}<p class="text-danger mb-0">Runner results unavailable: {{ stage_b.scheduled_run_error }}</p>
       {% elif stage_b.scheduled_run %}{% set run = stage_b.scheduled_run %}
-      <p class="mb-1"><strong>{{ run.status|replace('_', ' ')|title }}</strong> &middot; Trigger: {{ run.trigger_source|title }} &middot; Started {{ run.started_at }}{% if run.completed_at %} &middot; Completed {{ run.completed_at }}{% endif %}</p>
+      <p class="mb-1"><strong>{{ run.status|replace('_', ' ')|title }}</strong> &middot; Trigger: {{ run.trigger_source|title }} &middot; Started {{ run.started_at|friendly_datetime }}{% if run.completed_at %} &middot; Completed {{ run.completed_at|friendly_datetime }}{% endif %}</p>
       <p class="mb-1">Discovered {{ run.discovered_count }} &middot; Committed {{ run.committed_count }} &middot; No-op {{ run.committed_no_op_count }} &middot; Preflight skipped {{ run.preflight_skipped_count }} &middot; Runtime skipped {{ run.runtime_skipped_count }} &middot; Failed {{ run.failed_count }}</p>
       <p class="mb-1"><small>Runner <code>{{ run.runner_id }}</code> &middot; Correlation <code>{{ run.correlation_id }}</code>{% if run.last_processed_task %} &middot; Last task <code>{{ run.last_processed_task }}</code>{% endif %}</small></p>
       <p class="mb-1"><small>Allowlist: {% for capability in run.allowlisted_capabilities %}<code>{{ capability.id }} v{{ capability.version }}</code>{% if not loop.last %}, {% endif %}{% endfor %}</small></p>

@@ -4,6 +4,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 from app.app import app as flask_app
+from app.services.curator_growth_service import CuratorGrowthService as AppCuratorGrowthService
 from curator.governance import CuratorGovernanceError, CuratorGovernancePolicy, PROFILES
 from curator.growth import CuratorGrowthError, CuratorGrowthService
 from curator.memory import CuratorMemoryStore
@@ -163,6 +164,45 @@ class CuratorGrowthTests(unittest.TestCase):
         self.assertIn(b"TP 1", response.data)
         self.assertIn(b"TN 1", response.data)
         self.assertIn(b"separate human approval", response.data)
+
+    def test_growth_ui_humanizes_reasoning_calibration_heading_and_preserves_identity(self):
+        raw_identity = (
+            "reasoning_calibration:cur-wr-early-convergence:rcp-1234abcd:useful"
+        )
+        lesson = self.service.record_lesson({
+            "pattern_observed": raw_identity,
+            "supporting_evidence": ["GKT-ONE", "GKT-TWO"],
+            "recommended_future_behavior": "Keep this calibration under human review.",
+        })
+        dashboard = AppCuratorGrowthService(Path(self.temporary.name)).dashboard()
+        presented = next(item for item in dashboard["lessons"]
+                         if item["lesson_id"] == lesson["lesson_id"])
+        self.assertEqual(presented["display_category"], "Reasoning Calibration")
+        self.assertEqual(presented["display_title"], "Early Branch Convergence")
+        self.assertEqual(presented["rule_id"], "CUR-WR-EARLY-CONVERGENCE")
+        self.assertEqual(presented["calibration_id"], "RCP-1234ABCD")
+        self.assertEqual(presented["raw_identity"], raw_identity)
+        self.assertEqual(
+            AppCuratorGrowthService._present_lesson({
+                "pattern_observed": "unknown_machine-value",
+            })["display_title"],
+            "Unknown Machine Value",
+        )
+
+        facade = Mock()
+        facade.dashboard.return_value = dashboard
+        flask_app.config.update(TESTING=True)
+        with patch("app.app.CuratorGrowthService", return_value=facade):
+            with flask_app.test_client() as client:
+                page = client.get("/curator/growth").get_data(as_text=True)
+
+        self.assertIn("<h3>Early Branch Convergence</h3>", page)
+        self.assertIn("Reasoning Calibration", page)
+        self.assertIn("CUR-WR-EARLY-CONVERGENCE", page)
+        self.assertIn("RCP-1234ABCD", page)
+        self.assertIn(lesson["lesson_id"], page)
+        self.assertIn(raw_identity, page)
+        self.assertNotIn(f"<h3>{raw_identity}</h3>", page)
 
     def test_failed_shadow_blocks_audit_rule_approval_and_pass_still_needs_human_steps(self):
         proposal = self.service.propose("audit_rule", self.proposal_data())

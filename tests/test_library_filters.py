@@ -121,6 +121,24 @@ class LibraryFilterTests(unittest.TestCase):
         self.assertIn('href="/commands"', unsafe_command)
         self.assertNotIn("evil.example", unsafe_command)
 
+    def test_published_article_review_timestamp_uses_friendly_format(self):
+        article = {
+            **self.articles[0],
+            "review": {
+                "status": "approved",
+                "reviewed_by": "Knowledge Reviewer",
+                "reviewed_at": "2026-08-27T20:15:00+00:00",
+            },
+        }
+        with (
+            patch("app.app.knowledge_repository.resolve_published_article", return_value=article),
+            patch("app.app.relationship_service.related_commands_for_article", return_value=[]),
+        ):
+            html = self.client.get("/knowledge/published/dns-basics").get_data(as_text=True)
+
+        self.assertIn("Aug 27, 2026", html)
+        self.assertNotIn("2026-08-27T20:15:00+00:00", html)
+
     def test_no_match_and_empty_inventory_are_distinct_for_both_libraries(self):
         with patch("app.app.knowledge_repository.get_published", return_value=self.articles):
             filtered_articles = self.client.get("/knowledge/published?q=missing").get_data(as_text=True)

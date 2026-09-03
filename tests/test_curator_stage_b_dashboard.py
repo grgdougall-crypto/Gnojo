@@ -337,6 +337,9 @@ class CuratorStageBDashboardTemplateTests(unittest.TestCase):
         self.assertIn("STBS-TEMPLATE", html)
         self.assertIn("COR-TEMPLATE", html)
         self.assertIn("GKT-ACCEPT", html)
+        self.assertIn("Aug 27, 2026", html)
+        self.assertNotIn("2026-08-27T20:15:00+00:00", html)
+        self.assertNotIn("2026-08-27T20:15:01+00:00", html)
         self.assertIn("Recent Curator Observations", html)
 
 

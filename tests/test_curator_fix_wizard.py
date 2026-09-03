@@ -333,6 +333,40 @@ class CuratorFixWizardTests(unittest.TestCase):
         self.assertEqual(service.get(session["session_id"])["events"], before_events)
         reconciler.return_value.reconcile.assert_not_called()
 
+    def test_curator_evidence_items_render_as_readable_labels_without_mutation(self):
+        service = CuratorFixSessionService(self.root)
+        item = {
+            "item_id": "FIX-EVIDENCE", "status": "open",
+            "finding_type": "editorial_opportunity", "classification": "HUMAN_REVIEW",
+            "safe_automatic": False, "priority": "Medium", "knowledge_debt": 1,
+            "confidence": 80, "estimated_effort": "Low",
+            "recommended_action": "Review the finding.",
+            "what_will_change": "Nothing yet.",
+            "what_will_not_change": "Content remains unchanged.",
+            "affected_content": {
+                "task_id": "GKT-EVIDENCE", "content_identifier": "printer:verify",
+                "evidence": ["verify_printing", "unknown-evidence_value"],
+            },
+        }
+        session = service.create(
+            started_by="Evidence Reviewer", originating_audit_id=None,
+            queue=[item], baseline=self.baseline(),
+        )
+        path = service.directory / f"{session['session_id']}.json"
+        before = path.read_bytes()
+        flask_app.config.update(TESTING=True)
+
+        with patch("app.app.CuratorFixSessionService", return_value=service):
+            with flask_app.test_client() as client:
+                page = client.get(f"/curator/fix/{session['session_id']}").get_data(as_text=True)
+
+        self.assertIn("Verify printing", page)
+        self.assertIn("Unknown evidence value", page)
+        self.assertIn('aria-label="Curator evidence items"', page)
+        self.assertIn('title="Stored evidence: verify_printing"', page)
+        self.assertNotIn("['verify_printing'", page)
+        self.assertEqual(path.read_bytes(), before)
+
     def test_manual_refresh_redirect_reports_changed_and_unchanged_truthfully(self):
         flask_app.config.update(TESTING=True)
         reconciler = Mock()
@@ -882,6 +916,10 @@ class CuratorFixWizardTests(unittest.TestCase):
         self.assertNotIn("Exit / Save Session", wizard)
         self.assertIn('for="reviewer"', start)
         self.assertNotIn("onclick=", wizard)
+        self.assertIn("session.started_at|friendly_datetime", wizard)
+        self.assertIn("session.last_reconciled_at|friendly_datetime", wizard)
+        self.assertNotIn("Started {{ session.started_at }}", wizard)
+        self.assertNotIn("session.last_reconciled_at or 'not yet'", wizard)
 
     def test_progress_separates_original_queue_from_new_findings_and_filter_position(self):
         session = {"original_queue_count": 64, "finding_count": 65,

@@ -484,7 +484,7 @@
                     </dt>
 
                     <dd class="col-sm-9 mb-0">
-                        {{ article.review.reviewed_at or "Not recorded" }}
+                        {{ article.review.reviewed_at|friendly_datetime if article.review.reviewed_at else "Not recorded" }}
                     </dd>
 
                 {% endif %}

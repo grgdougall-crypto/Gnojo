@@ -34,15 +34,40 @@ class CuratorUxPassThreeTests(unittest.TestCase):
         source = (TEMPLATES / "curator_task_detail.html").read_text(encoding="utf-8")
         headings = [
             "Targeted Verification",
-            "Evidence Across the Task Lifecycle",
-            "Task History",
             "Review Decision",
             "Task Actions",
+            "Review lifecycle evidence",
+            "Task History",
         ]
         positions = [source.index(heading) for heading in headings]
         self.assertEqual(positions, sorted(positions))
         for label in ["Then", "Now", "Verify", "View complete task history", "Technical Task Details", "Related Knowledge and Tasks"]:
             self.assertIn(label, source)
+
+    def test_secondary_task_evidence_is_preserved_in_collapsed_native_disclosures(self):
+        source = (TEMPLATES / "curator_task_detail.html").read_text(encoding="utf-8")
+        styles = (ROOT / "app" / "static" / "css" / "style.css").read_text(encoding="utf-8")
+
+        self.assertIn('<details class="quality-section curator-supporting-disclosure"', source)
+        self.assertIn("Show evidence", source)
+        self.assertIn("Show history", source)
+        self.assertNotIn('<details class="quality-section curator-supporting-disclosure" open', source)
+        self.assertIn("Original audit evidence", source)
+        self.assertIn("Current conclusion", source)
+        self.assertIn("task_review.recent_history", source)
+        self.assertIn("task_review.remaining_history", source)
+        self.assertIn(".curator-supporting-disclosure > summary:focus-visible", styles)
+        self.assertIn("overflow-wrap: anywhere", styles)
+        self.assertIn("@media (max-width: 767px)", styles)
+
+    def test_finding_summary_and_repair_controls_precede_supporting_evidence(self):
+        source = (TEMPLATES / "curator_task_detail.html").read_text(encoding="utf-8")
+
+        self.assertLess(source.index("What Curator found"), source.index("Targeted Verification"))
+        self.assertLess(source.index("Suggested next step"), source.index("Review lifecycle evidence"))
+        self.assertLess(source.index("Review Repair Preview"), source.index("Review lifecycle evidence"))
+        self.assertLess(source.index("Preview deterministic repair"), source.index("Review lifecycle evidence"))
+        self.assertEqual(source.count('id="guidanceTitle"'), 1)
 
     def test_task_detail_preserves_actions_routes_and_assisted_resolution(self):
         source = (TEMPLATES / "curator_task_detail.html").read_text(encoding="utf-8")

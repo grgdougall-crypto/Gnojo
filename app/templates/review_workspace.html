@@ -35,6 +35,19 @@
         <p class="mb-2">{{ item.compression.prior_summary }}</p>
         <p class="small text-secondary mb-2"><strong>Similarity basis:</strong> {{ item.compression.basis }}</p>
         <p class="small text-secondary mb-0">{{ item.compression.advisory }}</p>
+        {% if item.batch_review_available %}
+        <a class="btn btn-sm btn-outline-info mt-3" href="{{ url_for('review_workspace_batch_preview', item_type=item.item_type, item_id=item.item_id) }}">Review similar items ({{ item.batch_review_count }})</a>
+        {% elif item.compression.similar_open_count >= 2 and item.batch_review_count < 2 %}
+        <div class="small text-secondary mt-3">
+          <p class="mb-1">{{ item.compression.similar_open_count }} similar open items. {{ item.batch_review_count }} currently {{ 'qualifies' if item.batch_review_count == 1 else 'qualify' }} for governed batch review.</p>
+          {% if item.batch_excluded_count %}
+          <p class="mb-1">{{ item.batch_excluded_count }} similar item{{ 's are' if item.batch_excluded_count != 1 else ' is' }} excluded:</p>
+          <ul class="mb-0 ps-3">
+            {% for exclusion in item.batch_exclusion_reasons %}<li>{{ exclusion.count }} item{{ 's' if exclusion.count != 1 else '' }}: {{ exclusion.reason }}</li>{% endfor %}
+          </ul>
+          {% endif %}
+        </div>
+        {% endif %}
       </section>
       <section class="col-12" aria-labelledby="recommendationTitle"><h3 class="h5" id="recommendationTitle">Gnojo recommendation</h3><p>{{ item.recommendation }}</p></section>
     </div>

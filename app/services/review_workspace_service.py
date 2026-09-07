@@ -3,8 +3,11 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import tempfile
 from collections import Counter, defaultdict
+from copy import deepcopy
 from pathlib import Path
+from secrets import compare_digest
 from typing import Any
 from urllib.parse import quote, urlencode
 
@@ -20,6 +23,14 @@ from app.services.curator_workflow_lifecycle_service import CuratorWorkflowLifec
 from curator.calibration import ReasoningCalibrationService
 from curator.memory import CuratorMemoryError
 from curator.workflow_reasoning import WorkflowReasoningAuditor
+
+
+class ReviewBatchError(RuntimeError):
+    """A governed batch preview or commit failed closed."""
+
+    def __init__(self, code: str, message: str):
+        super().__init__(message)
+        self.code = code
 
 
 class ReviewWorkspaceService:
@@ -77,6 +88,173 @@ class ReviewWorkspaceService:
     def find(self, item_type: str, item_id: str) -> dict[str, Any] | None:
         return next((item for item in self.items()
                      if item["item_type"] == item_type and item["item_id"] == item_id), None)
+
+    def batch_preview(self, item_type: str, item_id: str) -> dict[str, Any]:
+        """Return a read-only, exact snapshot of one eligible routine group."""
+        items = self.items()
+        selected = next((item for item in items if item["item_type"] == item_type
+                         and item["item_id"] == item_id), None)
+        if selected is None:
+            raise ReviewBatchError("changed", "The selected review item is no longer actionable.")
+        if selected["compression"]["classification"] != "Routine pattern":
+            raise ReviewBatchError(
+                "unsupported", "Only Routine-pattern items with consistent precedent can be reviewed as a group."
+            )
+        if item_type not in {"curator_task", "growth_lesson"}:
+            raise ReviewBatchError(
+                "unsupported", "This review item does not support governed group decisions."
+            )
+
+        matching = [item for item in items if item.get("batch_group_key") == selected.get("batch_group_key")]
+        candidates, excluded = [], []
+        for item in matching:
+            reason = self._batch_exclusion_reason(item)
+            if reason:
+                excluded.append({"item": item, "reason": reason})
+            else:
+                candidates.append(item)
+        if len(candidates) < 2 or selected not in candidates:
+            raise ReviewBatchError(
+                "unsupported", "Fewer than two currently eligible items remain in this routine group."
+            )
+
+        common_actions = self._common_batch_actions(candidates)
+        if not common_actions:
+            raise ReviewBatchError(
+                "unsupported", "The current items do not share a compatible authoritative decision."
+            )
+        snapshot = {
+            "schema_version": 1,
+            "item_type": item_type,
+            "group_key": selected["batch_group_key"],
+            "candidates": [{
+                "item_id": item["item_id"],
+                "finding_id": item.get("finding_id", ""),
+                "source_fingerprint": item["source_fingerprint"],
+                "status": item["authoritative_status"],
+                "allowed_actions": list(item["batch_allowed_actions"]),
+            } for item in candidates],
+            "excluded": [{
+                "item_id": entry["item"]["item_id"],
+                "source_fingerprint": entry["item"]["source_fingerprint"],
+                "reason": entry["reason"],
+            } for entry in excluded],
+            "actions": list(common_actions),
+            "precedent": {
+                "classification": selected["compression"]["classification"],
+                "prior_dispositions": selected["compression"]["prior_dispositions"],
+                "basis": selected["compression"]["basis"],
+            },
+        }
+        return {
+            "selected": selected,
+            "pattern": selected["compression"],
+            "candidates": candidates,
+            "excluded": excluded,
+            "actions": common_actions,
+            "snapshot_fingerprint": self._fingerprint(snapshot),
+            "notice": "No decision has been applied yet.",
+        }
+
+    def commit_batch(self, item_type: str, item_id: str, *, snapshot_fingerprint: str,
+                     decision: str, reason: str, reviewer: str) -> dict[str, Any]:
+        """Apply a validated group through existing actions and one atomic memory CAS."""
+        if not reason.strip():
+            raise ReviewBatchError("invalid", "A decision reason is required.")
+        if not reviewer.strip():
+            raise ReviewBatchError("invalid", "A human reviewer is required.")
+
+        with self.tasks.store.locked() as memory:
+            before = memory.snapshot()
+            try:
+                preview = self.batch_preview(item_type, item_id)
+            except ReviewBatchError as error:
+                raise ReviewBatchError(
+                    "changed",
+                    "This group changed after preview. No decisions were saved; review the refreshed group.",
+                ) from error
+            if not snapshot_fingerprint or not compare_digest(
+                    preview["snapshot_fingerprint"], snapshot_fingerprint):
+                raise ReviewBatchError(
+                    "changed", "This group changed after preview. No decisions were saved; review the refreshed group."
+                )
+            if decision not in preview["actions"]:
+                raise ReviewBatchError(
+                    "changed", "That decision is no longer valid for every item in this group. No decisions were saved."
+                )
+
+            with tempfile.TemporaryDirectory(prefix="gnojo-review-batch-") as directory:
+                shadow_root = Path(directory)
+                shadow_store = self.tasks.store.__class__(shadow_root / "curation_memory")
+                # Strip CuratorMemoryState's original-repository CAS fingerprint;
+                # the shadow repository is intentionally new and absent.
+                shadow_store.save(deepcopy(dict(before.state)))
+                try:
+                    for item in preview["candidates"]:
+                        self._apply_existing_action(
+                            shadow_root, item_type, item["item_id"], decision,
+                            reason.strip(), reviewer.strip(),
+                        )
+                except (CuratorMemoryError, ValueError, RuntimeError) as error:
+                    raise ReviewBatchError(
+                        "invalid", f"The batch could not be applied atomically: {error}"
+                    ) from error
+                after = shadow_store.load()
+                memory.compare_and_swap(before.fingerprint, after)
+
+        return {"count": len(preview["candidates"]), "item_ids": [
+            item["item_id"] for item in preview["candidates"]
+        ]}
+
+    @staticmethod
+    def _apply_existing_action(root: Path, item_type: str, item_id: str, decision: str,
+                               reason: str, reviewer: str) -> None:
+        if item_type == "curator_task":
+            action = {
+                "resolve": "resolve", "resolve_verified": "resolve",
+                "defer": "defer", "ignore": "ignore",
+            }.get(decision)
+            if not action:
+                raise CuratorMemoryError("Unsupported Knowledge Task batch decision.")
+            CuratorTaskService(root).update(item_id, action=action, note=reason)
+            return
+        if item_type == "growth_lesson":
+            status = {"approve": "approved", "reject": "rejected"}.get(decision)
+            if not status:
+                raise ValueError("Unsupported Growth lesson batch decision.")
+            CuratorGrowthService(root).decide(
+                "lesson", item_id, status, reviewer=reviewer, reason=reason,
+            )
+            return
+        raise ValueError("Unsupported governed batch item type.")
+
+    @staticmethod
+    def _batch_exclusion_reason(item: dict[str, Any]) -> str:
+        if item["compression"]["classification"] != "Routine pattern":
+            return "The item's precedent is no longer a consistent Routine pattern."
+        if item["item_type"] == "growth_lesson":
+            return "" if item["authoritative_status"] == "proposed" else "The lesson is no longer proposed."
+        if item["item_type"] != "curator_task":
+            return "This item type is not supported by governed group review."
+        if item["authoritative_status"] not in ReviewWorkspaceService.ACTIONABLE_TASK_STATUSES:
+            return "The Knowledge Task is no longer actionable."
+        if not item.get("finding_id") or not item.get("affected_identity"):
+            return "The task does not have an unambiguous authoritative identity."
+        if item.get("specialized_review"):
+            return "This task requires its specialized supervised review path."
+        return ""
+
+    @staticmethod
+    def _common_batch_actions(candidates: list[dict[str, Any]]) -> tuple[str, ...]:
+        if not candidates:
+            return ()
+        common = set(candidates[0]["batch_allowed_actions"])
+        for item in candidates[1:]:
+            common.intersection_update(item["batch_allowed_actions"])
+        if "resolve_verified" in common:
+            common.discard("resolve")
+        order = ("resolve_verified", "resolve", "defer", "ignore", "approve", "reject")
+        return tuple(action for action in order if action in common)
 
     @staticmethod
     def next_item(items: list[dict[str, Any]], current_key: str) -> dict[str, Any] | None:
@@ -144,6 +322,7 @@ class ReviewWorkspaceService:
             }),
             "return_to": return_to,
             "allowed_actions": ("resolve", "defer", "ignore", "verify"),
+            "authoritative_status": str(raw.get("status") or ""),
             "resolve_verified": self._fresh_corrected(task),
             "affected_fingerprint": str(task.get("affected_fingerprint") or ""),
             "source_fingerprint": self._fingerprint({
@@ -158,7 +337,17 @@ class ReviewWorkspaceService:
                 **({"Article state": article["state"]} if article else {}),
             },
             "compression_identity": self._task_compression_identity(task),
+            "specialized_review": bool(
+                (task.get("repair_eligibility") or {}).get("adapter_id")
+                or task.get("relationship_repair_proposal")
+                or str(task.get("classification") or "").casefold() == "integrity"
+            ),
         }
+        item["batch_allowed_actions"] = tuple(
+            ["resolve"] + (["resolve_verified"] if item["resolve_verified"] else [])
+            + ([] if item["authoritative_status"] == "deferred" else ["defer"])
+            + ["ignore"]
+        )
         item["order_group"] = self._order_group(item, task)
         return item
 
@@ -259,6 +448,9 @@ class ReviewWorkspaceService:
             "precedent": f"{len(lesson.get('supporting_evidence') or [])} supporting evidence item(s).",
             "inspect_url": "/curator/growth#lessonsTitle", "task_url": "", "return_to": "",
             "allowed_actions": ("approve", "reject"), "resolve_verified": False,
+            "authoritative_status": str(lesson.get("status") or ""),
+            "batch_allowed_actions": ("approve", "reject"),
+            "specialized_review": False,
             "source_fingerprint": self._fingerprint(lesson),
             "technical": {"Lesson": lesson_id, "Source identity": str(lesson.get("raw_identity") or lesson.get("pattern_observed") or "")},
             "compression_identity": self._lesson_compression_identity(lesson),
@@ -283,6 +475,9 @@ class ReviewWorkspaceService:
             "precedent": f"{len(proposal.get('supporting_task_ids') or [])} supporting task(s).",
             "inspect_url": "/curator/growth#proposalsTitle", "task_url": "", "return_to": "",
             "allowed_actions": ("approve", "reject"), "resolve_verified": False,
+            "authoritative_status": str(proposal.get("status") or ""),
+            "batch_allowed_actions": (),
+            "specialized_review": True,
             "source_fingerprint": self._fingerprint(proposal),
             "technical": {"Proposal": proposal_id, "Kind": "capability"},
             "compression_identity": self._proposal_compression_identity(proposal),
@@ -335,6 +530,7 @@ class ReviewWorkspaceService:
 
         for item in items:
             identity = item.pop("compression_identity")
+            item["batch_group_key"] = identity["key"]
             distribution = Counter(
                 decision for item_id, decision in precedents.get(identity["key"], [])
                 if item_id != item["item_id"]
@@ -358,6 +554,31 @@ class ReviewWorkspaceService:
                     "human decision."
                 ),
             }
+
+        exclusion_reasons: dict[str, Counter] = defaultdict(Counter)
+        eligible_counts = Counter()
+        for item in items:
+            reason = self._batch_exclusion_reason(item)
+            if item["item_type"] in {"curator_task", "growth_lesson"} and not reason:
+                eligible_counts[item["batch_group_key"]] += 1
+            elif reason:
+                exclusion_reasons[item["batch_group_key"]][reason] += 1
+        for item in items:
+            count = eligible_counts[item["batch_group_key"]]
+            item["batch_review_count"] = count
+            item["batch_excluded_count"] = sum(
+                exclusion_reasons[item["batch_group_key"]].values()
+            )
+            item["batch_exclusion_reasons"] = [
+                {"reason": reason, "count": excluded_count}
+                for reason, excluded_count
+                in sorted(exclusion_reasons[item["batch_group_key"]].items())
+            ]
+            item["batch_review_available"] = bool(
+                count >= 2
+                and item["item_type"] in {"curator_task", "growth_lesson"}
+                and not self._batch_exclusion_reason(item)
+            )
 
     @staticmethod
     def _precedent_summary(distribution: Counter) -> str:

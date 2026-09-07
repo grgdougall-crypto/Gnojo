@@ -12,7 +12,7 @@ from app.services.curator_task_navigation_service import CuratorTaskNavigationSe
 from app.services.curator_workflow_lifecycle_service import CuratorWorkflowLifecycleService
 from app.services.review_workspace_service import ReviewWorkspaceService
 from curator.growth import CuratorGrowthService as GrowthStoreService
-from curator.memory import CuratorMemoryStore
+from curator.memory import CuratorMemoryError, CuratorMemoryStore
 from tests.test_accessibility import InteractiveParser
 
 
@@ -425,6 +425,388 @@ class ReviewWorkspaceTests(unittest.TestCase):
         ).get_data(as_text=True)
         self.assertIn("Return to Review", page)
         self.assertIn('href="/review?item=curator_task%3AGKT-A"', page)
+
+    @staticmethod
+    def routine_fields():
+        return {
+            "curator_rule": "CUR-SAFE-L1", "finding_type": "missing_safety_guidance",
+            "content_type": "workflow_node", "content_identifier": "sample:step",
+            "safety_level": 1, "category": "Safety",
+        }
+
+    def save_routine_curator_group(self):
+        shared = self.routine_fields()
+        self.save_tasks(
+            self.task("GKT-A", content_identifier="sample:a", **{
+                key: value for key, value in shared.items() if key != "content_identifier"
+            }),
+            self.task("GKT-B", content_identifier="sample:b", **{
+                key: value for key, value in shared.items() if key != "content_identifier"
+            }),
+            self.task("GKT-OLD-1", status="resolved", **shared),
+            self.task("GKT-OLD-2", status="resolved", **shared),
+        )
+
+    def test_routine_curator_group_preview_is_exact_and_read_only(self):
+        self.save_routine_curator_group()
+        before = (self.root / "curation_memory/memory.json").read_bytes()
+        page = self.client.get("/review?item=curator_task:GKT-A").get_data(as_text=True)
+        self.assertIn("Review similar items (2)", page)
+        response = self.client.get("/review/curator_task/GKT-A/batch")
+        self.assertEqual(response.status_code, 200)
+        page = response.get_data(as_text=True)
+        for value in ("GKT-A", "GKT-B", "sample:a", "sample:b", "No decision has been applied yet"):
+            self.assertIn(value, page)
+        self.assertNotIn("GKT-OLD-1</strong>", page)
+        self.assertEqual((self.root / "curation_memory/memory.json").read_bytes(), before)
+
+        parser = InteractiveParser()
+        parser.feed(page)
+        self.assertEqual(len(parser.ids), len(set(parser.ids)))
+        for field in ("batchDecision", "batchReason", "batchConfirmed"):
+            self.assertIn(field, parser.labels_for)
+        for button in parser.buttons:
+            self.assertTrue(button["text"].strip() or button["attrs"].get("aria-label"))
+
+    def test_mixed_novel_and_capability_items_do_not_offer_batching(self):
+        shared = self.routine_fields()
+        self.save_tasks(
+            self.task("GKT-A", **shared),
+            self.task("GKT-RES", status="resolved", **shared),
+            self.task("GKT-IGNORE", status="ignored", **shared),
+        )
+        page = self.client.get("/review?item=curator_task:GKT-A").get_data(as_text=True)
+        self.assertNotIn("Review similar items", page)
+        response = self.client.get("/review/curator_task/GKT-A/batch")
+        self.assertEqual(response.status_code, 302)
+
+        self.save_tasks(self.task("GKT-A", **shared), self.task("GKT-B", **shared))
+        self.assertNotIn(
+            "Review similar items",
+            self.client.get("/review?item=curator_task:GKT-A").get_data(as_text=True),
+        )
+
+        self.save_tasks()
+        _, proposal, _ = self.add_growth()
+        item = ReviewWorkspaceService(self.root).find("growth_capability", proposal["proposal_id"])
+        self.assertFalse(item["batch_review_available"])
+
+    def test_structurally_different_reasoning_item_is_excluded(self):
+        common = {
+            "curator_rule": "CUR-WR-EARLY-CONVERGENCE",
+            "finding_type": "workflow_reasoning_early_convergence",
+            "content_type": "workflow_node",
+        }
+        evidence_a = ["Structural evidence: {'branches': ['yes', 'no'], 'distance': 2}"]
+        evidence_b = ["Structural evidence: {'branches': ['yes', 'no'], 'distance': 4}"]
+        self.save_tasks(
+            self.task("GKT-A", content_identifier="one:a", evidence=evidence_a, **common),
+            self.task("GKT-B", content_identifier="two:b", evidence=evidence_a, **common),
+            self.task("GKT-C", content_identifier="three:c", evidence=evidence_b, **common),
+            self.task("GKT-OLD-1", status="resolved", content_identifier="old:a", evidence=evidence_a, **common),
+            self.task("GKT-OLD-2", status="resolved", content_identifier="old:b", evidence=evidence_a, **common),
+        )
+        items = {item["item_id"]: item for item in ReviewWorkspaceService(self.root).items()}
+        self.assertEqual(items["GKT-A"]["batch_review_count"], 2)
+        self.assertFalse(items["GKT-C"]["batch_review_available"])
+
+    def test_batch_requires_confirmation_reason_and_current_snapshot(self):
+        self.save_routine_curator_group()
+        preview = ReviewWorkspaceService(self.root).batch_preview("curator_task", "GKT-A")
+        before = (self.root / "curation_memory/memory.json").read_bytes()
+        missing_confirmation = self.client.post(
+            "/review/curator_task/GKT-A/batch/decision",
+            data={"snapshot_fingerprint": preview["snapshot_fingerprint"],
+                  "decision": "ignore", "reason": "Reviewed."},
+        )
+        self.assertIn("notice=invalid", missing_confirmation.location)
+        missing_reason = self.client.post(
+            "/review/curator_task/GKT-A/batch/decision",
+            data={"snapshot_fingerprint": preview["snapshot_fingerprint"],
+                  "decision": "ignore", "reason": "", "confirmed": "yes"},
+        )
+        self.assertIn("notice=invalid", missing_reason.location)
+        self.assertEqual((self.root / "curation_memory/memory.json").read_bytes(), before)
+
+        state = self.store.load()
+        state["tasks"]["GKT-B"]["priority"] = "High"
+        self.store.save(state)
+        changed = self.client.post(
+            "/review/curator_task/GKT-A/batch/decision",
+            data={"snapshot_fingerprint": preview["snapshot_fingerprint"],
+                  "decision": "ignore", "reason": "Reviewed.", "confirmed": "yes"},
+        )
+        self.assertIn("notice=changed", changed.location)
+        state = self.store.load()
+        self.assertEqual(state["tasks"]["GKT-A"]["status"], "open")
+        self.assertEqual(state["tasks"]["GKT-B"]["status"], "open")
+
+    def test_changed_authoritative_content_fingerprint_fails_closed(self):
+        workflow = {"workflow_id": "sample", "name": "Sample", "start_node": "a", "nodes": {
+            "a": {"type": "resolution", "message": "Before"}
+        }}
+        path = self.root / "app/decision_trees/sample.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(workflow), encoding="utf-8")
+        shared = self.routine_fields()
+        self.save_tasks(
+            self.task("GKT-A", content_identifier="sample:a", **{
+                key: value for key, value in shared.items() if key != "content_identifier"
+            }),
+            self.task("GKT-B", content_identifier="sample:a", **{
+                key: value for key, value in shared.items() if key != "content_identifier"
+            }),
+            self.task("GKT-OLD-1", status="resolved", **shared),
+            self.task("GKT-OLD-2", status="resolved", **shared),
+        )
+        preview = ReviewWorkspaceService(self.root).batch_preview("curator_task", "GKT-A")
+        workflow["nodes"]["a"]["message"] = "After"
+        path.write_text(json.dumps(workflow), encoding="utf-8")
+        before = (self.root / "curation_memory/memory.json").read_bytes()
+        response = self.client.post(
+            "/review/curator_task/GKT-A/batch/decision",
+            data={"snapshot_fingerprint": preview["snapshot_fingerprint"],
+                  "decision": "ignore", "reason": "Reviewed.", "confirmed": "yes"},
+        )
+        self.assertIn("notice=changed", response.location)
+        self.assertEqual((self.root / "curation_memory/memory.json").read_bytes(), before)
+
+    def test_independently_resolved_candidate_fails_closed(self):
+        self.save_routine_curator_group()
+        preview = ReviewWorkspaceService(self.root).batch_preview("curator_task", "GKT-A")
+        self.store.update_task("GKT-B", status="resolved", note="Independent review.", event_name="resolve")
+        response = self.client.post(
+            "/review/curator_task/GKT-A/batch/decision",
+            data={"snapshot_fingerprint": preview["snapshot_fingerprint"],
+                  "decision": "ignore", "reason": "Group review.", "confirmed": "yes"},
+        )
+        self.assertIn("notice=changed", response.location)
+        self.assertEqual(self.store.load()["tasks"]["GKT-A"]["status"], "open")
+
+    def test_curator_batch_is_atomic_and_preserves_per_item_history(self):
+        self.save_routine_curator_group()
+        state = self.store.load()
+        state["tasks"]["GKT-NEXT"] = self.task(
+            "GKT-NEXT", curator_rule="CUR-OTHER", finding_type="other_finding",
+            content_identifier="other:step",
+        )
+        self.store.save(state)
+        service = ReviewWorkspaceService(self.root)
+        preview = service.batch_preview("curator_task", "GKT-A")
+        response = self.client.post(
+            "/review/curator_task/GKT-A/batch/decision",
+            data={"snapshot_fingerprint": preview["snapshot_fingerprint"],
+                  "decision": "ignore", "reason": "Same reviewed safety pattern.",
+                  "confirmed": "yes"},
+        )
+        self.assertIn("notice=batch_saved", response.location)
+        self.assertIn("item=curator_task:GKT-NEXT", response.location)
+        self.assertIn("count=2", response.location)
+        state = self.store.load()
+        for task_id in ("GKT-A", "GKT-B"):
+            self.assertEqual(state["tasks"][task_id]["status"], "ignored")
+            self.assertEqual(state["tasks"][task_id]["history"][-1]["note"],
+                             "Same reviewed safety pattern.")
+        self.assertEqual(sum(event.get("event") == "ignore" for event in state["decisions"]), 2)
+
+        self.save_routine_curator_group()
+        before = (self.root / "curation_memory/memory.json").read_bytes()
+        preview = ReviewWorkspaceService(self.root).batch_preview("curator_task", "GKT-A")
+        original = ReviewWorkspaceService._apply_existing_action
+        calls = []
+        def fail_second(root, item_type, item_id, decision, reason, reviewer):
+            calls.append(item_id)
+            if len(calls) == 2:
+                raise CuratorMemoryError("Simulated second-item failure.")
+            return original(root, item_type, item_id, decision, reason, reviewer)
+        with patch.object(ReviewWorkspaceService, "_apply_existing_action", side_effect=fail_second):
+            response = self.client.post(
+                "/review/curator_task/GKT-A/batch/decision",
+                data={"snapshot_fingerprint": preview["snapshot_fingerprint"],
+                      "decision": "ignore", "reason": "Review.", "confirmed": "yes"},
+            )
+        self.assertIn("notice=invalid", response.location)
+        self.assertEqual((self.root / "curation_memory/memory.json").read_bytes(), before)
+
+    def test_resolve_verified_requires_every_candidate_to_be_fresh(self):
+        self.save_routine_curator_group()
+        preview = ReviewWorkspaceService(self.root).batch_preview("curator_task", "GKT-A")
+        self.assertNotIn("resolve_verified", preview["actions"])
+        self.assertIn("resolve", preview["actions"])
+
+        state = self.store.load()
+        state["tasks"]["GKT-B"]["status"] = "deferred"
+        self.store.save(state)
+        preview = ReviewWorkspaceService(self.root).batch_preview("curator_task", "GKT-A")
+        self.assertNotIn("defer", preview["actions"])
+
+    def test_resolve_verified_requires_fresh_state_for_every_item(self):
+        workflows = {}
+        for workflow_id in ("sample_a", "sample_b"):
+            workflow = {"workflow_id": workflow_id, "name": workflow_id, "nodes": {
+                "start": {"type": "resolution", "message": "Done"}
+            }, "start_node": "start"}
+            path = self.root / f"app/decision_trees/{workflow_id}.json"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(workflow), encoding="utf-8")
+            workflows[workflow_id] = CuratorWorkflowLifecycleService.fingerprint(workflow)
+        shared = {
+            "curator_rule": "CUR-TEST", "finding_type": "test_finding",
+            "content_type": "workflow", "category": "Quality",
+        }
+        tasks = []
+        for suffix, workflow_id in (("A", "sample_a"), ("B", "sample_b")):
+            fingerprint = workflows[workflow_id]
+            tasks.append(self.task(
+                f"GKT-{suffix}", content_identifier=workflow_id,
+                last_verified_fingerprint=fingerprint,
+                current_verification={
+                    "status": "appears_corrected", "workflow_id": workflow_id,
+                    "affected_fingerprint": fingerprint,
+                    "affected_fingerprint_scope": "whole_workflow",
+                }, **shared,
+            ))
+        tasks.extend((self.task("GKT-OLD-1", status="resolved", **shared),
+                      self.task("GKT-OLD-2", status="resolved", **shared)))
+        self.save_tasks(*tasks)
+        preview = ReviewWorkspaceService(self.root).batch_preview("curator_task", "GKT-A")
+        self.assertIn("resolve_verified", preview["actions"])
+        self.assertNotIn("resolve", preview["actions"])
+
+        state = self.store.load()
+        state["tasks"]["GKT-B"]["current_verification"]["affected_fingerprint"] = "stale"
+        self.store.save(state)
+        preview = ReviewWorkspaceService(self.root).batch_preview("curator_task", "GKT-A")
+        self.assertNotIn("resolve_verified", preview["actions"])
+        self.assertIn("resolve", preview["actions"])
+
+    def test_preview_lists_ineligible_same_pattern_item_as_excluded(self):
+        self.save_routine_curator_group()
+        state = self.store.load()
+        state["tasks"]["GKT-C"] = self.task(
+            "GKT-C", content_identifier="sample:c", classification="Integrity",
+            **{key: value for key, value in self.routine_fields().items()
+               if key not in {"content_identifier"}},
+        )
+        self.store.save(state)
+        preview = ReviewWorkspaceService(self.root).batch_preview("curator_task", "GKT-A")
+        self.assertEqual([entry["item"]["item_id"] for entry in preview["excluded"]], ["GKT-C"])
+        page = self.client.get("/review/curator_task/GKT-A/batch").get_data(as_text=True)
+        self.assertIn("Excluded items", page)
+        self.assertIn("specialized supervised review path", page)
+
+    def test_review_workspace_explains_when_similar_items_are_not_batch_eligible(self):
+        shared = self.routine_fields()
+        common = {key: value for key, value in shared.items() if key != "content_identifier"}
+        self.save_tasks(
+            self.task("GKT-A", content_identifier="sample:a", **common),
+            self.task(
+                "GKT-B", content_identifier="sample:b", classification="Integrity", **common,
+            ),
+            self.task("GKT-C", finding_id="", content_identifier="sample:c", **common),
+            self.task("GKT-OLD-1", status="resolved", **shared),
+            self.task("GKT-OLD-2", status="resolved", **shared),
+        )
+        before = (self.root / "curation_memory/memory.json").read_bytes()
+        service = ReviewWorkspaceService(self.root)
+        items = {item["item_id"]: item for item in service.items()}
+        current = items["GKT-A"]
+
+        self.assertEqual(current["compression"]["classification"], "Routine pattern")
+        self.assertEqual(current["compression"]["similar_open_count"], 3)
+        self.assertEqual(current["batch_review_count"], 1)
+        self.assertEqual(current["batch_excluded_count"], 2)
+        expected_reasons = {
+            service._batch_exclusion_reason(items["GKT-B"]),
+            service._batch_exclusion_reason(items["GKT-C"]),
+        }
+        self.assertEqual(
+            {entry["reason"] for entry in current["batch_exclusion_reasons"]},
+            expected_reasons,
+        )
+
+        page = self.client.get("/review?item=curator_task:GKT-A").get_data(as_text=True)
+        self.assertIn("3 similar open items. 1 currently qualifies", page)
+        self.assertIn("2 similar items are excluded", page)
+        self.assertIn("requires its specialized supervised review path", page)
+        self.assertIn("does not have an unambiguous authoritative identity", page)
+        self.assertNotIn("Review similar items (", page)
+        self.assertEqual((self.root / "curation_memory/memory.json").read_bytes(), before)
+
+    def test_all_eligible_similar_items_keep_batch_action_without_warning(self):
+        self.save_routine_curator_group()
+        page = self.client.get("/review?item=curator_task:GKT-A").get_data(as_text=True)
+        self.assertIn("Review similar items (2)", page)
+        self.assertNotIn("currently qualifies for governed batch review", page)
+        self.assertNotIn("similar items are excluded", page)
+
+    def test_growth_lesson_batch_delegates_and_has_no_fake_defer(self):
+        self.save_tasks()
+        growth = GrowthStoreService(self.store)
+        lessons = [growth.record_lesson({
+            "pattern_observed": f"reasoning_calibration:cur-wr-early-convergence:rcp-shared:{suffix}",
+            "supporting_evidence": [suffix], "recommended_future_behavior": "Retain this pattern.",
+        }) for suffix in ("one", "two", "old-one", "old-two")]
+        for lesson in lessons[2:]:
+            growth.decide_lesson(lesson["lesson_id"], "approved", reviewer="Greg", reason="Prior review.")
+        service = ReviewWorkspaceService(self.root)
+        preview = service.batch_preview("growth_lesson", lessons[0]["lesson_id"])
+        self.assertEqual(preview["actions"], ("approve", "reject"))
+        self.assertNotIn("defer", json.dumps(preview))
+        response = self.client.post(
+            f"/review/growth_lesson/{lessons[0]['lesson_id']}/batch/decision",
+            data={"snapshot_fingerprint": preview["snapshot_fingerprint"],
+                  "decision": "approve", "reason": "Same governed lesson pattern.",
+                  "confirmed": "yes"},
+        )
+        self.assertIn("notice=batch_saved", response.location)
+        state = self.store.load()
+        for lesson in lessons[:2]:
+            current = state["growth"]["lessons"][lesson["lesson_id"]]
+            self.assertEqual(current["status"], "approved")
+            self.assertEqual(current["decision_history"][-1]["reason"],
+                             "Same governed lesson pattern.")
+
+        rejected = [growth.record_lesson({
+            "pattern_observed": f"reasoning_calibration:cur-wr-early-convergence:rcp-reject:{suffix}",
+            "supporting_evidence": [suffix], "recommended_future_behavior": "Reject this pattern.",
+        }) for suffix in ("one", "two", "old-one", "old-two")]
+        for lesson in rejected[2:]:
+            growth.decide_lesson(lesson["lesson_id"], "rejected", reviewer="Greg", reason="Prior review.")
+        preview = ReviewWorkspaceService(self.root).batch_preview(
+            "growth_lesson", rejected[0]["lesson_id"]
+        )
+        self.client.post(
+            f"/review/growth_lesson/{rejected[0]['lesson_id']}/batch/decision",
+            data={"snapshot_fingerprint": preview["snapshot_fingerprint"],
+                  "decision": "reject", "reason": "Same rejected lesson pattern.",
+                  "confirmed": "yes"},
+        )
+        state = self.store.load()
+        self.assertTrue(all(
+            state["growth"]["lessons"][lesson["lesson_id"]]["status"] == "rejected"
+            for lesson in rejected[:2]
+        ))
+
+    def test_batch_routes_require_authenticated_reviewer(self):
+        self.save_routine_curator_group()
+        app.config.update(
+            TESTING=False, AUTH_TEST_BYPASS=False,
+            GNOJO_STABLE_SESSION_SECRET_CONFIGURED=True,
+            GNOJO_REVIEWER_USERNAME="reviewer",
+            GNOJO_REVIEWER_PASSWORD_HASH="not-a-valid-hash",
+        )
+        anonymous = app.test_client()
+        before = (self.root / "curation_memory/memory.json").read_bytes()
+        self.assertEqual(
+            anonymous.get("/review/curator_task/GKT-A/batch").status_code, 302
+        )
+        self.assertEqual(
+            anonymous.post("/review/curator_task/GKT-A/batch/decision", data={}).status_code,
+            403,
+        )
+        self.assertEqual((self.root / "curation_memory/memory.json").read_bytes(), before)
+        app.config.update(TESTING=True, AUTH_TEST_BYPASS=True)
 
 
 if __name__ == "__main__":

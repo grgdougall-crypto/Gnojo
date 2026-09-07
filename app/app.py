@@ -144,7 +144,7 @@ from app.services.curator_progress_auto_repair_policy_service import (
     CuratorProgressAutoRepairPolicyService,
 )
 from app.services.curator_growth_service import CuratorGrowthService
-from app.services.review_workspace_service import ReviewWorkspaceService
+from app.services.review_workspace_service import ReviewBatchError, ReviewWorkspaceService
 from app.services.knowledge_coverage_planner_service import (
     KnowledgeCoveragePlannerError,
     KnowledgeCoveragePlannerService,
@@ -1001,9 +1001,18 @@ def review_workspace():
             f"Decision saved. {workspace['remaining']} review item"
             f"{'s' if workspace['remaining'] != 1 else ''} remaining."
         )
+    elif notice == "batch_saved":
+        kind = "success"
+        count = request.args.get("count", "0")
+        message = (
+            f"Batch decision saved for {count} items. {workspace['remaining']} review item"
+            f"{'s' if workspace['remaining'] != 1 else ''} remaining."
+        )
     elif notice == "changed":
         kind = "warning"
-        message = "This review item changed or is no longer actionable. No decision was saved."
+        message = request.args.get(
+            "error", "This review item changed or is no longer actionable. No decision was saved."
+        )
     elif notice == "invalid":
         kind = "danger"
         message = request.args.get("error", "The review decision could not be saved.")
@@ -1059,6 +1068,51 @@ def review_workspace_decision(item_type, item_id):
         refreshed[0]["key"] if refreshed and refreshed[0]["key"] != item["key"] else ""
     )
     return redirect(url_for("review_workspace", item=destination or None, notice="saved"))
+
+
+@app.get("/review/<item_type>/<item_id>/batch")
+def review_workspace_batch_preview(item_type, item_id):
+    try:
+        preview = ReviewWorkspaceService(_structural_repository_root()).batch_preview(
+            item_type, item_id,
+        )
+    except (CuratorMemoryError, ReviewBatchError) as error:
+        return redirect(url_for(
+            "review_workspace", item=f"{item_type}:{item_id}", notice="invalid",
+            error=str(error),
+        ))
+    return render_template("review_batch_preview.html", preview=preview)
+
+
+@app.post("/review/<item_type>/<item_id>/batch/decision")
+def review_workspace_batch_decision(item_type, item_id):
+    if request.form.get("confirmed") != "yes":
+        return redirect(url_for(
+            "review_workspace", item=f"{item_type}:{item_id}", notice="invalid",
+            error="Confirm that you reviewed the materially equivalent group before applying a decision.",
+        ))
+    service = ReviewWorkspaceService(_structural_repository_root())
+    reviewer = getattr(getattr(g, "reviewer_identity", None), "username", "") or "Human"
+    try:
+        result = service.commit_batch(
+            item_type, item_id,
+            snapshot_fingerprint=request.form.get("snapshot_fingerprint", ""),
+            decision=request.form.get("decision", ""),
+            reason=request.form.get("reason", ""), reviewer=reviewer,
+        )
+    except (CuratorMemoryError, ReviewBatchError) as error:
+        notice = "changed" if getattr(error, "code", "") == "changed" else "invalid"
+        return redirect(url_for(
+            "review_workspace", item=f"{item_type}:{item_id}", notice=notice,
+            error=str(error),
+        ))
+
+    refreshed = service.items()
+    destination = refreshed[0]["key"] if refreshed else ""
+    return redirect(url_for(
+        "review_workspace", item=destination or None, notice="batch_saved",
+        count=result["count"],
+    ))
 
 
 def _phase3_harness_enabled():

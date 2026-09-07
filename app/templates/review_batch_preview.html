@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Review similar items | Gnojo{% endblock %}
+{% block content %}
+<div class="container py-4" aria-labelledby="batchReviewTitle">
+  <header class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+    <div>
+      <span class="section-eyebrow">Governed group decision</span>
+      <h1 id="batchReviewTitle">Review similar items</h1>
+      <p class="text-secondary mb-0">Confirm that every item is materially equivalent before recording one human decision.</p>
+    </div>
+    <a class="btn btn-outline-secondary" href="{{ url_for('review_workspace', item=preview.selected.key) }}">Return to individual review</a>
+  </header>
+
+  <div class="alert alert-info" role="status"><strong>{{ preview.notice }}</strong> This preview is read-only.</div>
+
+  <section class="quality-section mb-4" aria-labelledby="patternTitle">
+    <div class="d-flex flex-wrap justify-content-between gap-3">
+      <div><h2 class="h4" id="patternTitle">{{ preview.selected.type_label }} routine pattern</h2><p class="mb-2">{{ preview.pattern.basis }}</p><p class="text-secondary mb-0">{{ preview.pattern.prior_summary }}</p></div>
+      <div class="text-end"><strong class="d-block fs-4">{{ preview.candidates|length }}</strong><span class="text-secondary">eligible candidates</span></div>
+    </div>
+  </section>
+
+  <section class="quality-section mb-4" aria-labelledby="candidateTitle">
+    <h2 class="h4" id="candidateTitle">Exact candidate list</h2>
+    <div class="table-responsive"><table class="table align-middle"><thead><tr><th scope="col">Item</th><th scope="col">Affected content</th><th scope="col">Current state</th></tr></thead><tbody>
+      {% for item in preview.candidates %}<tr><td><strong>{{ item.title }}</strong><div class="small text-secondary">{{ item.item_id }}{% if item.finding_id %} · {{ item.finding_id }}{% endif %}</div></td><td>{{ item.affected_content }}<div class="small text-secondary text-break"><code>{{ item.affected_identity }}</code></div></td><td>{{ item.authoritative_status|replace('_', ' ')|title }}</td></tr>{% endfor %}
+    </tbody></table></div>
+  </section>
+
+  {% if preview.excluded %}<section class="quality-section mb-4" aria-labelledby="excludedTitle"><h2 class="h4" id="excludedTitle">Excluded items</h2><ul class="mb-0">{% for excluded in preview.excluded %}<li><strong>{{ excluded.item.item_id }}</strong>: {{ excluded.reason }}</li>{% endfor %}</ul></section>{% endif %}
+
+  <section class="quality-section" aria-labelledby="batchDecisionTitle">
+    <h2 class="h4" id="batchDecisionTitle">Batch decision</h2>
+    <p>Allowed decisions are limited to actions supported independently by every candidate. Each item will retain its own authoritative decision and history record.</p>
+    <form method="post" action="{{ url_for('review_workspace_batch_decision', item_type=preview.selected.item_type, item_id=preview.selected.item_id) }}" class="row g-3">
+      <input type="hidden" name="snapshot_fingerprint" value="{{ preview.snapshot_fingerprint }}">
+      <div class="col-12"><label class="form-label" for="batchDecision">Decision</label><select class="form-select" id="batchDecision" name="decision" required><option value="">Choose a decision</option>{% for action in preview.actions %}<option value="{{ action }}">{{ {'resolve_verified': 'Resolve verified items', 'resolve': 'Resolve items', 'defer': 'Defer items', 'ignore': 'Ignore findings', 'approve': 'Accept group', 'reject': 'Reject group'}[action] }}</option>{% endfor %}</select></div>
+      <div class="col-12"><label class="form-label" for="batchReason">Decision reason</label><textarea class="form-control" id="batchReason" name="reason" rows="3" required></textarea></div>
+      <div class="col-12"><div class="form-check"><input class="form-check-input" id="batchConfirmed" type="checkbox" name="confirmed" value="yes" required><label class="form-check-label" for="batchConfirmed">I reviewed this group and confirm these items are materially equivalent for this decision.</label></div></div>
+      <div class="col-12"><button class="btn btn-primary" id="applyBatchDecision" type="submit" disabled>Apply batch decision</button></div>
+    </form>
+  </section>
+</div>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  const confirmation = document.getElementById('batchConfirmed');
+  const applyButton = document.getElementById('applyBatchDecision');
+  if (!confirmation || !applyButton) return;
+  const update = function () { applyButton.disabled = !confirmation.checked; };
+  confirmation.addEventListener('change', update);
+  update();
+});
+</script>
+{% endblock %}

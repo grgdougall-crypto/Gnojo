@@ -9,8 +9,8 @@
     <p class="text-muted fs-5 mt-3">{{ message }}</p>
     <div class="d-flex flex-wrap justify-content-center gap-2 mt-4">
         <a class="btn btn-primary" href="{{ url_for('home') }}">Return home</a>
-        <a class="btn btn-outline-primary" href="{{ url_for('workflow_studio') }}">Open Workflow Studio</a>
-        <a class="btn btn-outline-secondary" href="{{ url_for('content_studio') }}">Open Content Studio</a>
+        {% if reviewer_authenticated %}<a class="btn btn-outline-primary" href="{{ url_for('workflow_studio') }}">Open Workflow Studio</a>
+        <a class="btn btn-outline-secondary" href="{{ url_for('content_studio') }}">Open Content Studio</a>{% endif %}
     </div>
     <div class="error-page__request mt-4"><span>Request ID</span><code>{{ request_id }}</code></div>
 </div></div>

@@ -45,7 +45,12 @@ class InteractiveParser(HTMLParser):
 
 class AccessibilityTests(unittest.TestCase):
     def setUp(self):
+        self.previous_testing = app.config.get("TESTING")
+        app.config["TESTING"] = True
         self.client = app.test_client()
+
+    def tearDown(self):
+        app.config["TESTING"] = self.previous_testing
 
     def parse(self, route):
         response = self.client.get(route)

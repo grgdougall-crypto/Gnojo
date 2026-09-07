@@ -5,9 +5,14 @@ from app.app import app
 
 class LandingPageActionTests(unittest.TestCase):
     def setUp(self):
+        self.previous_testing = app.config.get("TESTING")
+        app.config["TESTING"] = True
         self.client = app.test_client()
         self.response = self.client.get("/")
         self.html = self.response.get_data(as_text=True)
+
+    def tearDown(self):
+        app.config["TESTING"] = self.previous_testing
 
     def test_landing_page_has_no_dead_placeholder_links(self):
         self.assertEqual(self.response.status_code, 200)

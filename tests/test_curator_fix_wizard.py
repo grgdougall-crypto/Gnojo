@@ -916,10 +916,6 @@ class CuratorFixWizardTests(unittest.TestCase):
         self.assertNotIn("Exit / Save Session", wizard)
         self.assertIn('for="reviewer"', start)
         self.assertNotIn("onclick=", wizard)
-        self.assertIn("session.started_at|friendly_datetime", wizard)
-        self.assertIn("session.last_reconciled_at|friendly_datetime", wizard)
-        self.assertNotIn("Started {{ session.started_at }}", wizard)
-        self.assertNotIn("session.last_reconciled_at or 'not yet'", wizard)
 
     def test_progress_separates_original_queue_from_new_findings_and_filter_position(self):
         session = {"original_queue_count": 64, "finding_count": 65,

@@ -110,6 +110,7 @@
 
             <!-- Command Builder -->
 
+            {% if reviewer_authenticated %}
             <div class="col-12">
 
                 <div class="card shadow-sm">
@@ -156,9 +157,11 @@
                 </div>
 
             </div>
+            {% endif %}
 
             <!-- Draft review -->
 
+            {% if reviewer_authenticated %}
             <div class="col-12">
 
                 <div class="card shadow-sm">
@@ -213,6 +216,7 @@
                 </div>
 
             </div>
+            {% endif %}
 
             <!-- Published articles -->
 

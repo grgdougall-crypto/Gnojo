@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block title %}Sign In | Gnojo{% endblock %}
+
+{% block content %}
+<section class="content-section">
+  <div class="container" style="max-width: 640px;">
+    <div class="card shadow-sm">
+      <div class="card-body p-4 p-md-5">
+        <p class="section-label">Reviewer access</p>
+        <h1 class="h2">Sign in to Gnojo</h1>
+        <p class="text-muted">Administrative and authoring work is limited to the configured Reviewer/Admin account.</p>
+
+        {% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
+        {% if not auth_configured %}
+          <div class="alert alert-warning" role="alert">
+            Reviewer access is not configured. Set the documented environment variables and restart Gnojo.
+          </div>
+        {% endif %}
+
+        <form method="post" action="{{ url_for('login') }}" class="mt-4">
+          <input type="hidden" name="authenticity_token" value="{{ authenticity_token() }}">
+          <input type="hidden" name="next" value="{{ next_destination }}">
+          <div class="mb-3">
+            <label class="form-label" for="reviewerUsername">Username</label>
+            <input class="form-control" id="reviewerUsername" name="username" autocomplete="username" required autofocus>
+          </div>
+          <div class="mb-4">
+            <label class="form-label" for="reviewerPassword">Password</label>
+            <input class="form-control" id="reviewerPassword" name="password" type="password" autocomplete="current-password" required>
+          </div>
+          <div class="d-flex flex-wrap gap-2 align-items-center">
+            <button class="btn btn-primary" type="submit"{% if not auth_configured %} disabled{% endif %}>Sign In</button>
+            <a class="btn btn-outline-secondary" href="{{ url_for('home') }}">Return Home</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}

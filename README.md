@@ -59,7 +59,11 @@ Requirements: Python 3.11 or newer and Git.
 
 | Variable | Purpose |
 | --- | --- |
-| `FLASK_SECRET_KEY` | Stable session-signing key; use a strong private value outside local development |
+| `FLASK_SECRET_KEY` | Stable session-signing key; required for Reviewer/Admin sign-in and must be a strong private value |
+| `GNOJO_REVIEWER_USERNAME` | Username for the single Reviewer/Admin identity |
+| `GNOJO_REVIEWER_PASSWORD_HASH` | Werkzeug password hash for the Reviewer/Admin password; generate it with `generate_password_hash` and never store plaintext |
+| `GNOJO_SESSION_COOKIE_SECURE` | Set to `true` for HTTPS deployments; leave `false` only for local HTTP development |
+| `GNOJO_SESSION_LIFETIME_MINUTES` | Reviewer session lifetime in minutes; defaults to `480` |
 | `GNOJO_DEBUG` | Set to `true` only for local debugging |
 | `GNOJO_SESSION_ENVIRONMENT` | Classify new troubleshooting sessions as `production`, `development`, or `test`; older records remain unclassified |
 | `GEMINI_API_KEY` | Optional Gemini access |

@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    {% if reviewer_authenticated %}<meta name="gnojo-csrf-token" content="{{ authenticity_token() }}">{% endif %}
 
     <title>{% block title %}Gnojo{% endblock %}</title>
 
@@ -120,7 +121,7 @@
                         <span>History</span>
                     </a>
 
-                    <a
+                    {% if reviewer_authenticated %}<a
     class="btn btn-outline-primary btn-sm"
     href="{{ url_for('content_studio') }}"
     {% if request.endpoint == 'content_studio' %}aria-current="page"{% endif %}
@@ -128,6 +129,16 @@
     <i class="bi bi-pencil-square me-1"></i>
     Content Studio
 </a>
+                    <form method="post" action="{{ url_for('logout') }}" class="d-inline">
+                        <input type="hidden" name="authenticity_token" value="{{ authenticity_token() }}">
+                        <button class="btn btn-outline-secondary btn-sm" type="submit">Sign Out</button>
+                    </form>
+                    {% else %}
+                    <a class="btn btn-outline-primary btn-sm" href="{{ url_for('login', next=request.full_path.rstrip('?')) }}">
+                        <i class="bi bi-person-lock me-1" aria-hidden="true"></i>
+                        Sign In
+                    </a>
+                    {% endif %}
 
                     <button
                         class="theme-toggle"
@@ -163,6 +174,7 @@
     <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
     <script src="{{ url_for('static', filename='js/search.js') }}"></script>
     <script src="{{ url_for('static', filename='js/session_protection.js') }}"></script>
+    {% if reviewer_authenticated %}<script src="{{ url_for('static', filename='js/reviewer_csrf.js') }}"></script>{% endif %}
     <script src="{{ url_for('static', filename='js/accessibility.js') }}"></script>
     {% block scripts %}{% endblock %}
 </body>

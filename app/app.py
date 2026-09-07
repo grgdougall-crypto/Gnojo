@@ -3,7 +3,7 @@ import os
 import re
 import secrets
 from copy import deepcopy
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import quote, urlsplit
 from uuid import uuid4
@@ -199,10 +199,23 @@ from app.services.article_source_finder_service import ArticleSourceFinderError,
 from app.services.knowledge_publication_service import KnowledgePublicationError, KnowledgePublicationService
 from app.services.knowledge_integrity_service import KnowledgeIntegrityError, KnowledgeIntegrityService
 from app.services.script_authoring_service import ScriptAuthoringError, ScriptAuthoringService
+from app.services.authentication_service import (
+    AuthenticationService,
+    ReviewerAccessPolicy,
+    ReviewerIdentity,
+    safe_login_return,
+)
 
 load_dotenv()
 
 app = Flask(__name__)
+
+
+def _positive_int_environment(name, default):
+    try:
+        return max(1, int(os.getenv(name, str(default))))
+    except (TypeError, ValueError):
+        return default
 
 @app.template_filter("highlight")
 def highlight_search_term(value, query):
@@ -280,12 +293,72 @@ publication_service = PublicationService()
 knowledge_publication_service = KnowledgePublicationService(knowledge_repository)
 
 
-app.secret_key = os.getenv("FLASK_SECRET_KEY") or secrets.token_hex(32)
+configured_flask_secret = str(os.getenv("FLASK_SECRET_KEY") or "").strip()
+app.secret_key = configured_flask_secret or secrets.token_hex(32)
+app.config.update(
+    GNOJO_STABLE_SESSION_SECRET_CONFIGURED=bool(configured_flask_secret),
+    GNOJO_REVIEWER_USERNAME=os.getenv("GNOJO_REVIEWER_USERNAME", ""),
+    GNOJO_REVIEWER_PASSWORD_HASH=os.getenv("GNOJO_REVIEWER_PASSWORD_HASH", ""),
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=os.getenv(
+        "GNOJO_SESSION_COOKIE_SECURE", "false"
+    ).strip().lower() in {"1", "true", "yes", "on"},
+    PERMANENT_SESSION_LIFETIME=timedelta(
+        minutes=_positive_int_environment("GNOJO_SESSION_LIFETIME_MINUTES", 480)
+    ),
+)
 
 
 @app.before_request
 def assign_request_id():
     g.request_id = request.headers.get("X-Request-ID", "").strip()[:64] or uuid4().hex[:12]
+
+
+@app.before_request
+def enforce_reviewer_access():
+    """Enforce the explicit Reviewer/Admin route boundary before view code runs."""
+    testing_bypass = app.testing and app.config.get("AUTH_TEST_BYPASS", True)
+    if testing_bypass:
+        g.reviewer_authenticated = True
+        g.reviewer_identity = ReviewerIdentity("Test Reviewer")
+        return None
+
+    identity = AuthenticationService.current_identity()
+    g.reviewer_identity = identity
+    g.reviewer_authenticated = identity is not None
+
+    if request.endpoint in {"static", "login", "logout"}:
+        return None
+    if not ReviewerAccessPolicy.requires_reviewer(request.path, request.method):
+        return None
+
+    if identity is None:
+        if request.method in {"GET", "HEAD"}:
+            requested = request.full_path.rstrip("?")
+            return redirect(url_for("login", next=requested))
+        return error_response(
+            403,
+            "Reviewer access required",
+            "Sign in with the configured Reviewer/Admin account before performing this action.",
+        )
+
+    if request.method in {"POST", "PUT", "PATCH", "DELETE"} and not AuthenticationService.valid_csrf():
+        return error_response(
+            400,
+            "Request confirmation expired",
+            "Reload the page and try the action again.",
+        )
+    return None
+
+
+@app.context_processor
+def reviewer_template_context():
+    return {
+        "reviewer_authenticated": bool(getattr(g, "reviewer_authenticated", False)),
+        "reviewer_identity": getattr(g, "reviewer_identity", None),
+        "authenticity_token": AuthenticationService.csrf_token,
+    }
 
 
 @app.after_request
@@ -551,6 +624,56 @@ def track_history_progress(node_id, action="advance", workflow_id=None,
         )
     except (OSError, TroubleshootingHistoryError):
         app.logger.warning("Unable to update troubleshooting history.")
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    fallback = url_for("content_studio")
+    return_to = safe_login_return(
+        request.form.get("next") if request.method == "POST" else request.args.get("next"),
+        fallback,
+    )
+
+    if request.method == "GET" and AuthenticationService.is_authenticated():
+        return redirect(return_to)
+
+    error = None
+    status = 200
+    if request.method == "POST":
+        if not AuthenticationService.valid_csrf():
+            error = "The sign-in form expired. Reload the page and try again."
+            status = 400
+        else:
+            identity = AuthenticationService.authenticate(
+                request.form.get("username", ""), request.form.get("password", "")
+            )
+            if identity is None:
+                error = "The username or password was not recognized."
+                status = 401
+            else:
+                AuthenticationService.sign_in(identity)
+                return redirect(return_to)
+
+    return render_template(
+        "login.html",
+        error=error,
+        next_destination=return_to,
+        auth_configured=AuthenticationService.configured_identity() is not None,
+    ), status
+
+
+@app.post("/logout")
+def logout():
+    if not AuthenticationService.is_authenticated():
+        return redirect(url_for("home"))
+    if not AuthenticationService.valid_csrf():
+        return error_response(
+            400,
+            "Request confirmation expired",
+            "Reload the page and try signing out again.",
+        )
+    AuthenticationService.sign_out()
+    return redirect(url_for("home"))
 
 
 @app.route("/")

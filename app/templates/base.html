@@ -123,6 +123,13 @@
 
                     {% if reviewer_authenticated %}<a
     class="btn btn-outline-primary btn-sm"
+    href="{{ url_for('review_workspace') }}"
+    {% if request.endpoint and request.endpoint.startswith('review_workspace') %}aria-current="page"{% endif %}
+>
+    <i class="bi bi-inbox-check me-1" aria-hidden="true"></i>
+    Review
+</a><a
+    class="btn btn-outline-primary btn-sm"
     href="{{ url_for('content_studio') }}"
     {% if request.endpoint == 'content_studio' %}aria-current="page"{% endif %}
 >

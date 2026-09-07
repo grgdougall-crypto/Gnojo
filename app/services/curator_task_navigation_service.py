@@ -21,6 +21,7 @@ class CuratorTaskNavigationService:
         "assisted_resolution": "Return to Assisted Resolution",
         "assisted_resolution_batch": "Return to Assisted Resolution Batch",
         "content_quality": "Return to Content Quality",
+        "review_workspace": "Return to Review",
         "previous_task": "Return to previous task",
     }
     OVERVIEW_QUERY = {
@@ -168,6 +169,13 @@ class CuratorTaskNavigationService:
         if origin == "content_quality":
             return (parsed.path == "/content-quality" and not parsed.query
                     and parsed.fragment in {"", "queueTitle"})
+        if origin == "review_workspace":
+            pairs = parse_qsl(parsed.query, keep_blank_values=True)
+            query = dict(pairs)
+            return (parsed.path == "/review" and not parsed.fragment
+                    and len(pairs) == len(query)
+                    and set(query) <= {"item"}
+                    and (not query.get("item") or query["item"] == f"curator_task:{task_id}"))
         if origin == "previous_task":
             previous_id = parsed.path.removeprefix("/curator/tasks/")
             return (previous_id != task_id

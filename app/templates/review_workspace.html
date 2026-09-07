@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Review | Gnojo{% endblock %}
+{% block content %}
+<div class="container py-4" aria-labelledby="reviewTitle">
+  <header class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+    <div><span class="section-eyebrow">Governed human decisions</span><h1 id="reviewTitle">Review</h1><p class="text-secondary mb-0">Understand one current item, record one decision, then continue to the next priority.</p></div>
+    <div class="text-end"><strong class="d-block fs-4">{{ workspace.remaining }}</strong><span class="text-secondary">item{{ 's' if workspace.remaining != 1 else '' }} remaining</span></div>
+  </header>
+
+  {% if status_message %}<div class="alert alert-{{ status_kind }}" role="status">{{ status_message }}</div>{% endif %}
+
+  {% set item = workspace.current %}
+  {% if item %}
+  <article class="quality-section" aria-labelledby="reviewItemTitle">
+    <div class="d-flex flex-wrap justify-content-between gap-3 mb-4">
+      <div>
+        <span class="badge text-bg-info mb-2">{{ item.type_label }}</span>
+        <h2 id="reviewItemTitle">{{ item.title }}</h2>
+        <p class="text-secondary mb-0">{{ item.affected_content }}</p>
+      </div>
+      <div class="d-flex flex-wrap align-items-start gap-2" aria-label="Review item signals">
+        {% if item.priority %}<span class="badge {{ 'text-bg-danger' if item.priority in ('Critical', 'High') else 'text-bg-secondary' }}">{{ item.priority }} priority</span>{% endif %}
+        {% if item.risk %}<span class="badge text-bg-secondary">{{ item.risk }}</span>{% endif %}
+        {% if item.confidence %}<span class="badge text-bg-secondary">{{ item.confidence|title }} confidence</span>{% endif %}
+      </div>
+    </div>
+
+    <div class="row g-4">
+      <section class="col-lg-6" aria-labelledby="foundTitle"><h3 class="h5" id="foundTitle">What Gnojo found</h3><p>{{ item.summary }}</p></section>
+      <section class="col-lg-6" aria-labelledby="nowTitle"><h3 class="h5" id="nowTitle">What is true now</h3><p><strong>{{ item.current_state|replace('_', ' ')|title }}</strong></p><p>{{ item.current_detail }}</p></section>
+      <section class="col-lg-6" aria-labelledby="mattersTitle"><h3 class="h5" id="mattersTitle">Why it matters</h3><p>{{ item.impact }}</p></section>
+      <section class="col-lg-6" aria-labelledby="precedentTitle"><h3 class="h5" id="precedentTitle">Similar items and precedent</h3><p>{{ item.precedent }}</p></section>
+      <section class="col-12" aria-labelledby="recommendationTitle"><h3 class="h5" id="recommendationTitle">Gnojo recommendation</h3><p>{{ item.recommendation }}</p></section>
+    </div>
+
+    <div class="d-flex flex-wrap gap-2 mb-4">
+      <a class="btn btn-outline-info" href="{{ item.inspect_url }}">Inspect full content</a>
+      {% if item.task_url %}<a class="btn btn-outline-secondary" href="{{ item.task_url }}">Open full Knowledge Task</a>{% endif %}
+      {% if 'verify' in item.allowed_actions %}
+      <form method="post" action="{{ url_for('curator_task_verify', task_id=item.item_id) }}">
+        <input type="hidden" name="origin" value="review_workspace">
+        <input type="hidden" name="return_to" value="{{ item.return_to }}">
+        <button class="btn btn-outline-primary" type="submit">Verify Current Content</button>
+      </form>
+      {% endif %}
+    </div>
+
+    <section class="border-top pt-4" aria-labelledby="decisionTitle">
+      <h3 class="h4" id="decisionTitle">Decision</h3>
+      <form method="post" action="{{ url_for('review_workspace_decision', item_type=item.item_type, item_id=item.item_id) }}" class="row g-3">
+        <input type="hidden" name="source_fingerprint" value="{{ item.source_fingerprint }}">
+        <div class="col-12"><label class="form-label" for="reviewReason">Decision reason</label><textarea class="form-control" id="reviewReason" name="reason" rows="3" required aria-describedby="reviewReasonHelp"></textarea><div class="form-text" id="reviewReasonHelp">Required for governed decisions and retained by the existing authoritative service.</div></div>
+        <div class="col-12 d-flex flex-wrap gap-2">
+          {% if item.item_type == 'curator_task' %}
+            <button class="btn btn-success" type="submit" name="decision" value="resolve">{{ 'Resolve verified item' if item.resolve_verified else 'Resolve' }}</button>
+            <button class="btn btn-outline-warning" type="submit" name="decision" value="defer">Defer</button>
+            <button class="btn btn-outline-secondary" type="submit" name="decision" value="ignore">Ignore finding</button>
+          {% else %}
+            <button class="btn btn-success" type="submit" name="decision" value="approve">Accept</button>
+            <button class="btn btn-outline-danger" type="submit" name="decision" value="reject">Reject</button>
+          {% endif %}
+          {% if workspace.next %}<a class="btn btn-link" href="{{ url_for('review_workspace', item=workspace.next.key) }}">Skip for now</a>{% endif %}
+        </div>
+      </form>
+    </section>
+
+    <details class="mt-4"><summary>Technical details</summary><dl class="curator-definition-list mt-3">{% for label, value in item.technical.items() %}<div><dt>{{ label }}</dt><dd><code>{{ value }}</code></dd></div>{% endfor %}</dl></details>
+  </article>
+  {% else %}
+  <section class="quality-section text-center py-5"><h2>Review queue is clear</h2><p class="text-secondary mb-0">There are no supported actionable Knowledge Tasks, proposed lessons, or plain capability proposals.</p></section>
+  {% endif %}
+</div>
+{% endblock %}

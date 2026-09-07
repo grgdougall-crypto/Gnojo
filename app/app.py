@@ -144,6 +144,7 @@ from app.services.curator_progress_auto_repair_policy_service import (
     CuratorProgressAutoRepairPolicyService,
 )
 from app.services.curator_growth_service import CuratorGrowthService
+from app.services.review_workspace_service import ReviewWorkspaceService
 from app.services.knowledge_coverage_planner_service import (
     KnowledgeCoveragePlannerError,
     KnowledgeCoveragePlannerService,
@@ -981,6 +982,83 @@ def curator_relationship_proposals():
         outcome=request.args.get("outcome", ""), status=request.args.get("status", "")
     )
     return render_template("curator_relationship_proposals.html", queue=queue)
+
+
+@app.get("/review")
+def review_workspace():
+    try:
+        workspace = ReviewWorkspaceService(_structural_repository_root()).workspace(
+            request.args.get("item", "")
+        )
+    except CuratorMemoryError:
+        abort(503)
+    notice = request.args.get("notice", "")
+    message = ""
+    kind = "info"
+    if notice == "saved":
+        kind = "success"
+        message = (
+            f"Decision saved. {workspace['remaining']} review item"
+            f"{'s' if workspace['remaining'] != 1 else ''} remaining."
+        )
+    elif notice == "changed":
+        kind = "warning"
+        message = "This review item changed or is no longer actionable. No decision was saved."
+    elif notice == "invalid":
+        kind = "danger"
+        message = request.args.get("error", "The review decision could not be saved.")
+    return render_template(
+        "review_workspace.html", workspace=workspace,
+        status_kind=kind, status_message=message,
+    )
+
+
+@app.post("/review/<item_type>/<item_id>/decision")
+def review_workspace_decision(item_type, item_id):
+    service = ReviewWorkspaceService(_structural_repository_root())
+    try:
+        item = service.find(item_type, item_id)
+    except CuratorMemoryError:
+        item = None
+    if item is None or not secrets.compare_digest(
+            str(item.get("source_fingerprint") or ""),
+            str(request.form.get("source_fingerprint") or "")):
+        return redirect(url_for("review_workspace", notice="changed"))
+
+    decision = request.form.get("decision", "")
+    reason = request.form.get("reason", "").strip()
+    reviewer = getattr(getattr(g, "reviewer_identity", None), "username", "") or "Human"
+    try:
+        if item_type == "curator_task":
+            action = {"resolve": "resolve", "defer": "defer", "ignore": "ignore"}.get(decision)
+            if action is None:
+                raise CuratorMemoryError("Unsupported Knowledge Task decision.")
+            CuratorTaskService(_structural_repository_root()).update(
+                item_id, action=action, note=reason,
+                expected_fingerprint=(item.get("affected_fingerprint", "")
+                                      if action == "resolve" and item.get("resolve_verified") else ""),
+            )
+        elif item_type in {"growth_lesson", "growth_capability"}:
+            status = {"approve": "approved", "reject": "rejected"}.get(decision)
+            if status is None:
+                raise ValueError("Unsupported Growth decision.")
+            CuratorGrowthService(_structural_repository_root()).decide(
+                "lesson" if item_type == "growth_lesson" else "proposal",
+                item_id, status, reviewer=reviewer, reason=reason,
+            )
+        else:
+            raise ValueError("Unsupported review item type.")
+    except (CuratorGrowthError, CuratorMemoryError, ValueError) as error:
+        return redirect(url_for(
+            "review_workspace", item=item["key"], notice="invalid", error=str(error),
+        ))
+
+    refreshed = service.items()
+    following = service.next_item(refreshed, item["key"])
+    destination = following["key"] if following else (
+        refreshed[0]["key"] if refreshed and refreshed[0]["key"] != item["key"] else ""
+    )
+    return redirect(url_for("review_workspace", item=destination or None, notice="saved"))
 
 
 def _phase3_harness_enabled():

@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import Any
 
 from app.repositories.command_repository import CommandRepository
-from app.repositories.knowledge_repository import KnowledgeRepository
 from app.repositories.script_repository import ScriptRepository
 from app.services.knowledge_identity_service import KnowledgeIdentityError, KnowledgeIdentityService
 
@@ -57,12 +56,12 @@ class CuratorInventory:
         return records
 
     def _articles(self) -> list[InventoryRecord]:
-        repository = KnowledgeRepository(self.root / "knowledge_base")
+        knowledge_root = self.root / "knowledge_base"
         records: list[InventoryRecord] = []
         for state, directory in (
-            ("draft", repository.draft_directory),
-            ("published", repository.published_directory),
-            ("archived", repository.archive_directory),
+            ("draft", knowledge_root / "drafts"),
+            ("published", knowledge_root / "published"),
+            ("archived", knowledge_root / "archive"),
         ):
             for path in sorted(directory.glob("*.json")):
                 try:

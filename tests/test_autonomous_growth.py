@@ -10,6 +10,7 @@ from app.services.autonomous_growth_service import (
     AUTONOMOUS_ACTOR,
     AutonomousGrowthService,
 )
+from app.services.knowledge_coverage_planner_service import KnowledgeCoveragePlannerService
 from curator.__main__ import main
 
 
@@ -39,9 +40,10 @@ def assessment(*, article_missing=True, workflow_count=1, coverage=86):
 
 
 class Planner:
-    def __init__(self, *, campaigns=None, projected=None):
+    def __init__(self, *, campaigns=None, projected=None, extended=None):
         self.campaigns = deepcopy(campaigns or [])
         self.projected = deepcopy(projected or assessment())
+        self.extended = deepcopy(extended or [])
         self.created = 0
         self.analyzed = 0
 
@@ -53,6 +55,9 @@ class Planner:
 
     def list_campaigns(self):
         return deepcopy(self.campaigns)
+
+    def assess_stage2_candidates(self):
+        return deepcopy(self.extended)
 
     def create(self, **values):
         self.created += 1
@@ -69,12 +74,22 @@ class Planner:
         self.analyzed += 1
         campaign = next(item for item in self.campaigns if item["campaign_id"] == campaign_id)
         campaign.update(status="analyzed", last_analyzed_at="now")
+        selected = (campaign.get("creation_metadata") or {}).get("selected_gap") or {}
+        gap_type = selected.get("gap_type") or "missing_article"
+        area_id = selected.get("area_id") or "dns"
         campaign["gaps"] = [{
-            "gap_id": "KCG-CAMPAIGN", "gap_type": "missing_article", "area_id": "dns"
+            "gap_id": "KCG-CAMPAIGN", "gap_type": gap_type, "area_id": area_id,
+            "gap_identity": selected.get("gap_identity"),
         }]
+        work_type = {
+            "missing_article": "knowledge_article",
+            "weak_learning_coverage": "learning_content",
+            "missing_command_reference": "command_reference",
+            "missing_workflow": "workflow",
+        }[gap_type]
         campaign["work_items"] = [{
             "work_item_id": "KCW-DNS", "gap_id": "KCG-CAMPAIGN",
-            "work_type": "knowledge_article",
+            "work_type": work_type,
         }]
         return deepcopy(campaign)
 
@@ -132,6 +147,41 @@ def analyzed_campaign(status="analyzed"):
     }
 
 
+def extended_candidate(gap_type="weak_learning_coverage"):
+    base = {
+        "gap_identity": "workflow:network:weak_learning_coverage",
+        "gap_type": gap_type,
+        "title": "Improve learning guidance for Network",
+        "domain_id": "windows-connectivity",
+        "area_id": "network",
+        "area_title": "Network",
+        "workflow_id": "network",
+        "workflow_filename": "network.json",
+        "workflow_lifecycle": "draft",
+        "confidence": "high",
+        "coverage_percent": 25,
+        "measurable_deficiency": 75,
+        "evidence_strength": 2,
+        "runtime_relevance": 0,
+        "evidence": ["Learning coverage is 25%.", "Node inspect lacks help text."],
+        "assessment_fingerprint": "workflow-fingerprint",
+        "node_ids": ["inspect"],
+        "intended_artifact": "learning_content_plan",
+        "expected_human_gate": "Workflow Designer learning authoring",
+    }
+    if gap_type == "missing_command_reference":
+        base.update({
+            "gap_identity": "workflow:network:node:inspect:missing_command_reference:ipconfig",
+            "title": "Review ipconfig reference support",
+            "node_id": "inspect", "node_ids": [], "article_id": "network-guide",
+            "command_identity": "ipconfig", "command_risk": {"level": "Low"},
+            "measurable_deficiency": 1, "evidence_strength": 3,
+            "intended_artifact": "command_relationship_review",
+            "expected_human_gate": "Command Library relationship review",
+        })
+    return base
+
+
 class AutonomousGrowthTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
@@ -164,6 +214,56 @@ class AutonomousGrowthTests(unittest.TestCase):
         selected = service._select([shallow, deeper])
         self.assertEqual(selected["domain_id"], "z-domain")
 
+    def test_cross_type_priority_is_deterministic_and_selects_one(self):
+        learning = extended_candidate()
+        command = extended_candidate("missing_command_reference")
+        selected = self.service()._select([], [command, learning])
+        self.assertEqual(selected["gap_type"], "weak_learning_coverage")
+        self.assertIn("higher-priority supported types", selected["selection_explanation"])
+
+    def test_learning_candidate_requires_threshold_and_stable_node_identity(self):
+        candidate = extended_candidate()
+        self.assertEqual(self.service()._select([], [candidate])["gap_type"],
+                         "weak_learning_coverage")
+        candidate["node_ids"] = []
+        self.assertIsNone(self.service()._select([], [candidate]))
+
+    def test_command_candidate_requires_structured_identity_and_risk(self):
+        candidate = extended_candidate("missing_command_reference")
+        self.assertEqual(self.service()._select([], [candidate])["command_identity"], "ipconfig")
+        candidate["command_identity"] = ""
+        self.assertIsNone(self.service()._select([], [candidate]))
+
+    def test_missing_workflow_requires_converging_article_and_command_support(self):
+        projected = assessment(article_missing=False, workflow_count=0, coverage=71)
+        projected["areas"][0].update(
+            article_count=1, command_count=1, safety_ambiguous_command_count=0,
+            asset_ids=["dns-guide", "nslookup"]
+        )
+        projected["gaps"] = [{
+            "gap_id": "KCG-WORKFLOW", "gap_type": "missing_workflow",
+            "area_id": "dns", "area_title": "DNS", "summary": "DNS lacks a workflow.",
+            "confidence": "high", "evidence": ["Workflow coverage is absent."],
+        }]
+        selected = self.service()._select([projected])
+        self.assertEqual(selected["gap_identity"],
+                         "domain:windows-connectivity:topic:dns:missing_workflow")
+        projected["areas"][0]["command_count"] = 0
+        self.assertIsNone(self.service()._select([projected]))
+        projected["areas"][0].update(command_count=1, workflow_count=1)
+        self.assertIsNone(self.service()._select([projected]))
+        projected["areas"][0].update(workflow_count=0, safety_ambiguous_command_count=1)
+        self.assertIsNone(self.service()._select([projected]))
+
+    def test_learning_plan_uses_campaign_and_stops_at_specialized_human_gate(self):
+        candidate = extended_candidate()
+        planner = Planner(projected=assessment(article_missing=False), extended=[candidate])
+        orchestration = Orchestration(initial="human_gate")
+        result = self.service(planner, orchestration).run()
+        self.assertEqual(result.selected_gap["gap_type"], "weak_learning_coverage")
+        self.assertEqual(result.preparation["outcome"], "prepared_for_human_review")
+        self.assertEqual(len([call for call in orchestration.calls if call[0] == "advance_item"]), 0)
+
     def test_preview_writes_nothing_and_matches_execute_selection(self):
         planner, orchestration = Planner(), Orchestration()
         service = self.service(planner, orchestration)
@@ -173,6 +273,36 @@ class AutonomousGrowthTests(unittest.TestCase):
         executed = service.run()
         self.assertEqual(preview.selected_gap["gap_identity"],
                          executed.selected_gap["gap_identity"])
+
+    def test_real_preview_does_not_create_runtime_directories_or_files(self):
+        root = self.root / "read-only-preview"
+        (root / "app/decision_trees").mkdir(parents=True)
+        (root / "knowledge_base/commands").mkdir(parents=True)
+        (root / "knowledge_base/published").mkdir(parents=True)
+        taxonomy = root / "taxonomy.json"
+        taxonomy.write_text(json.dumps({
+            "schema_version": "1.0", "domains": [{
+                "id": "windows-connectivity", "title": "Windows Connectivity",
+                "category": "Networking", "platforms": ["Windows"],
+                "areas": [{"id": "dns", "title": "DNS", "terms": ["dns"]}],
+            }],
+        }), encoding="utf-8")
+        (root / "app/decision_trees/dns.json").write_text(json.dumps({
+            "workflow_id": "dns", "name": "DNS", "category": "Networking",
+            "platform": "Windows", "start_node": "inspect", "nodes": {
+                "inspect": {"type": "instruction", "title": "Inspect DNS",
+                            "instruction": "Inspect DNS evidence.", "next": "done"},
+                "done": {"type": "resolution", "title": "Done"},
+            },
+        }), encoding="utf-8")
+        planner = KnowledgeCoveragePlannerService(root, root / "campaigns", taxonomy)
+        before = sorted(str(path.relative_to(root)) for path in root.rglob("*"))
+        result = AutonomousGrowthService(root, root / "campaigns", planner=planner).run(
+            preview=True
+        )
+        after = sorted(str(path.relative_to(root)) for path in root.rglob("*"))
+        self.assertEqual(result.status, "SELECTED")
+        self.assertEqual(before, after)
 
     def test_one_campaign_created_and_existing_pipeline_reaches_human_gate(self):
         planner, orchestration = Planner(), Orchestration()
@@ -233,6 +363,11 @@ class AutonomousGrowthTests(unittest.TestCase):
         self.assertIn("No Growth lesson or proposal was approved", declarations)
         self.assertIn("No Curator task was resolved", declarations)
         self.assertIn("No repair was executed", declarations)
+        source = Path("app/services/autonomous_growth_service.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertNotIn("subprocess", source)
+        self.assertNotIn("os.system", source)
 
     def test_run_does_not_touch_protected_state(self):
         protected = []

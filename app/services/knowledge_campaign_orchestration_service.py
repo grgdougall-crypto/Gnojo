@@ -49,6 +49,8 @@ ACTION_POLICY = {
     "accept_article_content_studio": {"authority": "human_gate", "external": False},
     "accept_workflow_content_studio": {"authority": "human_gate", "external": False},
     "publish": {"authority": "human_gate", "external": False},
+    "author_learning_content": {"authority": "human_gate", "external": False},
+    "review_command_reference": {"authority": "human_gate", "external": False},
 }
 
 
@@ -217,6 +219,21 @@ class KnowledgeCampaignOrchestrationService:
                                "article_id": reuse.get("article_id"),
                                "workflow_ids": list(reuse.get("workflow_ids") or [])})
             return base
+        if work.get("work_type") == "learning_content":
+            filename = str(work.get("workflow_filename") or "")
+            base["review_link"] = (
+                f"/workflow-editor/{filename}" if filename and work.get("workflow_lifecycle") == "draft"
+                else "/workflow-studio"
+            )
+            return self._gate(
+                base, "learning_authoring_required", "author_learning_content"
+            )
+        if work.get("work_type") == "command_reference":
+            command_id = str(work.get("command_identity") or "")
+            base["review_link"] = f"/commands/{command_id}" if command_id else "/commands"
+            return self._gate(
+                base, "command_reference_review_required", "review_command_reference"
+            )
         if work.get("work_type") in WORKFLOW_TYPES:
             return self._resolve_workflow(campaign, work, base)
         return self._resolve_article(campaign, work, base)

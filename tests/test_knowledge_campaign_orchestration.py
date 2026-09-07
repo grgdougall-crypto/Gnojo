@@ -166,6 +166,29 @@ class KnowledgeCampaignOrchestrationTests(unittest.TestCase):
                          "Autonomous Growth Stage 1")
         self.assertEqual(ACTION_POLICY["publish"]["authority"], "human_gate")
 
+    def test_stage2_learning_and_command_plans_stop_at_specialized_human_gates(self):
+        learning = campaign_fixture()
+        learning["work_items"][0].update({
+            "work_type": "learning_content", "workflow_id": "network",
+            "workflow_filename": "network.json", "workflow_lifecycle": "draft",
+        })
+        service, *_ = factory_fixture(self.root / "learning", learning)
+        record = service.get_or_create("KCAMP-TEST")
+        state = record["work_item_states"][0]
+        self.assertEqual(state["next_action"], "author_learning_content")
+        self.assertEqual(state["review_link"], "/workflow-editor/network.json")
+        self.assertEqual(state["action_authority"], "human_gate")
+
+        command = campaign_fixture()
+        command["work_items"][0].update({
+            "work_type": "command_reference", "command_identity": "ipconfig",
+        })
+        service, *_ = factory_fixture(self.root / "command", command)
+        state = service.get_or_create("KCAMP-TEST")["work_item_states"][0]
+        self.assertEqual(state["next_action"], "review_command_reference")
+        self.assertEqual(state["review_link"], "/commands/ipconfig")
+        self.assertEqual(ACTION_POLICY["review_command_reference"]["authority"], "human_gate")
+
     def test_evidence_and_claim_human_gates(self):
         service, _, research, evidence, generation, claims, *_ = self.factory
         research.items = [{"package_id": "KRP-1", "work_item_id": "KCW-1", "status": "approved",

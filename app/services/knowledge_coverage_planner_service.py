@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
@@ -10,6 +11,9 @@ from typing import Any
 from uuid import uuid4
 
 from curator.inventory import CuratorInventory
+from app.services.content_quality_service import ContentQualityService
+from app.services.curator_workflow_lifecycle_service import CuratorWorkflowLifecycleService
+from app.services.troubleshooting_history_service import TroubleshootingHistoryService
 
 
 CAMPAIGN_STATUSES = (
@@ -30,6 +34,8 @@ GAP_WORK_TYPES = {
     "reusable_pattern": "reuse_review",
     "platform_expansion": "platform_expansion",
     "category_expansion": "category_expansion",
+    "weak_learning_coverage": "learning_content",
+    "missing_command_reference": "command_reference",
 }
 
 
@@ -129,6 +135,33 @@ class KnowledgeCoveragePlannerService:
             }),
         }
 
+    def assess_stage2_candidates(self) -> list[dict[str, Any]]:
+        """Return conservative non-taxonomy Growth candidates without writing state."""
+        records = CuratorInventory(self.repository_root).collect()
+        lifecycle = CuratorWorkflowLifecycleService(self.repository_root)
+        workflow_ids = sorted({
+            item.identifier for item in records if item.content_type == "workflow"
+        })
+        workflows: dict[str, dict[str, Any]] = {}
+        provenance: dict[str, dict[str, Any]] = {}
+        for workflow_id in workflow_ids:
+            if len(lifecycle.drafts(workflow_id)) > 1:
+                continue
+            target = lifecycle.resolve(workflow_id)
+            if not target:
+                continue
+            workflows[workflow_id] = target.workflow
+            provenance[workflow_id] = lifecycle.provenance(target)
+
+        history_path = self.repository_root / "app" / "troubleshooting_history"
+        history = (
+            TroubleshootingHistoryService(history_path).list(500, environment="production")
+            if history_path.exists() else []
+        )
+        candidates = self._learning_candidates(workflows, provenance, history)
+        candidates.extend(self._command_reference_candidates(records, workflows, provenance))
+        return sorted(candidates, key=lambda item: item["gap_identity"])
+
     def analyze(self, campaign_id: str) -> dict[str, Any]:
         campaign = self.get(campaign_id)
         domain = self._domain(campaign["domain"])
@@ -136,6 +169,14 @@ class KnowledgeCoveragePlannerService:
         assets, area_results = self._analyze_areas(domain, records)
         reuse = self._reuse_opportunities(campaign_id, domain, records)
         gaps = self._gaps(campaign_id, domain, area_results, reuse)
+        seed = self._selected_seed_gap(campaign_id, campaign.get("creation_metadata") or {})
+        if seed and not any(
+            item.get("gap_type") == seed.get("gap_type")
+            and item.get("gap_identity") == seed.get("gap_identity")
+            for item in gaps
+        ):
+            gaps.append(seed)
+            gaps.sort(key=lambda item: (item["area_id"], item["gap_type"], item["gap_id"]))
         work_items = [self._work_item(campaign_id, gap) for gap in gaps]
         fingerprint = self._fingerprint({
             "assets": assets, "areas": area_results, "gaps": gaps,
@@ -175,6 +216,7 @@ class KnowledgeCoveragePlannerService:
             matched = [record for record in records if self._matches_area(record, area, domain)]
             workflows = [record for record in matched if record.content_type == "workflow"]
             articles = [record for record in matched if record.content_type == "article"]
+            commands = [record for record in matched if record.content_type == "command"]
             for record in matched:
                 assets[(record.content_type, record.identifier)] = {
                     "content_type": record.content_type, "identifier": record.identifier,
@@ -201,6 +243,10 @@ class KnowledgeCoveragePlannerService:
             results.append({
                 "area_id": area["id"], "title": area["title"], "facets": facets,
                 "workflow_count": len(workflows), "article_count": len(articles),
+                "command_count": len(commands),
+                "safety_ambiguous_command_count": sum(
+                    self._command_safety_ambiguous(record.raw) for record in commands
+                ),
                 "linked_article_count": len(linked_articles),
                 "relevant_node_count": len(workflow_nodes),
                 "coverage_percent": round(sum(facets.values()) * 100 / len(facets)),
@@ -231,6 +277,162 @@ class KnowledgeCoveragePlannerService:
                                   target_asset=item.get("article_id") or item.get("workflow_id")))
         return sorted(gaps, key=lambda item: (item["area_id"], item["gap_type"], item["gap_id"]))
 
+    def _learning_candidates(self, workflows, provenance, history):
+        report = ContentQualityService().build(workflows, history)
+        candidates = []
+        for row in report.get("workflows", []):
+            if int(row.get("learning_coverage", 100)) >= 50:
+                continue
+            workflow_id = row["workflow_id"]
+            workflow = workflows[workflow_id]
+            missing = []
+            for node_id, node in sorted((workflow.get("nodes") or {}).items()):
+                if not isinstance(node, dict) or node.get("type") not in {"question", "instruction"}:
+                    continue
+                if node.get("help_text") or self._safety_ambiguous(node):
+                    continue
+                missing.append(node_id)
+            if not missing:
+                continue
+            identity = f"workflow:{workflow_id}:weak_learning_coverage"
+            candidates.append({
+                "gap_identity": identity,
+                "gap_type": "weak_learning_coverage",
+                "title": f"Improve learning guidance for {row['name']}",
+                "domain_id": self._domain_for_workflow(workflow),
+                "area_id": workflow_id,
+                "area_title": row["name"],
+                "workflow_id": workflow_id,
+                "workflow_filename": provenance[workflow_id]["workflow_filename"],
+                "workflow_lifecycle": provenance[workflow_id]["lifecycle"],
+                "node_ids": missing,
+                "confidence": "high",
+                "measurable_deficiency": 100 - int(row["learning_coverage"]),
+                "coverage_percent": int(row["learning_coverage"]),
+                "evidence_strength": len(missing),
+                "runtime_relevance": int(row.get("sessions") or 0),
+                "assessment_fingerprint": provenance[workflow_id]["workflow_fingerprint"],
+                "evidence": [
+                    f"Learning coverage is {row['learning_coverage']}%, below the existing 50% Content Quality threshold.",
+                    f"Eligible nodes without help text: {', '.join(missing)}.",
+                ],
+                "intended_artifact": "learning_content_plan",
+                "expected_human_gate": "Workflow Designer learning authoring",
+            })
+        return candidates
+
+    def _command_reference_candidates(self, records, workflows, provenance):
+        commands = {
+            item.identifier: item.raw for item in records if item.content_type == "command"
+        }
+        articles = {
+            item.identifier: item.raw for item in records
+            if item.content_type == "article" and item.state == "published"
+        }
+        candidates = []
+        for workflow_id, workflow in sorted(workflows.items()):
+            for node_id, node in sorted((workflow.get("nodes") or {}).items()):
+                if not isinstance(node, dict):
+                    continue
+                article_id = str(node.get("knowledge_article") or "").strip()
+                article = articles.get(article_id)
+                if not article:
+                    continue
+                for reference in article.get("commands") or []:
+                    if not isinstance(reference, dict):
+                        continue
+                    command_id = self._structured_command_identity(
+                        str(reference.get("command") or ""), commands
+                    )
+                    if not command_id:
+                        continue
+                    command = commands[command_id]
+                    risk = command.get("risk") or {}
+                    if not isinstance(risk, dict) or not risk.get("level"):
+                        continue
+                    if not self._node_names_command(node, command_id, command):
+                        continue
+                    reciprocal = (
+                        command_id in (article.get("related_commands") or [])
+                        and article_id in (command.get("related_articles") or [])
+                    )
+                    if reciprocal:
+                        continue
+                    identity = (
+                        f"workflow:{workflow_id}:node:{node_id}:"
+                        f"missing_command_reference:{command_id}"
+                    )
+                    candidates.append({
+                        "gap_identity": identity,
+                        "gap_type": "missing_command_reference",
+                        "title": f"Review {command_id} reference support for {workflow.get('name') or workflow_id}",
+                        "domain_id": self._domain_for_workflow(workflow),
+                        "area_id": workflow_id,
+                        "area_title": workflow.get("name") or workflow_id.replace("_", " ").title(),
+                        "workflow_id": workflow_id,
+                        "workflow_filename": provenance[workflow_id]["workflow_filename"],
+                        "workflow_lifecycle": provenance[workflow_id]["lifecycle"],
+                        "node_id": node_id,
+                        "article_id": article_id,
+                        "command_identity": command_id,
+                        "command_risk": deepcopy(risk),
+                        "confidence": "high",
+                        "measurable_deficiency": 1,
+                        "evidence_strength": 3,
+                        "runtime_relevance": 0,
+                        "assessment_fingerprint": provenance[workflow_id]["workflow_fingerprint"],
+                        "evidence": [
+                            f"Workflow node {workflow_id}:{node_id} links article '{article_id}'.",
+                            f"That article contains a structured command reference resolving to '{command_id}'.",
+                            "The existing explicit article/command declarations are not reciprocal.",
+                        ],
+                        "intended_artifact": "command_relationship_review",
+                        "expected_human_gate": "Command Library relationship review",
+                    })
+        unique = {item["gap_identity"]: item for item in candidates}
+        return list(unique.values())
+
+    def _selected_seed_gap(self, campaign_id, metadata):
+        if metadata.get("initiated_by") != "autonomous_growth_stage2":
+            return None
+        candidate = metadata.get("selected_gap")
+        if not isinstance(candidate, dict) or candidate.get("gap_type") not in {
+            "weak_learning_coverage", "missing_command_reference",
+        }:
+            return None
+        identity = str(candidate.get("gap_identity") or "")
+        evidence = candidate.get("evidence")
+        if not identity or not isinstance(evidence, list) or not evidence:
+            return None
+        if candidate["gap_type"] == "weak_learning_coverage" and not (
+            candidate.get("workflow_id") and candidate.get("node_ids")
+        ):
+            return None
+        if candidate["gap_type"] == "missing_command_reference" and not all(
+            candidate.get(key) for key in ("workflow_id", "node_id", "command_identity")
+        ):
+            return None
+        return {
+            "gap_id": self._stable_id("KCG", campaign_id, identity),
+            "gap_identity": identity,
+            "gap_type": candidate["gap_type"],
+            "area_id": candidate.get("area_id") or candidate.get("workflow_id"),
+            "area_title": candidate.get("area_title") or candidate.get("title"),
+            "facet": "learning" if candidate["gap_type"] == "weak_learning_coverage" else "command_reference",
+            "summary": candidate.get("title"),
+            "priority": "medium",
+            "confidence": "high",
+            "evidence": list(evidence),
+            "target_asset": candidate.get("workflow_id"),
+            "workflow_id": candidate.get("workflow_id"),
+            "workflow_filename": candidate.get("workflow_filename"),
+            "workflow_lifecycle": candidate.get("workflow_lifecycle"),
+            "node_ids": list(candidate.get("node_ids") or []),
+            "node_id": candidate.get("node_id"),
+            "article_id": candidate.get("article_id"),
+            "command_identity": candidate.get("command_identity"),
+        }
+
     def _gap(self, campaign_id: str, gap_type: str, area: dict[str, Any], facet: str,
              evidence: list[str] | None = None, discriminator: str = "", **relationships) -> dict[str, Any]:
         gap_id = self._stable_id("KCG", campaign_id, area["area_id"], gap_type, discriminator)
@@ -244,7 +446,7 @@ class KnowledgeCoveragePlannerService:
         }
 
     def _work_item(self, campaign_id: str, gap: dict[str, Any]) -> dict[str, Any]:
-        return {
+        item = {
             "work_item_id": self._stable_id("KCW", campaign_id, gap["gap_id"]),
             "campaign_id": campaign_id, "gap_id": gap["gap_id"],
             "work_type": GAP_WORK_TYPES[gap["gap_type"]], "area_id": gap["area_id"],
@@ -253,6 +455,73 @@ class KnowledgeCoveragePlannerService:
             "confidence": gap["confidence"], "dependencies": [],
             "evidence": list(gap["evidence"]), "status": "proposed",
         }
+        for key in (
+            "gap_identity", "workflow_id", "workflow_filename", "workflow_lifecycle",
+            "node_ids", "node_id", "article_id", "command_identity",
+        ):
+            if gap.get(key) not in (None, [], ""):
+                item[key] = deepcopy(gap[key])
+        return item
+
+    @staticmethod
+    def _structured_command_identity(reference, commands):
+        normalized = " ".join(reference.casefold().split())
+        if not normalized:
+            return None
+        matches = []
+        for command_id, command in commands.items():
+            names = {
+                command_id.casefold(),
+                str(command.get("name") or "").casefold(),
+                str(command.get("syntax") or "").split(" ", 1)[0].casefold(),
+            }
+            names.discard("")
+            if any(normalized == name or normalized.startswith(name + " ") for name in names):
+                matches.append(command_id)
+        return matches[0] if len(matches) == 1 else None
+
+    @staticmethod
+    def _node_names_command(node, command_id, command):
+        text = json.dumps(node, sort_keys=True).casefold()
+        names = {
+            command_id.casefold(),
+            str(command.get("name") or "").casefold(),
+            str(command.get("syntax") or "").split(" ", 1)[0].casefold(),
+        }
+        names.discard("")
+        return any(
+            re.search(rf"(?<![a-z0-9]){re.escape(name)}(?![a-z0-9])", text)
+            for name in names
+        )
+
+    @staticmethod
+    def _safety_ambiguous(node):
+        from app.services.knowledge_workflow_generation_service import (
+            KnowledgeWorkflowGenerationService,
+        )
+
+        text = json.dumps(node, sort_keys=True).casefold()
+        return any(word in text for word in KnowledgeWorkflowGenerationService.STATE_CHANGE_WORDS)
+
+    @staticmethod
+    def _command_safety_ambiguous(command):
+        risk = command.get("risk")
+        if not isinstance(risk, dict) or not risk.get("level"):
+            return True
+        return (
+            str(risk.get("level")).casefold() in {"high", "critical"}
+            or bool(risk.get("changes_system"))
+        )
+
+    def _domain_for_workflow(self, workflow):
+        searchable = self._search_text(workflow)
+        matches = []
+        for domain in self.domains():
+            if str(workflow.get("category") or "").casefold() != str(domain.get("category") or "").casefold():
+                continue
+            if any(self._term_match(searchable, area.get("terms") or []) for area in domain["areas"]):
+                matches.append(domain["id"])
+        return matches[0] if len(matches) == 1 else ""
 
     def _reuse_opportunities(self, campaign_id: str, domain: dict[str, Any], records: list[Any]) -> list[dict[str, Any]]:
         relationships: dict[str, set[str]] = {}

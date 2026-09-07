@@ -74,6 +74,21 @@ class KnowledgeCoveragePlannerTests(unittest.TestCase):
         path.write_text(json.dumps(article), encoding="utf-8")
         return path
 
+    def write_command(self, identifier="nslookup", **overrides):
+        command = {
+            "schema_version": "1.0", "id": identifier, "name": identifier,
+            "title": "Inspect DNS", "category": "Networking",
+            "platforms": ["Windows"], "summary": "Inspect DNS resolution.",
+            "syntax": identifier, "examples": [], "permissions": {},
+            "risk": {"level": "Low", "changes_system": False},
+            "related_articles": [], "related_commands": [], "tags": ["dns"],
+            "sources": [], "review_status": "reviewed",
+        }
+        command.update(overrides)
+        path = self.root / "knowledge_base" / "commands" / f"{identifier}.json"
+        path.write_text(json.dumps(command), encoding="utf-8")
+        return path
+
     def create(self):
         return self.service.create(
             title="Windows Connectivity Pilot", domain_id="windows-connectivity",
@@ -100,6 +115,80 @@ class KnowledgeCoveragePlannerTests(unittest.TestCase):
         self.assertEqual(campaign["history"][0]["actor"], "Autonomous Growth Stage 1")
         self.assertEqual(campaign["creation_metadata"]["gap_identity"],
                          "windows-connectivity:dns:missing_article")
+
+    def test_stage2_learning_candidate_uses_existing_content_quality_threshold(self):
+        self.write_workflow()
+        candidates = self.service.assess_stage2_candidates()
+        learning = next(item for item in candidates
+                        if item["gap_type"] == "weak_learning_coverage")
+        self.assertEqual(learning["workflow_id"], "internet")
+        self.assertLess(learning["coverage_percent"], 50)
+        self.assertTrue(learning["node_ids"])
+
+        workflow = json.loads((self.root / "app/decision_trees/internet.json").read_text())
+        for node in workflow["nodes"].values():
+            if node.get("type") in {"question", "instruction"}:
+                node["help_text"] = "Use observed evidence."
+        (self.root / "app/decision_trees/internet.json").write_text(
+            json.dumps(workflow), encoding="utf-8"
+        )
+        self.assertFalse(any(
+            item["gap_type"] == "weak_learning_coverage"
+            for item in self.service.assess_stage2_candidates()
+        ))
+
+    def test_stage2_command_candidate_requires_structured_reference_and_existing_command(self):
+        self.write_workflow()
+        self.write_article(
+            commands=[{"command": "invented-command", "description": "Unknown."}],
+            related_commands=[],
+        )
+        self.assertFalse(any(
+            item["gap_type"] == "missing_command_reference"
+            for item in self.service.assess_stage2_candidates()
+        ))
+        self.write_article(
+            commands=[{"command": "nslookup", "description": "Inspect DNS."}],
+            related_commands=[],
+        )
+        self.write_command()
+        candidates = self.service.assess_stage2_candidates()
+        command = next(item for item in candidates
+                       if item["gap_type"] == "missing_command_reference")
+        self.assertEqual(command["command_identity"], "nslookup")
+        self.assertEqual(command["node_id"], "inspect")
+
+        self.write_command(related_articles=["dns-guide"])
+        self.write_article(
+            commands=[{"command": "nslookup", "description": "Inspect DNS."}],
+            related_commands=["nslookup"],
+        )
+        self.assertFalse(any(
+            item["gap_type"] == "missing_command_reference"
+            for item in self.service.assess_stage2_candidates()
+        ))
+
+    def test_stage2_seed_creates_typed_learning_work_item(self):
+        campaign = self.service.create(
+            title="Learning coverage", domain_id="windows-connectivity",
+            objective="Prepare learning guidance.", metadata={
+                "initiated_by": "autonomous_growth_stage2",
+                "gap_identity": "workflow:internet:weak_learning_coverage",
+                "selected_gap": {
+                    "gap_identity": "workflow:internet:weak_learning_coverage",
+                    "gap_type": "weak_learning_coverage", "workflow_id": "internet",
+                    "workflow_filename": "internet.json", "workflow_lifecycle": "built_in",
+                    "area_id": "internet", "area_title": "Internet", "title": "Learning",
+                    "node_ids": ["inspect"], "evidence": ["Coverage below 50%."],
+                },
+            },
+        )
+        analyzed = self.service.analyze(campaign["campaign_id"])
+        item = next(item for item in analyzed["work_items"]
+                    if item["work_type"] == "learning_content")
+        self.assertEqual(item["workflow_id"], "internet")
+        self.assertEqual(item["node_ids"], ["inspect"])
+        self.assertEqual(item["status"], "proposed")
 
     def test_creation_rejects_unknown_scope_and_missing_required_fields(self):
         with self.assertRaises(KnowledgeCoveragePlannerError):

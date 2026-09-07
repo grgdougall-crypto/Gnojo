@@ -87,8 +87,11 @@ class CuratorWorkflowLifecycleService:
         return values[0] if values else None
 
     def _published(self, workflow_id: str) -> ActionableWorkflow | None:
+        publication_root = self.root / "app" / "workflow_publications"
+        if not publication_root.exists():
+            return None
         try:
-            snapshot = WorkflowPublicationService(self.root / "app" / "workflow_publications").load_current(workflow_id)
+            snapshot = WorkflowPublicationService(publication_root).load_current(workflow_id)
         except WorkflowPublicationError:
             return None
         workflow = (snapshot or {}).get("workflow")

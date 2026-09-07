@@ -120,6 +120,146 @@ class ReviewWorkspaceTests(unittest.TestCase):
         self.assertLess(keys.index("curator_task:GKT-C"), keys.index("curator_task:GKT-Z"))
         self.assertEqual(keys, [item["key"] for item in ReviewWorkspaceService(self.root).items()])
 
+    def test_curator_compression_uses_deterministic_identity_not_titles(self):
+        shared = {
+            "curator_rule": "CUR-SAFE-L1", "finding_type": "missing_safety_guidance",
+            "content_type": "workflow_node", "safety_level": 1, "category": "Safety",
+        }
+        self.save_tasks(
+            self.task("GKT-A", title="Restart guidance missing", **shared),
+            self.task("GKT-B", title="Protect work before closing", **shared),
+            self.task("GKT-C", title="Restart guidance missing", **{
+                **shared, "curator_rule": "CUR-SAFE-L2",
+            }),
+        )
+        items = {item["item_id"]: item for item in ReviewWorkspaceService(self.root).items()}
+        self.assertEqual(items["GKT-A"]["compression"]["similar_open_count"], 2)
+        self.assertEqual(items["GKT-B"]["compression"]["similar_open_count"], 2)
+        self.assertEqual(items["GKT-C"]["compression"]["similar_open_count"], 1)
+        self.assertIn("safety level 1", items["GKT-A"]["compression"]["basis"])
+
+    def test_reasoning_tasks_group_by_existing_structural_fingerprint(self):
+        evidence = [
+            "Branches converge.",
+            ("Structural evidence: {'branch_labels': ['Yes', 'No'], "
+             "'destinations': ['left', 'right'], 'convergence_node': 'join', "
+             "'distance': 2}"),
+        ]
+        common = {
+            "curator_rule": "CUR-WR-EARLY-CONVERGENCE",
+            "finding_type": "workflow_reasoning_early_convergence",
+            "content_type": "workflow_node", "evidence": evidence,
+        }
+        self.save_tasks(
+            self.task("GKT-A", content_identifier="printer:power", **common),
+            self.task("GKT-B", content_identifier="vpn:credentials", **common),
+        )
+        items = ReviewWorkspaceService(self.root).items()
+        self.assertTrue(all(
+            item["compression"]["similar_open_count"] == 2 for item in items
+        ))
+        self.assertIn(
+            "same deterministic workflow structure", items[0]["compression"]["basis"]
+        )
+
+    def test_consistent_mixed_and_missing_precedent_classifications(self):
+        shared = {
+            "curator_rule": "CUR-SAFE-L1", "finding_type": "missing_safety_guidance",
+            "content_type": "workflow_node", "safety_level": 1,
+        }
+        self.save_tasks(
+            self.task("GKT-CURRENT", **shared),
+            self.task("GKT-RES-1", status="resolved", **shared),
+            self.task("GKT-RES-2", status="resolved", **shared),
+        )
+        compression = ReviewWorkspaceService(self.root).items()[0]["compression"]
+        self.assertEqual(compression["classification"], "Routine pattern")
+        self.assertEqual(compression["prior_dispositions"], {"Resolved": 2})
+
+        self.save_tasks(
+            self.task("GKT-CURRENT", **shared),
+            self.task("GKT-RES", status="resolved", **shared),
+            self.task("GKT-IGNORE", status="ignored", **shared),
+        )
+        compression = ReviewWorkspaceService(self.root).items()[0]["compression"]
+        self.assertEqual(compression["classification"], "Mixed precedent")
+        self.assertEqual(compression["prior_count"], 2)
+
+        self.save_tasks(self.task("GKT-CURRENT", **shared))
+        compression = ReviewWorkspaceService(self.root).items()[0]["compression"]
+        self.assertEqual(
+            compression["classification"], "Novel / insufficient precedent"
+        )
+        self.assertEqual(compression["prior_count"], 0)
+
+    def test_growth_reasoning_lessons_group_by_rule_and_calibration_pattern(self):
+        self.save_tasks()
+        growth = GrowthStoreService(self.store)
+        for disposition in ("useful", "intentional"):
+            growth.record_lesson({
+                "pattern_observed": (
+                    "reasoning_calibration:cur-wr-early-convergence:"
+                    f"rcp-shared:{disposition}"
+                ),
+                "supporting_evidence": [f"GKT-{disposition}"],
+                "recommended_future_behavior": "Keep the pattern under review.",
+            })
+        items = ReviewWorkspaceService(self.root).items()
+        self.assertEqual(len(items), 2)
+        self.assertTrue(all(
+            item["compression"]["similar_open_count"] == 2 for item in items
+        ))
+        self.assertTrue(all(
+            "Early Branch Convergence" in item["compression"]["basis"]
+            for item in items
+        ))
+
+    def test_growth_precedent_uses_authoritative_lesson_decisions(self):
+        self.save_tasks()
+        growth = GrowthStoreService(self.store)
+        lessons = []
+        for disposition in ("useful", "intentional", "false_positive"):
+            lessons.append(growth.record_lesson({
+                "pattern_observed": (
+                    "reasoning_calibration:cur-wr-early-convergence:"
+                    f"rcp-shared:{disposition}"
+                ),
+                "supporting_evidence": [f"GKT-{disposition}"],
+                "recommended_future_behavior": "Keep the pattern under review.",
+            }))
+        for lesson in lessons[:2]:
+            growth.decide_lesson(
+                lesson["lesson_id"], "approved",
+                reviewer="Greg", reason="Reviewed precedent.",
+            )
+        current = ReviewWorkspaceService(self.root).items()[0]["compression"]
+        self.assertEqual(current["classification"], "Routine pattern")
+        self.assertEqual(current["prior_dispositions"], {"Approved": 2})
+
+        growth.decide_lesson(
+            lessons[1]["lesson_id"], "rejected",
+            reviewer="Greg", reason="Conflicting evidence.",
+        )
+        current = ReviewWorkspaceService(self.root).items()[0]["compression"]
+        self.assertEqual(current["classification"], "Mixed precedent")
+        self.assertEqual(current["prior_dispositions"], {"Approved": 1, "Rejected": 1})
+
+    def test_compression_is_stable_read_only_and_adds_no_bulk_controls(self):
+        self.save_tasks(self.task("GKT-A"), self.task("GKT-B"))
+        before = (self.root / "curation_memory/memory.json").read_bytes()
+        first = ReviewWorkspaceService(self.root).workspace()
+        second = ReviewWorkspaceService(self.root).workspace()
+        self.assertEqual(
+            [item["compression"] for item in first["items"]],
+            [item["compression"] for item in second["items"]],
+        )
+        page = self.client.get("/review").get_data(as_text=True)
+        self.assertIn("Review compression", page)
+        self.assertIn("Novel / insufficient precedent", page)
+        for forbidden in ("Accept similar items", "Resolve all", "Ignore all"):
+            self.assertNotIn(forbidden, page)
+        self.assertEqual((self.root / "curation_memory/memory.json").read_bytes(), before)
+
     def test_curator_actions_delegate_and_advance_without_parallel_state(self):
         for decision, expected in (("resolve", "resolved"), ("defer", "deferred"),
                                    ("ignore", "ignored")):

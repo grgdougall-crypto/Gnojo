@@ -4,7 +4,7 @@
 <div class="container py-4" aria-labelledby="reviewTitle">
   <header class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
     <div><span class="section-eyebrow">Governed human decisions</span><h1 id="reviewTitle">Review</h1><p class="text-secondary mb-0">Understand one current item, record one decision, then continue to the next priority.</p></div>
-    <div class="text-end"><strong class="d-block fs-4">{{ workspace.remaining }}</strong><span class="text-secondary">item{{ 's' if workspace.remaining != 1 else '' }} remaining</span></div>
+    <div class="text-end"><strong class="d-block fs-4">{{ workspace.remaining }}</strong><span class="text-secondary">item{{ 's' if workspace.remaining != 1 else '' }} remaining</span>{% if workspace.remaining %}<div class="small text-secondary mt-1">{{ workspace.compression_summary.get('Routine pattern', 0) }} routine · {{ workspace.compression_summary.get('Mixed precedent', 0) }} mixed · {{ workspace.compression_summary.get('Novel / insufficient precedent', 0) }} novel</div>{% endif %}</div>
   </header>
 
   {% if status_message %}<div class="alert alert-{{ status_kind }}" role="status">{{ status_message }}</div>{% endif %}
@@ -29,7 +29,13 @@
       <section class="col-lg-6" aria-labelledby="foundTitle"><h3 class="h5" id="foundTitle">What Gnojo found</h3><p>{{ item.summary }}</p></section>
       <section class="col-lg-6" aria-labelledby="nowTitle"><h3 class="h5" id="nowTitle">What is true now</h3><p><strong>{{ item.current_state|replace('_', ' ')|title }}</strong></p><p>{{ item.current_detail }}</p></section>
       <section class="col-lg-6" aria-labelledby="mattersTitle"><h3 class="h5" id="mattersTitle">Why it matters</h3><p>{{ item.impact }}</p></section>
-      <section class="col-lg-6" aria-labelledby="precedentTitle"><h3 class="h5" id="precedentTitle">Similar items and precedent</h3><p>{{ item.precedent }}</p></section>
+      <section class="col-lg-6" aria-labelledby="compressionTitle">
+        <div class="d-flex flex-wrap align-items-center gap-2 mb-2"><h3 class="h5 mb-0" id="compressionTitle">Review compression</h3><span class="badge {{ 'text-bg-info' if item.compression.classification == 'Routine pattern' else 'text-bg-warning' if item.compression.classification == 'Mixed precedent' else 'text-bg-secondary' }}">{{ item.compression.classification }}</span></div>
+        <p class="mb-2"><strong>{{ item.compression.similar_open_count }}</strong> open item{{ 's' if item.compression.similar_open_count != 1 else '' }} match this pattern.</p>
+        <p class="mb-2">{{ item.compression.prior_summary }}</p>
+        <p class="small text-secondary mb-2"><strong>Similarity basis:</strong> {{ item.compression.basis }}</p>
+        <p class="small text-secondary mb-0">{{ item.compression.advisory }}</p>
+      </section>
       <section class="col-12" aria-labelledby="recommendationTitle"><h3 class="h5" id="recommendationTitle">Gnojo recommendation</h3><p>{{ item.recommendation }}</p></section>
     </div>
 

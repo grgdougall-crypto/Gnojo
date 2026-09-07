@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
+from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote, urlencode
@@ -15,7 +17,9 @@ from app.services.curator_growth_service import CuratorGrowthService
 from app.services.curator_targeted_verification_service import CuratorTargetedVerificationService
 from app.services.curator_task_service import CuratorTaskService
 from app.services.curator_workflow_lifecycle_service import CuratorWorkflowLifecycleService
+from curator.calibration import ReasoningCalibrationService
 from curator.memory import CuratorMemoryError
+from curator.workflow_reasoning import WorkflowReasoningAuditor
 
 
 class ReviewWorkspaceService:
@@ -42,25 +46,32 @@ class ReviewWorkspaceService:
             "current": current,
             "next": next_item,
             "remaining": len(items),
+            "compression_summary": dict(Counter(
+                item["compression"]["classification"] for item in items
+            )),
         }
 
     def items(self) -> list[dict[str, Any]]:
         state = self.tasks.store.load()
+        task_records = list(state.get("tasks", {}).values())
         projected: list[dict[str, Any]] = []
-        for raw in state.get("tasks", {}).values():
+        for raw in task_records:
             if raw.get("status") not in self.ACTIONABLE_TASK_STATUSES:
                 continue
             projected.append(self._task_item(raw))
 
         growth = self.growth.dashboard()
+        lessons = list(growth.get("lessons", []))
+        proposals = list(growth.get("proposals", []))
         projected.extend(
-            self._lesson_item(item) for item in growth.get("lessons", [])
+            self._lesson_item(item) for item in lessons
             if item.get("status") == "proposed"
         )
         projected.extend(
-            self._proposal_item(item) for item in growth.get("proposals", [])
+            self._proposal_item(item) for item in proposals
             if item.get("kind") == "capability" and item.get("status") == "proposed"
         )
+        self._apply_compression(projected, task_records, lessons, proposals)
         return sorted(projected, key=lambda item: (item["order_group"], item["key"]))
 
     def find(self, item_type: str, item_id: str) -> dict[str, Any] | None:
@@ -146,6 +157,7 @@ class ReviewWorkspaceService:
                 "Evidence items": len(task.get("evidence") or []),
                 **({"Article state": article["state"]} if article else {}),
             },
+            "compression_identity": self._task_compression_identity(task),
         }
         item["order_group"] = self._order_group(item, task)
         return item
@@ -249,6 +261,7 @@ class ReviewWorkspaceService:
             "allowed_actions": ("approve", "reject"), "resolve_verified": False,
             "source_fingerprint": self._fingerprint(lesson),
             "technical": {"Lesson": lesson_id, "Source identity": str(lesson.get("raw_identity") or lesson.get("pattern_observed") or "")},
+            "compression_identity": self._lesson_compression_identity(lesson),
         }
         item["order_group"] = self._order_group(item, lesson)
         return item
@@ -272,9 +285,168 @@ class ReviewWorkspaceService:
             "allowed_actions": ("approve", "reject"), "resolve_verified": False,
             "source_fingerprint": self._fingerprint(proposal),
             "technical": {"Proposal": proposal_id, "Kind": "capability"},
+            "compression_identity": self._proposal_compression_identity(proposal),
         }
         item["order_group"] = self._order_group(item, proposal)
         return item
+
+    def _apply_compression(
+        self,
+        items: list[dict[str, Any]],
+        tasks: list[dict[str, Any]],
+        lessons: list[dict[str, Any]],
+        proposals: list[dict[str, Any]],
+    ) -> None:
+        """Attach advisory grouping context using one bounded in-memory index."""
+        open_counts = Counter(item["compression_identity"]["key"] for item in items)
+        precedents: dict[str, list[tuple[str, str]]] = defaultdict(list)
+
+        for task in tasks:
+            disposition = str(task.get("review_disposition") or "NOT_REVIEWED").upper()
+            status = str(task.get("status") or "").casefold()
+            decision = ""
+            if disposition != "NOT_REVIEWED":
+                decision = disposition.replace("_", " ").title()
+            elif status in {"resolved", "ignored"}:
+                decision = status.title()
+            if decision:
+                identity = self._task_compression_identity(task)
+                precedents[identity["key"]].append(
+                    (str(task.get("task_id") or ""), decision)
+                )
+
+        for lesson in lessons:
+            status = str(lesson.get("status") or "").casefold()
+            if status in {"approved", "rejected", "retired"}:
+                identity = self._lesson_compression_identity(lesson)
+                precedents[identity["key"]].append(
+                    (str(lesson.get("lesson_id") or ""), status.title())
+                )
+
+        for proposal in proposals:
+            status = str(proposal.get("status") or "").casefold()
+            if proposal.get("kind") == "capability" and status in {
+                "approved", "rejected", "retired",
+            }:
+                identity = self._proposal_compression_identity(proposal)
+                precedents[identity["key"]].append(
+                    (str(proposal.get("proposal_id") or ""), status.title())
+                )
+
+        for item in items:
+            identity = item.pop("compression_identity")
+            distribution = Counter(
+                decision for item_id, decision in precedents.get(identity["key"], [])
+                if item_id != item["item_id"]
+            )
+            prior_count = sum(distribution.values())
+            if len(distribution) > 1:
+                classification = "Mixed precedent"
+            elif prior_count >= 2:
+                classification = "Routine pattern"
+            else:
+                classification = "Novel / insufficient precedent"
+            item["compression"] = {
+                "classification": classification,
+                "similar_open_count": open_counts[identity["key"]],
+                "prior_count": prior_count,
+                "prior_dispositions": dict(sorted(distribution.items())),
+                "prior_summary": self._precedent_summary(distribution),
+                "basis": identity["basis"],
+                "advisory": (
+                    "Similar-item history is advisory. This item still requires its own "
+                    "human decision."
+                ),
+            }
+
+    @staticmethod
+    def _precedent_summary(distribution: Counter) -> str:
+        if not distribution:
+            return "No materially similar prior decisions are recorded."
+        return "; ".join(
+            f"{count} {label.casefold()}" for label, count in sorted(distribution.items())
+        ) + "."
+
+    @staticmethod
+    def _task_compression_identity(task: dict[str, Any]) -> dict[str, str]:
+        rule = str(task.get("curator_rule") or "").upper()
+        finding_type = str(task.get("finding_type") or "").casefold()
+        content_type = str(task.get("content_type") or "").casefold()
+        safety = str(task.get("safety_level") or "").casefold()
+        category = str(task.get("category") or task.get("domain") or "").casefold()
+        rule_label = WorkflowReasoningAuditor.RULE_LABELS.get(
+            rule, ReviewWorkspaceService._humanize_rule(rule)
+        )
+        if rule.startswith("CUR-WR-"):
+            calibration = ReasoningCalibrationService()
+            snapshot = calibration.current_snapshot(task)
+            if snapshot.get("structural_evidence"):
+                fingerprint = str(snapshot.get("structural_fingerprint") or "")
+                return {
+                    "key": f"curator:reasoning:{rule}:{fingerprint}",
+                    "basis": (
+                        f"{rule_label} findings with the same deterministic workflow "
+                        "structure."
+                    ),
+                }
+        qualifiers = "|".join((rule, finding_type, content_type, safety, category))
+        basis_parts = [f"{rule_label} findings", f"affected {content_type or 'content'}"]
+        if safety:
+            basis_parts.append(f"safety level {safety}")
+        if category:
+            basis_parts.append(category.replace("_", " "))
+        return {
+            "key": f"curator:exact:{qualifiers}",
+            "basis": " · ".join(basis_parts) + ".",
+        }
+
+    @staticmethod
+    def _lesson_compression_identity(lesson: dict[str, Any]) -> dict[str, str]:
+        raw = str(
+            lesson.get("raw_identity") or lesson.get("pattern_observed") or ""
+        ).strip()
+        parts = raw.split(":")
+        if len(parts) == 4 and parts[0].casefold() == "reasoning_calibration":
+            rule = parts[1].upper()
+            fingerprint = parts[2].upper()
+            label = WorkflowReasoningAuditor.RULE_LABELS.get(
+                rule, ReviewWorkspaceService._humanize_rule(rule)
+            )
+            return {
+                "key": f"growth:lesson:reasoning:{rule}:{fingerprint}",
+                "basis": (
+                    f"Proposed lessons for the {label} rule family and the same "
+                    "deterministic calibration pattern."
+                ),
+            }
+        normalized = raw.casefold()
+        return {
+            "key": f"growth:lesson:exact:{normalized}",
+            "basis": "Proposed lessons with the same authoritative source identity.",
+        }
+
+    @staticmethod
+    def _proposal_compression_identity(proposal: dict[str, Any]) -> dict[str, str]:
+        capability = ReviewWorkspaceService._normalize_identity(
+            proposal.get("proposed_capability")
+        )
+        scope = ReviewWorkspaceService._normalize_identity(proposal.get("scope"))
+        return {
+            "key": f"growth:proposal:capability:{capability}:{scope}",
+            "basis": (
+                "Plain capability proposals with the same capability name and declared "
+                "scope."
+            ),
+        }
+
+    @staticmethod
+    def _normalize_identity(value: Any) -> str:
+        return re.sub(r"\s+", " ", str(value or "").strip().casefold())
+
+    @staticmethod
+    def _humanize_rule(rule: str) -> str:
+        value = re.sub(r"^CUR-", "", rule).replace("_", " ").replace("-", " ")
+        return re.sub(r"\s+", " ", value).strip().title() or "Curator"
 
     @staticmethod
     def _order_group(item: dict[str, Any], source: dict[str, Any]) -> int:

@@ -81,7 +81,8 @@ class KnowledgeCampaignOrchestrationService:
     def action_policy() -> dict[str, dict[str, Any]]:
         return deepcopy(ACTION_POLICY)
 
-    def get_or_create(self, campaign_id: str, mode: str = "supervised") -> dict[str, Any]:
+    def get_or_create(self, campaign_id: str, mode: str = "supervised",
+                      actor: str = "Human") -> dict[str, Any]:
         if mode not in {"manual", "supervised"}:
             raise KnowledgeCampaignOrchestrationError("Orchestration mode must be manual or supervised.")
         campaign = self.planner.get(campaign_id)
@@ -98,7 +99,8 @@ class KnowledgeCampaignOrchestrationService:
             "stale_dependencies": [], "completed_items": [], "next_recommended_action": None,
             "pipeline_summary": {}, "readiness_summary": {}, "dependency_graph": {},
             "last_execution_at": None, "fingerprints": {}, "revisions": [],
-            "history": [{"event": "orchestration_enabled", "at": now, "actor": "Human", "mode": mode}],
+            "history": [{"event": "orchestration_enabled", "at": now,
+                         "actor": actor, "mode": mode}],
             "created_at": now, "updated_at": now,
         }
         self._save(record)
@@ -169,7 +171,8 @@ class KnowledgeCampaignOrchestrationService:
                                "external_operations": external, "limits": deepcopy(self.limits)}
         return result
 
-    def advance_item(self, orchestration_id: str, work_item_id: str) -> dict[str, Any]:
+    def advance_item(self, orchestration_id: str, work_item_id: str,
+                     actor: str = "Human") -> dict[str, Any]:
         record = self.refresh(orchestration_id)
         item = next((value for value in record.get("work_item_states", [])
                      if value["work_item_id"] == work_item_id), None)
@@ -185,7 +188,7 @@ class KnowledgeCampaignOrchestrationService:
             "package_reused": "package_reused",
             "failed": "work_item_advance_failed",
         }.get(outcome.get("status"), "work_item_advance_attempted")
-        self._event(record, event_name, "Human", work_item_id=work_item_id, outcome=outcome)
+        self._event(record, event_name, actor, work_item_id=work_item_id, outcome=outcome)
         self._save(record)
         result = self.refresh(orchestration_id)
         result["execution"] = {"outcomes": [outcome], "transitions": 1, "limits": deepcopy(self.limits)}

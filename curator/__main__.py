@@ -120,6 +120,12 @@ def parser() -> argparse.ArgumentParser:
     scheduled_stage_b.add_argument("--dry-run", action="store_true")
     scheduled_stage_b.add_argument("--correlation-id", default="")
     scheduled_stage_b.add_argument("--max-candidates", type=int, default=5)
+    autonomous_growth = commands.add_parser(
+        "autonomous-growth",
+        help="Select and prepare one bounded knowledge coverage campaign",
+    )
+    autonomous_growth.add_argument("--repository", default=".")
+    autonomous_growth.add_argument("--preview", action="store_true")
     return root
 
 
@@ -128,6 +134,12 @@ def main(argv: list[str] | None = None) -> int:
     repository = Path(args.repository).resolve()
     memory_path = Path(getattr(args, "memory", "curation_memory"))
     memory_path = memory_path if memory_path.is_absolute() else repository / memory_path
+    if args.command == "autonomous-growth":
+        from app.services.autonomous_growth_service import AutonomousGrowthService
+
+        result = AutonomousGrowthService(repository).run(preview=args.preview)
+        print(json.dumps(result.as_dict(), sort_keys=True))
+        return 2 if result.status == "BLOCKED" else 0
     if args.command == "stage-b-scheduled":
         from curator.stage_b_scheduled_runner import (
             CuratorStageBScheduledRunner,

@@ -155,6 +155,17 @@ class KnowledgeCampaignOrchestrationTests(unittest.TestCase):
         self.assertEqual(research.calls, [("create", "KCW-1")])
         self.assertEqual(result["work_item_states"][0]["next_action"], "run_source_research")
 
+    def test_autonomous_actor_is_recorded_without_changing_default_authority(self):
+        service, *_ = self.factory
+        record = service.get_or_create("KCAMP-TEST", actor="Autonomous Growth Stage 1")
+        self.assertEqual(service.get(record["orchestration_id"])["history"][0]["actor"],
+                         "Autonomous Growth Stage 1")
+        service.advance_item(record["orchestration_id"], "KCW-1",
+                             actor="Autonomous Growth Stage 1")
+        self.assertEqual(service.get(record["orchestration_id"])["history"][-1]["actor"],
+                         "Autonomous Growth Stage 1")
+        self.assertEqual(ACTION_POLICY["publish"]["authority"], "human_gate")
+
     def test_evidence_and_claim_human_gates(self):
         service, _, research, evidence, generation, claims, *_ = self.factory
         research.items = [{"package_id": "KRP-1", "work_item_id": "KCW-1", "status": "approved",

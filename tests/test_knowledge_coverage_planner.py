@@ -86,6 +86,21 @@ class KnowledgeCoveragePlannerTests(unittest.TestCase):
         self.assertEqual(campaign["history"][0]["event"], "created")
         self.assertTrue((self.campaign_root / f"{campaign['campaign_id']}.json").exists())
 
+    def test_autonomous_creation_metadata_and_read_only_assessment_are_supported(self):
+        self.write_workflow()
+        before = list(self.campaign_root.glob("*.json"))
+        projected = self.service.assess_domain("windows-connectivity")
+        self.assertEqual(list(self.campaign_root.glob("*.json")), before)
+        self.assertTrue(projected["fingerprint"])
+        campaign = self.service.create(
+            title="DNS coverage", domain_id="windows-connectivity",
+            objective="Prepare supporting knowledge.", actor="Autonomous Growth Stage 1",
+            metadata={"gap_identity": "windows-connectivity:dns:missing_article"},
+        )
+        self.assertEqual(campaign["history"][0]["actor"], "Autonomous Growth Stage 1")
+        self.assertEqual(campaign["creation_metadata"]["gap_identity"],
+                         "windows-connectivity:dns:missing_article")
+
     def test_creation_rejects_unknown_scope_and_missing_required_fields(self):
         with self.assertRaises(KnowledgeCoveragePlannerError):
             self.service.create(title="", domain_id="windows-connectivity", objective="Plan")

@@ -74,7 +74,8 @@ class KnowledgeCoveragePlannerService:
         return self._read(path)
 
     def create(self, *, title: str, domain_id: str, objective: str,
-               notes: str = "") -> dict[str, Any]:
+               notes: str = "", actor: str = "Human",
+               metadata: dict[str, Any] | None = None) -> dict[str, Any]:
         domain = self._domain(domain_id)
         title, objective = title.strip(), objective.strip()
         if not title or not objective:
@@ -100,10 +101,33 @@ class KnowledgeCoveragePlannerService:
             "work_items": [],
             "confidence": "not_analyzed",
             "notes": notes.strip(),
-            "history": [{"event": "created", "at": now, "actor": "Human"}],
+            "history": [{"event": "created", "at": now, "actor": actor}],
         }
+        if metadata:
+            campaign["creation_metadata"] = deepcopy(metadata)
         self._save(campaign)
         return deepcopy(campaign)
+
+    def assess_domain(self, domain_id: str) -> dict[str, Any]:
+        """Project current coverage without creating or modifying a campaign."""
+        domain = self._domain(domain_id)
+        records = CuratorInventory(self.repository_root).collect()
+        assessment_id = self._stable_id("KCP", "assessment", domain_id)
+        assets, areas = self._analyze_areas(domain, records)
+        reuse = self._reuse_opportunities(assessment_id, domain, records)
+        gaps = self._gaps(assessment_id, domain, areas, reuse)
+        return {
+            "domain": deepcopy(domain),
+            "inventory_count": len(records),
+            "assets": assets,
+            "areas": areas,
+            "reuse_opportunities": reuse,
+            "gaps": gaps,
+            "fingerprint": self._fingerprint({
+                "domain": domain_id, "assets": assets, "areas": areas,
+                "reuse": reuse, "gaps": gaps,
+            }),
+        }
 
     def analyze(self, campaign_id: str) -> dict[str, Any]:
         campaign = self.get(campaign_id)

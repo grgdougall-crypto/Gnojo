@@ -16,10 +16,19 @@ from app.repositories.knowledge_repository import (
     KnowledgeRepository,
     KnowledgeRepositoryError,
 )
+from app.repositories.command_repository import CommandRepository
 from app.services.curator_growth_service import CuratorGrowthService
 from app.services.curator_targeted_verification_service import CuratorTargetedVerificationService
 from app.services.curator_task_service import CuratorTaskService
 from app.services.curator_workflow_lifecycle_service import CuratorWorkflowLifecycleService
+from app.services.knowledge_campaign_orchestration_service import (
+    KnowledgeCampaignOrchestrationError,
+    KnowledgeCampaignOrchestrationService,
+)
+from app.services.knowledge_coverage_planner_service import (
+    KnowledgeCoveragePlannerError,
+    KnowledgeCoveragePlannerService,
+)
 from curator.calibration import ReasoningCalibrationService
 from curator.memory import CuratorMemoryError
 from curator.workflow_reasoning import WorkflowReasoningAuditor
@@ -82,12 +91,21 @@ class ReviewWorkspaceService:
             self._proposal_item(item) for item in proposals
             if item.get("kind") == "capability" and item.get("status") == "proposed"
         )
+        projected.extend(self._command_relationship_items())
         self._apply_compression(projected, task_records, lessons, proposals)
         return sorted(projected, key=lambda item: (item["order_group"], item["key"]))
 
     def find(self, item_type: str, item_id: str) -> dict[str, Any] | None:
         return next((item for item in self.items()
                      if item["item_type"] == item_type and item["item_id"] == item_id), None)
+
+    @staticmethod
+    def command_relationship_review_key(work_item_id: Any) -> str:
+        """Return the canonical Review identity for a valid campaign work item."""
+        identity = str(work_item_id or "").strip()
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]*", identity):
+            return ""
+        return f"command_relationship_review:{identity}"
 
     def batch_preview(self, item_type: str, item_id: str) -> dict[str, Any]:
         """Return a read-only, exact snapshot of one eligible routine group."""
@@ -484,6 +502,289 @@ class ReviewWorkspaceService:
         }
         item["order_group"] = self._order_group(item, proposal)
         return item
+
+    def _command_relationship_items(self) -> list[dict[str, Any]]:
+        """Project persisted command-review gates without refreshing campaign state."""
+        campaign_root = self.root / "knowledge_campaigns"
+        planner = KnowledgeCoveragePlannerService(self.root, campaign_root)
+        try:
+            records = KnowledgeCampaignOrchestrationService.read_persisted(campaign_root)
+        except KnowledgeCampaignOrchestrationError:
+            return []
+
+        projected = []
+        for record in records:
+            campaign_id = str(record.get("campaign_id") or "")
+            orchestration_id = str(record.get("orchestration_id") or "")
+            if not campaign_id or not orchestration_id or record.get("status") == "completed":
+                continue
+            try:
+                campaign = planner.get(campaign_id)
+            except KnowledgeCoveragePlannerError:
+                continue
+            if campaign.get("status") in {"completed", "archived"}:
+                continue
+            work_items = [
+                item for item in campaign.get("work_items") or []
+                if isinstance(item, dict) and item.get("work_item_id")
+            ]
+            for state in record.get("work_item_states") or []:
+                if not self._is_pending_command_review(state):
+                    continue
+                work_id = str(state.get("work_item_id") or "")
+                matches = [
+                    item for item in work_items
+                    if str(item.get("work_item_id") or "") == work_id
+                ]
+                if len(matches) != 1 or matches[0].get("work_type") != "command_reference":
+                    continue
+                item, _, _ = self._command_relationship_item(
+                    record, campaign, state, matches[0]
+                )
+                if item:
+                    projected.append(item)
+        counts = Counter(item["key"] for item in projected)
+        return [item for item in projected if counts[item["key"]] == 1]
+
+    def command_relationship_review_status(
+        self, campaign_id: str, work_item_id: str
+    ) -> dict[str, Any]:
+        """Explain whether one persisted campaign gate satisfies the strict projection."""
+        campaign_root = self.root / "knowledge_campaigns"
+        try:
+            records = [
+                record
+                for record in KnowledgeCampaignOrchestrationService.read_persisted(campaign_root)
+                if record.get("campaign_id") == campaign_id
+            ]
+            campaign = KnowledgeCoveragePlannerService(self.root, campaign_root).get(campaign_id)
+        except (KnowledgeCampaignOrchestrationError, KnowledgeCoveragePlannerError):
+            return {"projectable": False, "reason": "authoritative_campaign_unavailable"}
+        if len(records) != 1:
+            return {"projectable": False, "reason": "orchestration_identity_ambiguous"}
+        states = [state for state in records[0].get("work_item_states") or [] if (
+            isinstance(state, dict) and state.get("work_item_id") == work_item_id
+        )]
+        works = [work for work in campaign.get("work_items") or [] if (
+            isinstance(work, dict) and work.get("work_item_id") == work_item_id
+        )]
+        if len(states) != 1 or len(works) != 1:
+            return {"projectable": False, "reason": "work_identity_ambiguous"}
+        if not self._is_pending_command_review(states[0]):
+            return {"projectable": False, "reason": "command_human_gate_changed"}
+        item, reason, prerequisite = self._command_relationship_item(
+            records[0], campaign, states[0], works[0]
+        )
+        return {
+            "projectable": item is not None,
+            "reason": reason,
+            "canonical_review_key": self.command_relationship_review_key(work_item_id),
+            "missing_prerequisite": prerequisite,
+        }
+
+    @classmethod
+    def command_relationship_handoff(
+        cls, work: dict[str, Any], absent_declarations: list[str]
+    ) -> dict[str, Any]:
+        return {
+            "schema_version": "1.0",
+            "review_item_key": cls.command_relationship_review_key(work.get("work_item_id")),
+            "gap_identity": str(work.get("gap_identity") or ""),
+            "workflow_id": str(work.get("workflow_id") or ""),
+            "node_id": str(work.get("node_id") or ""),
+            "article_id": str(work.get("article_id") or ""),
+            "command_identity": str(work.get("command_identity") or ""),
+            "normalized_absent_declarations": sorted(absent_declarations),
+        }
+
+    @staticmethod
+    def _is_pending_command_review(state: Any) -> bool:
+        return bool(
+            isinstance(state, dict)
+            and state.get("action_authority") == "human_gate"
+            and state.get("state") == "awaiting_human_review"
+            and state.get("next_action") == "review_command_reference"
+        )
+
+    def _command_relationship_item(
+        self,
+        orchestration: dict[str, Any],
+        campaign: dict[str, Any],
+        state: dict[str, Any],
+        work: dict[str, Any],
+    ) -> tuple[dict[str, Any] | None, str, dict[str, Any] | None]:
+        work_id = str(work.get("work_item_id") or "")
+        workflow_id = str(work.get("workflow_id") or "")
+        node_id = str(work.get("node_id") or "")
+        article_id = str(work.get("article_id") or "")
+        command_id = str(work.get("command_identity") or "")
+        if not all((work_id, workflow_id, node_id, article_id, command_id)):
+            return None, "work_identity_incomplete", None
+
+        lifecycle = CuratorWorkflowLifecycleService(self.root)
+        if len(lifecycle.drafts(workflow_id)) > 1:
+            return None, "workflow_identity_ambiguous", None
+        target = lifecycle.resolve(workflow_id)
+        node = (target.workflow.get("nodes") or {}).get(node_id) if target else None
+        if (
+            target is None
+            or target.workflow_id != workflow_id
+            or not isinstance(node, dict)
+            or str(node.get("knowledge_article") or "") != article_id
+        ):
+            return None, "workflow_node_article_conflict", None
+
+        command = CommandRepository(self.root / "knowledge_base" / "commands").get(command_id)
+        article = self._published_article(article_id)
+        if not command or not article:
+            return None, "authoritative_relationship_record_missing", None
+        if str(command.get("id") or "") != command_id:
+            return None, "command_identity_conflict", None
+
+        absent_declarations = []
+        if "related_commands" in article:
+            article_commands = article.get("related_commands")
+            if not isinstance(article_commands, list):
+                return None, "relationship_declaration_malformed", None
+        else:
+            article_commands = []
+            absent_declarations.append("article.related_commands")
+        if "related_articles" in command:
+            command_articles = command.get("related_articles")
+            if not isinstance(command_articles, list):
+                return None, "relationship_declaration_malformed", None
+        else:
+            command_articles = []
+            absent_declarations.append("command.related_articles")
+        if absent_declarations:
+            prerequisite = self.command_relationship_handoff(work, absent_declarations)
+            if work.get("command_relationship_review_handoff") != prerequisite:
+                return None, "missing_relationship_declaration_handoff", prerequisite
+        proposed_changes = []
+        if command_id not in article_commands:
+            proposed_changes.append(
+                f"Add '{command_id}' to article '{article_id}' related_commands."
+            )
+        if article_id not in command_articles:
+            proposed_changes.append(
+                f"Add '{article_id}' to command '{command_id}' related_articles."
+            )
+        if not proposed_changes:
+            return None, "relationship_already_complete", None
+
+        key = self.command_relationship_review_key(work_id)
+        if not key:
+            return None, "review_item_identity_invalid", None
+        return_to = "/review?" + urlencode({"item": key})
+        command_url = f"/commands/{quote(command_id, safe='')}?" + urlencode({
+            "return_to": return_to,
+        })
+        campaign_url = (
+            f"/curator/growth/coverage-campaigns/{quote(str(campaign['campaign_id']), safe='')}"
+            "/orchestration?" + urlencode({"return_to": return_to})
+        )
+        risk = command.get("risk") if isinstance(command.get("risk"), dict) else {}
+        risk_level = str(risk.get("level") or "Unknown")
+        changes_system = bool(risk.get("changes_system"))
+        workflow_title = str(target.workflow.get("name") or workflow_id)
+        node_title = str(
+            node.get("question") or node.get("title") or node.get("instruction")
+            or node.get("message") or node_id
+        )
+        evidence = [str(value) for value in work.get("evidence") or [] if str(value).strip()]
+        source = {
+            "orchestration": orchestration,
+            "campaign": {
+                "campaign_id": campaign.get("campaign_id"),
+                "status": campaign.get("status"),
+                "work_item": work,
+            },
+            "workflow_fingerprint": target.fingerprint,
+            "article_declarations": article_commands,
+            "command_declarations": command_articles,
+        }
+        item = {
+            "key": key,
+            "item_type": "command_relationship_review",
+            "type_label": "Command Relationship",
+            "item_id": work_id,
+            "finding_id": str(work.get("gap_id") or state.get("gap_id") or ""),
+            "title": f"Review {command_id} relationship",
+            "summary": (
+                "The linked article contains a structured command reference resolving "
+                "to the existing risk-classified Command Library record, but the explicit "
+                "workflow/article/command relationship is incomplete."
+            ),
+            "priority": str(work.get("priority") or state.get("priority") or ""),
+            "risk": f"{risk_level} risk · Changes system: {'Yes' if changes_system else 'No'}",
+            "confidence": str(work.get("confidence") or ""),
+            "affected_content": f"{workflow_title} · {node_title}",
+            "affected_identity": f"{workflow_id}:{node_id}:{article_id}:{command_id}",
+            "current_state": "Awaiting human review",
+            "current_detail": (
+                f"Campaign {campaign['campaign_id']} is at the Command Library relationship "
+                f"review gate. Article related commands: "
+                f"{', '.join(article_commands) or 'none declared'}. "
+                f"Command related articles: {', '.join(command_articles) or 'none declared'}."
+            ),
+            "recommendation": (
+                "Confirm that the command meaningfully supports the linked article before "
+                "recording the exact reciprocal declarations."
+            ),
+            "impact": (
+                "An incomplete explicit relationship makes governed discovery and integrity "
+                "checks disagree with the structured command evidence used by this workflow."
+            ),
+            "precedent": "This campaign gate requires an individual human decision.",
+            "evidence": evidence,
+            "proposed_changes": proposed_changes,
+            "inspect_url": command_url,
+            "inspect_label": "Inspect command",
+            "campaign_url": campaign_url,
+            "task_url": "",
+            "return_to": return_to,
+            "allowed_actions": (),
+            "decision_available": False,
+            "decision_unavailable_reason": (
+                "Approval and rejection are unavailable because the campaign currently has no "
+                "authoritative command-relationship decision/write action. No relationship or "
+                "campaign state will be changed from this page."
+            ),
+            "resolve_verified": False,
+            "authoritative_status": str(state.get("state") or ""),
+            "batch_allowed_actions": (),
+            "specialized_review": True,
+            "source_fingerprint": self._fingerprint(source),
+            "technical": {
+                "Campaign": str(campaign.get("campaign_id") or ""),
+                "Orchestration": str(orchestration.get("orchestration_id") or ""),
+                "Work item": work_id,
+                "Gap": str(work.get("gap_id") or ""),
+                "Workflow": workflow_id,
+                "Node": node_id,
+                "Article": article_id,
+                "Command": command_id,
+                "Workflow source": target.source_path,
+            },
+            "compression_identity": {
+                "key": f"command-relationship:{work_id}",
+                "basis": "Command relationship campaign items are individually governed.",
+            },
+            "order_group": 1,
+        }
+        return item, "", None
+
+    def _published_article(self, article_id: str) -> dict[str, Any] | None:
+        """Read one exact canonical published record without creating repository paths."""
+        if not article_id or any(character not in "abcdefghijklmnopqrstuvwxyz0123456789-_" for character in article_id):
+            return None
+        path = self.root / "knowledge_base" / "published" / f"{article_id}.json"
+        try:
+            article = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None
+        identity = str(article.get("canonical_id") or article.get("id") or "")
+        return article if identity == article_id else None
 
     def _apply_compression(
         self,

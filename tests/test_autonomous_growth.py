@@ -11,6 +11,7 @@ from app.services.autonomous_growth_service import (
     AutonomousGrowthService,
 )
 from app.services.knowledge_coverage_planner_service import KnowledgeCoveragePlannerService
+from app.services.review_workspace_service import ReviewWorkspaceService
 from curator.__main__ import main
 
 
@@ -94,6 +95,24 @@ class Planner:
         return deepcopy(campaign)
 
 
+class LegacyCommandPlanner(KnowledgeCoveragePlannerService):
+    def __init__(self, repository_root, campaign_root, candidate):
+        super().__init__(repository_root, campaign_root)
+        self.candidate = deepcopy(candidate)
+
+    def domains(self):
+        return [{"id": "windows-connectivity"}]
+
+    def assess_domain(self, domain_id):
+        return {
+            "domain": {"id": domain_id, "title": "Windows Connectivity"},
+            "areas": [], "gaps": [], "fingerprint": "domain-clean",
+        }
+
+    def assess_stage2_candidates(self):
+        return [deepcopy(self.candidate)]
+
+
 class Orchestration:
     def __init__(self, *, fail=False, initial="machine_safe"):
         self.fail = fail
@@ -132,6 +151,22 @@ class Orchestration:
                 "stage": "source_approval_required" if authority == "human_gate" else "research_needed",
                 "review_link": "/curator/growth/source-research/KRP-ONE" if authority == "human_gate" else None,
                 "blocker": None,
+            }],
+        }
+
+
+class LegacyGateOrchestration:
+    def get_or_create(self, campaign_id, mode="supervised", actor="Human"):
+        return {
+            "orchestration_id": "KORCH-LEGACY001",
+            "campaign_id": campaign_id,
+            "work_item_states": [{
+                "work_item_id": "KCW-LEGACY001",
+                "state": "awaiting_human_review",
+                "action_authority": "human_gate",
+                "next_action": "review_command_reference",
+                "stage": "command_reference_review_required",
+                "review_link": "/commands/ipconfig",
             }],
         }
 
@@ -196,6 +231,135 @@ class AutonomousGrowthTests(unittest.TestCase):
             self.root, self.root / "campaigns", planner=planner,
             orchestration=orchestration or Orchestration(), **values,
         )
+
+    def legacy_command_fixture(self, *, state_overrides=None, duplicate_work=False,
+                               reciprocal=False, identities_complete=False,
+                               article_declaration_absent=False):
+        campaign_root = self.root / "knowledge_campaigns"
+        workflow_id, node_id = "network", "inspect"
+        article_id, command_id = "network-guide", "ipconfig"
+        candidate = extended_candidate("missing_command_reference")
+
+        workflow_path = self.root / "app/decision_trees/network.json"
+        workflow_path.parent.mkdir(parents=True, exist_ok=True)
+        workflow_path.write_text(json.dumps({
+            "workflow_id": workflow_id,
+            "name": "Network Diagnostics",
+            "category": "Networking",
+            "platform": "Windows",
+            "start_node": node_id,
+            "nodes": {node_id: {
+                "type": "instruction",
+                "title": "Inspect network configuration",
+                "instruction": "Run ipconfig and inspect the result.",
+                "knowledge_article": article_id,
+            }},
+        }), encoding="utf-8")
+        command_path = self.root / "knowledge_base/commands/ipconfig.json"
+        command_path.parent.mkdir(parents=True, exist_ok=True)
+        command_path.write_text(json.dumps({
+            "id": command_id,
+            "name": command_id,
+            "related_articles": [article_id] if reciprocal else [],
+            "risk": {"level": "Low", "changes_system": False},
+        }), encoding="utf-8")
+        article_path = self.root / "knowledge_base/published/network-guide.json"
+        article_path.parent.mkdir(parents=True, exist_ok=True)
+        article = {
+            "id": article_id,
+            "canonical_id": article_id,
+            "title": "Network Guide",
+            "commands": [{"command": "ipconfig"}],
+        }
+        if not article_declaration_absent:
+            article["related_commands"] = [command_id] if reciprocal else []
+        article_path.write_text(json.dumps(article), encoding="utf-8")
+
+        campaign_id, gap_id, work_id = "KCP-LEGACY001", "KCG-LEGACY001", "KCW-LEGACY001"
+        selected = deepcopy(candidate)
+        campaign = {
+            "schema_version": "1.0",
+            "campaign_id": campaign_id,
+            "title": "Legacy command review",
+            "domain": "windows-connectivity",
+            "status": "analyzed",
+            "last_analyzed_at": "2026-09-01T00:00:00+00:00",
+            "creation_metadata": {
+                "initiated_by": "autonomous_growth_stage2",
+                "gap_identity": candidate["gap_identity"],
+                "assessment_fingerprint": candidate["assessment_fingerprint"],
+                "selected_gap": selected,
+            },
+            "gaps": [{
+                "gap_id": gap_id,
+                "gap_type": "missing_command_reference",
+                "area_id": workflow_id,
+                "priority": "medium",
+                "confidence": "high",
+                "evidence": list(candidate["evidence"]),
+            }],
+            "work_items": [{
+                "work_item_id": work_id,
+                "campaign_id": campaign_id,
+                "gap_id": gap_id,
+                "work_type": "command_reference",
+                "area_id": workflow_id,
+                "priority": "medium",
+                "confidence": "high",
+                "status": "proposed",
+                "evidence": list(candidate["evidence"]),
+            }],
+            "history": [{"event": "created", "actor": AUTONOMOUS_ACTOR}],
+        }
+        if identities_complete:
+            identity_fields = (
+                "gap_identity", "workflow_id", "workflow_filename", "workflow_lifecycle",
+                "node_id", "article_id", "command_identity",
+            )
+            for record in (campaign["gaps"][0], campaign["work_items"][0]):
+                record.update({key: candidate[key] for key in identity_fields})
+        if duplicate_work:
+            campaign["work_items"].append({**campaign["work_items"][0],
+                                           "work_item_id": "KCW-LEGACY002"})
+        campaign_root.mkdir(parents=True, exist_ok=True)
+        campaign_path = campaign_root / f"{campaign_id}.json"
+        campaign_path.write_text(json.dumps(campaign), encoding="utf-8")
+
+        state = {
+            "work_item_id": work_id,
+            "gap_id": gap_id,
+            "title": "Network",
+            "work_type": "command_reference",
+            "priority": "medium",
+            "stage": "command_reference_review_required",
+            "state": "awaiting_human_review",
+            "next_action": "review_command_reference",
+            "action_authority": "human_gate",
+            "review_link": "/commands/ipconfig",
+        }
+        state.update(state_overrides or {})
+        orchestration_id = "KORCH-LEGACY001"
+        orchestration_path = campaign_root / "orchestration" / f"{orchestration_id}.json"
+        orchestration_path.parent.mkdir(parents=True, exist_ok=True)
+        orchestration_path.write_text(json.dumps({
+            "schema_version": "1.0",
+            "orchestration_id": orchestration_id,
+            "campaign_id": campaign_id,
+            "status": "awaiting_human_review",
+            "mode": "supervised",
+            "work_item_states": [state],
+            "human_review_queue": [],
+            "history": [{"event": "orchestration_enabled", "actor": AUTONOMOUS_ACTOR}],
+            "fingerprints": {},
+        }), encoding="utf-8")
+        planner = LegacyCommandPlanner(self.root, campaign_root, candidate)
+        service = AutonomousGrowthService(
+            self.root,
+            campaign_root,
+            planner=planner,
+            orchestration=LegacyGateOrchestration(),
+        )
+        return service, planner, candidate, campaign_path, orchestration_path
 
     def test_deterministic_selection_and_reviewer_readable_explanation(self):
         first = self.service().run(preview=True)
@@ -263,6 +427,192 @@ class AutonomousGrowthTests(unittest.TestCase):
         self.assertEqual(result.selected_gap["gap_type"], "weak_learning_coverage")
         self.assertEqual(result.preparation["outcome"], "prepared_for_human_review")
         self.assertEqual(len([call for call in orchestration.calls if call[0] == "advance_item"]), 0)
+
+    def test_command_gate_handoff_targets_the_exact_review_item(self):
+        result = AutonomousGrowthService._human_review(
+            {"campaign_id": "KCP-COMMAND"},
+            {
+                "work_item_id": "KCW-COMMAND",
+                "action_authority": "human_gate",
+                "next_action": "review_command_reference",
+                "review_link": "/commands/ipconfig",
+            },
+        )
+        self.assertEqual(result["specialized_review_link"], "/commands/ipconfig")
+        self.assertEqual(
+            result["review_workspace_link"],
+            "/review?item=command_relationship_review%3AKCW-COMMAND",
+        )
+
+    def test_legacy_command_campaign_preview_and_reconciliation_are_bounded(self):
+        service, planner, candidate, campaign_path, orchestration_path = (
+            self.legacy_command_fixture()
+        )
+        before = {path: path.read_bytes() for path in (campaign_path, orchestration_path)}
+        protected = {
+            path: path.read_bytes()
+            for path in (
+                self.root / "app/decision_trees/network.json",
+                self.root / "knowledge_base/commands/ipconfig.json",
+                self.root / "knowledge_base/published/network-guide.json",
+            )
+        }
+
+        preview = service.run(preview=True)
+
+        self.assertEqual(preview.status, "SELECTED")
+        self.assertEqual(preview.campaign["disposition"], "would_reconcile")
+        self.assertEqual(preview.preparation["campaign_disposition"], "would_reconcile")
+        self.assertEqual(preview.preparation["reconciliation"]["binding"], {
+            key: candidate[key] for key in (
+                "gap_identity", "workflow_id", "workflow_filename", "workflow_lifecycle",
+                "node_id", "article_id", "command_identity",
+            )
+        })
+        self.assertEqual({path: path.read_bytes() for path in before}, before)
+
+        result = service.run()
+
+        self.assertEqual(result.status, "SELECTED")
+        self.assertEqual(result.campaign["campaign_id"], "KCP-LEGACY001")
+        self.assertEqual(result.campaign["orchestration_id"], "KORCH-LEGACY001")
+        self.assertEqual(result.campaign["disposition"], "reconciled")
+        campaign = planner.get("KCP-LEGACY001")
+        self.assertEqual(campaign["work_items"][0]["work_item_id"], "KCW-LEGACY001")
+        for key in (
+            "gap_identity", "workflow_id", "workflow_filename", "workflow_lifecycle",
+            "node_id", "article_id", "command_identity",
+        ):
+            self.assertEqual(campaign["work_items"][0][key], candidate[key])
+        self.assertEqual(
+            [event["event"] for event in campaign["history"]].count(
+                "command_relationship_handoff_reconciled"
+            ),
+            1,
+        )
+        self.assertEqual(campaign["history"][0]["event"], "created")
+        self.assertEqual(len(list(campaign_path.parent.glob("KCP-*.json"))), 1)
+        self.assertEqual(orchestration_path.read_bytes(), before[orchestration_path])
+        self.assertEqual({path: path.read_bytes() for path in protected}, protected)
+        items = [item for item in ReviewWorkspaceService(self.root).items()
+                 if item["item_type"] == "command_relationship_review"]
+        self.assertEqual([item["key"] for item in items], [
+            "command_relationship_review:KCW-LEGACY001"
+        ])
+        self.assertFalse(items[0]["decision_available"])
+
+        service.run()
+        repeated = planner.get("KCP-LEGACY001")
+        self.assertEqual(
+            [event["event"] for event in repeated["history"]].count(
+                "command_relationship_handoff_reconciled"
+            ),
+            1,
+        )
+        self.assertEqual(len(list(campaign_path.parent.glob("KCP-*.json"))), 1)
+
+    def test_live_shaped_complete_identities_reconcile_missing_declaration_handoff(self):
+        service, planner, _, campaign_path, orchestration_path = self.legacy_command_fixture(
+            identities_complete=True,
+            article_declaration_absent=True,
+        )
+        review = ReviewWorkspaceService(self.root)
+        before = {path: path.read_bytes() for path in (campaign_path, orchestration_path)}
+        protected = {
+            path: path.read_bytes()
+            for path in (
+                self.root / "app/decision_trees/network.json",
+                self.root / "knowledge_base/commands/ipconfig.json",
+                self.root / "knowledge_base/published/network-guide.json",
+            )
+        }
+        status = review.command_relationship_review_status(
+            "KCP-LEGACY001", "KCW-LEGACY001"
+        )
+        self.assertFalse(status["projectable"])
+        self.assertEqual(status["reason"], "missing_relationship_declaration_handoff")
+        self.assertEqual(review._command_relationship_items(), [])
+
+        preview = service.run(preview=True)
+
+        self.assertEqual(preview.campaign["disposition"], "would_reconcile")
+        reconciliation = preview.preparation["reconciliation"]
+        self.assertFalse(reconciliation["projectable_before"])
+        self.assertEqual(
+            reconciliation["missing_prerequisite"],
+            "missing_relationship_declaration_handoff",
+        )
+        self.assertEqual(
+            reconciliation["canonical_review_key"],
+            "command_relationship_review:KCW-LEGACY001",
+        )
+        self.assertEqual({path: path.read_bytes() for path in before}, before)
+
+        result = service.run()
+
+        self.assertEqual(result.campaign["disposition"], "reconciled")
+        campaign = planner.get("KCP-LEGACY001")
+        event = campaign["history"][-1]
+        self.assertEqual(event["event"], "command_relationship_handoff_reconciled")
+        self.assertEqual(event["changed_fields"], [
+            "work_item.command_relationship_review_handoff"
+        ])
+        self.assertEqual(campaign["campaign_id"], "KCP-LEGACY001")
+        self.assertEqual(campaign["gaps"][0]["gap_id"], "KCG-LEGACY001")
+        self.assertEqual(campaign["work_items"][0]["work_item_id"], "KCW-LEGACY001")
+        self.assertEqual(orchestration_path.read_bytes(), before[orchestration_path])
+        items = ReviewWorkspaceService(self.root)._command_relationship_items()
+        self.assertEqual([item["key"] for item in items], [
+            "command_relationship_review:KCW-LEGACY001"
+        ])
+        self.assertFalse(items[0]["decision_available"])
+
+        repeated = service.run()
+        self.assertEqual(repeated.campaign["disposition"], "reused")
+        self.assertEqual(
+            [item["event"] for item in planner.get("KCP-LEGACY001")["history"]].count(
+                "command_relationship_handoff_reconciled"
+            ),
+            1,
+        )
+        self.assertEqual(orchestration_path.read_bytes(), before[orchestration_path])
+        self.assertEqual({path: path.read_bytes() for path in protected}, protected)
+        self.assertEqual(len(list(campaign_path.parent.glob("KCP-*.json"))), 1)
+
+    def test_legacy_command_reconciliation_fails_closed_for_ambiguity_or_changed_gate(self):
+        ambiguous, _, _, ambiguous_path, _ = self.legacy_command_fixture(
+            duplicate_work=True
+        )
+        ambiguous_before = ambiguous_path.read_bytes()
+        result = ambiguous.run()
+        self.assertEqual(result.status, "BLOCKED")
+        self.assertIn("ambiguous", result.preparation["reason"].casefold())
+        self.assertEqual(ambiguous_path.read_bytes(), ambiguous_before)
+
+        self.temporary.cleanup()
+        self.temporary = tempfile.TemporaryDirectory()
+        self.root = Path(self.temporary.name)
+        changed, _, _, changed_path, _ = self.legacy_command_fixture(state_overrides={
+            "state": "complete", "action_authority": None, "next_action": None,
+        })
+        changed_before = changed_path.read_bytes()
+        result = changed.run()
+        self.assertEqual(result.status, "BLOCKED")
+        self.assertIn("human gate", result.preparation["reason"].casefold())
+        self.assertEqual(changed_path.read_bytes(), changed_before)
+
+    def test_completed_command_relationship_is_not_selected_for_reconciliation(self):
+        service, planner, candidate, campaign_path, _ = self.legacy_command_fixture(
+            reciprocal=True
+        )
+        planner.candidate = None
+        planner.assess_stage2_candidates = lambda: []
+        before = campaign_path.read_bytes()
+
+        result = service.run()
+
+        self.assertEqual(result.status, "NO-OP")
+        self.assertEqual(campaign_path.read_bytes(), before)
 
     def test_preview_writes_nothing_and_matches_execute_selection(self):
         planner, orchestration = Planner(), Orchestration()

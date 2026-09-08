@@ -38,6 +38,16 @@ GAP_WORK_TYPES = {
     "missing_command_reference": "command_reference",
 }
 
+COMMAND_HANDOFF_IDENTITY_FIELDS = (
+    "gap_identity",
+    "workflow_id",
+    "workflow_filename",
+    "workflow_lifecycle",
+    "node_id",
+    "article_id",
+    "command_identity",
+)
+
 
 class KnowledgeCoveragePlannerError(ValueError):
     pass
@@ -78,6 +88,139 @@ class KnowledgeCoveragePlannerService:
         if not path.exists():
             raise KnowledgeCoveragePlannerError(f"Coverage campaign '{campaign_id}' was not found.")
         return self._read(path)
+
+    def reconcile_command_reference_handoff(
+        self,
+        campaign_id: str,
+        work_item_id: str,
+        binding: dict[str, Any],
+        *,
+        relationship_handoff: dict[str, Any] | None,
+        expected_fingerprint: str,
+        actor: str,
+    ) -> dict[str, Any]:
+        """Bind one legacy command-review work item to current canonical identities."""
+        if set(binding) != set(COMMAND_HANDOFF_IDENTITY_FIELDS):
+            raise KnowledgeCoveragePlannerError(
+                "Command relationship handoff identity is incomplete."
+            )
+        normalized = {key: str(binding.get(key) or "").strip()
+                      for key in COMMAND_HANDOFF_IDENTITY_FIELDS}
+        if not all(normalized.values()):
+            raise KnowledgeCoveragePlannerError(
+                "Command relationship handoff identity is incomplete."
+            )
+
+        campaign = self.get(campaign_id)
+        if not expected_fingerprint or self._fingerprint(campaign) != expected_fingerprint:
+            raise KnowledgeCoveragePlannerError(
+                "Coverage campaign changed before command handoff reconciliation."
+            )
+        metadata = campaign.get("creation_metadata")
+        selected = metadata.get("selected_gap") if isinstance(metadata, dict) else None
+        if (
+            not isinstance(selected, dict)
+            or metadata.get("initiated_by") != "autonomous_growth_stage2"
+            or selected.get("gap_type") != "missing_command_reference"
+        ):
+            raise KnowledgeCoveragePlannerError(
+                "Coverage campaign does not have authoritative Stage 2 command-gap provenance."
+            )
+
+        gaps = [gap for gap in campaign.get("gaps") or [] if (
+            isinstance(gap, dict)
+            and gap.get("gap_type") == "missing_command_reference"
+            and gap.get("area_id") == normalized["workflow_id"]
+        )]
+        if len(gaps) != 1:
+            raise KnowledgeCoveragePlannerError(
+                "Command relationship campaign gap identity is ambiguous."
+            )
+        gap = gaps[0]
+        work_items = [item for item in campaign.get("work_items") or [] if (
+            isinstance(item, dict)
+            and item.get("work_item_id") == work_item_id
+            and item.get("gap_id") == gap.get("gap_id")
+            and item.get("work_type") == "command_reference"
+        )]
+        if len(work_items) != 1:
+            raise KnowledgeCoveragePlannerError(
+                "Command relationship campaign work identity is ambiguous."
+            )
+        work = work_items[0]
+
+        if relationship_handoff is not None:
+            expected_handoff = {
+                "schema_version": "1.0",
+                "review_item_key": f"command_relationship_review:{work_item_id}",
+                "gap_identity": normalized["gap_identity"],
+                "workflow_id": normalized["workflow_id"],
+                "node_id": normalized["node_id"],
+                "article_id": normalized["article_id"],
+                "command_identity": normalized["command_identity"],
+                "normalized_absent_declarations": sorted(
+                    relationship_handoff.get("normalized_absent_declarations") or []
+                ),
+            }
+            allowed_absences = {"article.related_commands", "command.related_articles"}
+            if (
+                relationship_handoff != expected_handoff
+                or not expected_handoff["normalized_absent_declarations"]
+                or not set(expected_handoff["normalized_absent_declarations"]) <= allowed_absences
+            ):
+                raise KnowledgeCoveragePlannerError(
+                    "Command relationship declaration handoff is invalid."
+                )
+
+        records = (selected, gap, work)
+        for record in records:
+            for key, expected in normalized.items():
+                current = record.get(key)
+                if current not in (None, "") and str(current) != expected:
+                    raise KnowledgeCoveragePlannerError(
+                        f"Command relationship handoff {key} conflicts with campaign provenance."
+                    )
+        metadata_identity = metadata.get("gap_identity")
+        if metadata_identity not in (None, "") and str(metadata_identity) != normalized["gap_identity"]:
+            raise KnowledgeCoveragePlannerError(
+                "Command relationship gap identity conflicts with campaign provenance."
+            )
+
+        changed = []
+        for record_name, record in (("selected_gap", selected), ("gap", gap), ("work_item", work)):
+            for key, expected in normalized.items():
+                if record.get(key) in (None, ""):
+                    record[key] = expected
+                    changed.append(f"{record_name}.{key}")
+        if metadata.get("gap_identity") in (None, ""):
+            metadata["gap_identity"] = normalized["gap_identity"]
+            changed.append("creation_metadata.gap_identity")
+        current_handoff = work.get("command_relationship_review_handoff")
+        if relationship_handoff is not None:
+            if current_handoff not in (None, relationship_handoff):
+                raise KnowledgeCoveragePlannerError(
+                    "Command relationship declaration handoff conflicts with campaign state."
+                )
+            if current_handoff is None:
+                work["command_relationship_review_handoff"] = deepcopy(relationship_handoff)
+                changed.append("work_item.command_relationship_review_handoff")
+        if not changed:
+            return deepcopy(campaign)
+
+        campaign.setdefault("history", []).append({
+            "event": "command_relationship_handoff_reconciled",
+            "at": self._now(),
+            "actor": actor,
+            "work_item_id": work_item_id,
+            "bound_identity": deepcopy(normalized),
+            "changed_fields": changed,
+        })
+        self._save(campaign)
+        return deepcopy(campaign)
+
+    @classmethod
+    def campaign_fingerprint(cls, campaign: dict[str, Any]) -> str:
+        return cls._fingerprint(campaign)
 
     def create(self, *, title: str, domain_id: str, objective: str,
                notes: str = "", actor: str = "Human",

@@ -114,6 +114,14 @@ class KnowledgeCampaignOrchestrationService:
             raise KnowledgeCampaignOrchestrationError(f"Orchestration '{orchestration_id}' was not found.")
         return self._read(path)
 
+    @classmethod
+    def read_persisted(cls, campaign_root: Path) -> list[dict[str, Any]]:
+        """Read persisted orchestration records without constructing pipeline writers."""
+        package_root = Path(campaign_root).resolve() / "orchestration"
+        if not package_root.exists():
+            return []
+        return [cls._read(path) for path in sorted(package_root.glob("KORCH-*.json"))]
+
     def set_mode(self, orchestration_id: str, mode: str) -> dict[str, Any]:
         if mode not in {"manual", "supervised"}:
             raise KnowledgeCampaignOrchestrationError("Orchestration mode must be manual or supervised.")

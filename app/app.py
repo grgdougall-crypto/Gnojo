@@ -1277,34 +1277,64 @@ def knowledge_coverage_campaign_detail(campaign_id):
 
 @app.get("/curator/growth/coverage-campaigns/<campaign_id>/orchestration")
 def knowledge_campaign_orchestration_detail(campaign_id):
-    service = KnowledgeCampaignOrchestrationService()
+    repository_root = _structural_repository_root()
+    campaign_root = repository_root / "knowledge_campaigns"
+    review_return_to = CuratorTaskNavigationService.valid_review_return(
+        request.args.get("return_to", "")
+    )
     try:
-        orchestration = service.get_or_create(campaign_id)
+        matches = [
+            item
+            for item in KnowledgeCampaignOrchestrationService.read_persisted(campaign_root)
+            if item.get("campaign_id") == campaign_id
+        ]
+        if len(matches) == 1:
+            orchestration = deepcopy(matches[0])
+        elif review_return_to or len(matches) > 1:
+            raise KnowledgeCampaignOrchestrationError(
+                "The campaign orchestration could not be resolved unambiguously."
+            )
+        else:
+            # Preserve the established first-open behavior when no orchestration
+            # has been persisted yet. Existing campaign views remain read-only.
+            orchestration = KnowledgeCampaignOrchestrationService().get_or_create(campaign_id)
     except (KnowledgeCampaignOrchestrationError, KnowledgeCoveragePlannerError):
         abort(404)
     blocker_resolver = CampaignBlockerDestinationService()
     try:
-        campaign = KnowledgeCoveragePlannerService().get(campaign_id)
+        campaign = KnowledgeCoveragePlannerService(repository_root, campaign_root).get(campaign_id)
     except KnowledgeCoveragePlannerError:
         # Synthetic/test orchestration projections may not have a persisted
         # campaign.  Related blocker navigation is optional display context;
         # the orchestration page itself remains authoritative and usable.
         campaign = {"campaign_id": campaign_id, "work_items": []}
     work_by_id = {item["work_item_id"]: item for item in campaign.get("work_items", [])}
+    review_service = ReviewWorkspaceService(repository_root)
     for item in orchestration.get("work_item_states", []):
         destination = item.get("review_destination") or {}
         if destination.get("resolved"):
             item["review_link"] = url_for(destination["endpoint"], **destination.get("route_values", {}))
+        if item.get("next_action") == "review_command_reference":
+            work_item_id = str(item.get("work_item_id") or "")
+            review_item = review_service.find("command_relationship_review", work_item_id)
+            expected_key = review_service.command_relationship_review_key(work_item_id)
+            if review_item and expected_key and review_item.get("key") == expected_key:
+                item["review_workspace_link"] = url_for(
+                    "review_workspace", item=expected_key
+                )
         blocker_destination = blocker_resolver.resolve(
             campaign, work_by_id.get(item.get("work_item_id"), {}), item.get("blocker"))
         item["blocker_destination"] = blocker_destination
         if blocker_destination.get("resolved"):
             item["blocker_link"] = url_for(blocker_destination["endpoint"],
                                             **blocker_destination.get("route_values", {}))
-    return render_template("knowledge_campaign_orchestration_detail.html",
-                           orchestration=orchestration,
-                           orchestration_error=request.args.get("orchestration_error", ""),
-                           orchestration_notice=request.args.get("orchestration_notice", ""))
+    return render_template(
+        "knowledge_campaign_orchestration_detail.html",
+        orchestration=orchestration,
+        orchestration_error=request.args.get("orchestration_error", ""),
+        orchestration_notice=request.args.get("orchestration_notice", ""),
+        review_return_to=review_return_to,
+    )
 
 
 @app.post("/curator/growth/orchestration/<orchestration_id>/mode")
@@ -3900,7 +3930,8 @@ def view_command(command_id):
 
     requested_return = request.args.get("return_to", "")
     task_return = CuratorTaskNavigationService.valid_task_return(requested_return)
-    return_to = task_return or safe_internal_return(
+    review_return = CuratorTaskNavigationService.valid_review_return(requested_return)
+    return_to = task_return or review_return or safe_internal_return(
         requested_return, ("/commands", "/search")
     )
     return render_template(
@@ -3912,6 +3943,7 @@ def view_command(command_id):
         return_to=return_to,
         return_label=(
             "Return to Curator task" if task_return
+            else "Return to Review" if review_return
             else "Back to Search Results" if return_to.startswith("/search")
             else "Back to Command Library"
         ),

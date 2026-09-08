@@ -4,14 +4,17 @@ from copy import deepcopy
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlencode
 
 from app.services.knowledge_campaign_orchestration_service import (
     ACTION_POLICY,
     KnowledgeCampaignOrchestrationService,
 )
 from app.services.knowledge_coverage_planner_service import (
+    COMMAND_HANDOFF_IDENTITY_FIELDS,
     KnowledgeCoveragePlannerService,
 )
+from app.services.review_workspace_service import ReviewWorkspaceService
 
 
 AUTONOMOUS_ACTOR = "Autonomous Growth Stage 2"
@@ -139,15 +142,36 @@ class AutonomousGrowthService:
                     validation={"status": "blocked", "reason": "Campaign evidence is stale."},
                 )
 
+            reconciliation, reconciliation_error = self._command_handoff_reconciliation(
+                candidate, equivalent
+            )
+            if reconciliation_error:
+                return self._result(
+                    "BLOCKED", preview, candidate, candidate["selection_explanation"],
+                    campaign=self._campaign_summary(equivalent, "reconciliation_unavailable"),
+                    preparation={
+                        "outcome": "blocked",
+                        "reason": reconciliation_error,
+                    },
+                    validation={
+                        "status": "blocked",
+                        "reason": "Legacy command relationship handoff could not be reconciled safely.",
+                    },
+                )
+
             if preview:
-                disposition = "reuse" if equivalent else "create"
+                disposition = (
+                    "would_reconcile" if reconciliation
+                    else "reuse" if equivalent
+                    else "create"
+                )
                 return self._result(
                     "SELECTED",
                     True,
                     candidate,
                     candidate["selection_explanation"],
                     campaign=(
-                        self._campaign_summary(equivalent, "would_reuse")
+                        self._campaign_summary(equivalent, disposition)
                         if equivalent
                         else {
                             "campaign_id": None,
@@ -161,11 +185,23 @@ class AutonomousGrowthService:
                         "planned_artifact": candidate["intended_artifact"],
                         "intended_preparation_stages": candidate["intended_preparation_stages"],
                         "expected_human_gate": candidate["expected_human_gate"],
+                        "reconciliation": deepcopy(reconciliation),
                     },
                     validation={"status": "not_run", "reason": "Preview performs no writes."},
                 )
 
-            campaign, disposition = self._create_or_reuse(candidate, equivalent)
+            if reconciliation:
+                campaign = self.planner.reconcile_command_reference_handoff(
+                    equivalent["campaign_id"],
+                    reconciliation["work_item_id"],
+                    reconciliation["binding"],
+                    relationship_handoff=reconciliation.get("relationship_handoff"),
+                    expected_fingerprint=reconciliation["campaign_fingerprint"],
+                    actor=AUTONOMOUS_ACTOR,
+                )
+                disposition = "reconciled"
+            else:
+                campaign, disposition = self._create_or_reuse(candidate, equivalent)
             work_item = self._work_item(campaign, candidate)
             if work_item is None:
                 return self._result(
@@ -435,6 +471,118 @@ class AutonomousGrowthService:
         )
         return self.planner.analyze(campaign["campaign_id"]), "created"
 
+    def _command_handoff_reconciliation(
+        self,
+        candidate: dict[str, Any],
+        equivalent: dict[str, Any] | None,
+    ) -> tuple[dict[str, Any] | None, str]:
+        if candidate.get("gap_type") != "missing_command_reference" or not equivalent:
+            return None, ""
+        binding = {
+            key: str(candidate.get(key) or "").strip()
+            for key in COMMAND_HANDOFF_IDENTITY_FIELDS
+        }
+        risk = candidate.get("command_risk")
+        if not all(binding.values()) or not isinstance(risk, dict) or not risk.get("level"):
+            return None, "Current authoritative command relationship identity is incomplete."
+
+        metadata = equivalent.get("creation_metadata")
+        selected = metadata.get("selected_gap") if isinstance(metadata, dict) else None
+        if (
+            not isinstance(selected, dict)
+            or metadata.get("initiated_by") != "autonomous_growth_stage2"
+            or selected.get("gap_type") != "missing_command_reference"
+        ):
+            return None, "The equivalent campaign lacks authoritative Stage 2 command-gap provenance."
+        gaps = [gap for gap in equivalent.get("gaps") or [] if (
+            isinstance(gap, dict)
+            and gap.get("gap_type") == "missing_command_reference"
+            and gap.get("area_id") == candidate.get("area_id")
+        )]
+        if len(gaps) != 1:
+            return None, "The equivalent campaign command gap is ambiguous."
+        gap = gaps[0]
+        work_items = [item for item in equivalent.get("work_items") or [] if (
+            isinstance(item, dict)
+            and item.get("gap_id") == gap.get("gap_id")
+            and item.get("work_type") == "command_reference"
+        )]
+        if len(work_items) != 1:
+            return None, "The equivalent campaign command work item is ambiguous."
+        work = work_items[0]
+
+        for record in (selected, gap, work):
+            for key, expected in binding.items():
+                current = record.get(key)
+                if current not in (None, "") and str(current) != expected:
+                    return None, f"The equivalent campaign {key} conflicts with current evidence."
+        metadata_identity = metadata.get("gap_identity")
+        if metadata_identity not in (None, "") and str(metadata_identity) != binding["gap_identity"]:
+            return None, "The equivalent campaign gap identity conflicts with current evidence."
+
+        missing = [
+            f"{record_name}.{key}"
+            for record_name, record in (("selected_gap", selected), ("gap", gap), ("work_item", work))
+            for key in COMMAND_HANDOFF_IDENTITY_FIELDS
+            if record.get(key) in (None, "")
+        ]
+        if metadata.get("gap_identity") in (None, ""):
+            missing.append("creation_metadata.gap_identity")
+
+        try:
+            records = KnowledgeCampaignOrchestrationService.read_persisted(self.campaign_root)
+        except Exception:
+            return None, "The existing campaign orchestration could not be read safely."
+        orchestrations = [
+            record for record in records
+            if record.get("campaign_id") == equivalent.get("campaign_id")
+        ]
+        if len(orchestrations) != 1:
+            return None, "The existing campaign orchestration is missing or ambiguous."
+        states = [state for state in orchestrations[0].get("work_item_states") or [] if (
+            isinstance(state, dict) and state.get("work_item_id") == work.get("work_item_id")
+        )]
+        if len(states) != 1 or not (
+            states[0].get("state") == "awaiting_human_review"
+            and states[0].get("action_authority") == "human_gate"
+            and states[0].get("next_action") == "review_command_reference"
+        ):
+            return None, "The existing work item is no longer at the command-reference human gate."
+
+        projection = ReviewWorkspaceService(
+            self.repository_root
+        ).command_relationship_review_status(
+            equivalent["campaign_id"], work["work_item_id"]
+        )
+        if projection.get("projectable"):
+            if missing:
+                return None, "Projectable command review has inconsistent campaign identity metadata."
+            return None, ""
+        projection_reason = str(projection.get("reason") or "")
+        relationship_handoff = None
+        if projection_reason == "missing_relationship_declaration_handoff":
+            relationship_handoff = projection.get("missing_prerequisite")
+            if not isinstance(relationship_handoff, dict):
+                return None, "The command relationship handoff prerequisite is unavailable."
+        elif projection_reason != "work_identity_incomplete" or not missing:
+            return None, (
+                "The strict command relationship Review projection rejected current state: "
+                f"{projection_reason or 'unknown conflict'}."
+            )
+
+        return {
+            "campaign_id": equivalent["campaign_id"],
+            "orchestration_id": orchestrations[0].get("orchestration_id"),
+            "work_item_id": work["work_item_id"],
+            "binding": binding,
+            "missing_fields": missing,
+            "projectable_before": False,
+            "missing_prerequisite": projection_reason,
+            "canonical_review_key": projection.get("canonical_review_key"),
+            "relationship_handoff": deepcopy(relationship_handoff),
+            "campaign_fingerprint": self.planner.campaign_fingerprint(equivalent),
+        }, ""
+
     @staticmethod
     def _work_item(campaign: dict[str, Any], candidate: dict[str, Any]) -> dict[str, Any] | None:
         gap_ids = {
@@ -568,6 +716,11 @@ class AutonomousGrowthService:
 
     @staticmethod
     def _human_review(record: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
+        review_workspace_link = "/review"
+        if state.get("next_action") == "review_command_reference" and state.get("work_item_id"):
+            review_workspace_link += "?" + urlencode({
+                "item": f"command_relationship_review:{state['work_item_id']}"
+            })
         return {
             "required": state.get("action_authority") == "human_gate",
             "action": state.get("next_action"),
@@ -575,7 +728,7 @@ class AutonomousGrowthService:
             "campaign_control_link": (
                 f"/curator/growth/coverage-campaigns/{record['campaign_id']}/orchestration"
             ),
-            "review_workspace_link": "/review",
+            "review_workspace_link": review_workspace_link,
             "orientation": (
                 "Use the specialized review link for this artifact; existing Review items "
                 "remain available in the Review workspace."

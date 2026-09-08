@@ -166,6 +166,21 @@ class KnowledgeCampaignOrchestrationTests(unittest.TestCase):
                          "Autonomous Growth Stage 1")
         self.assertEqual(ACTION_POLICY["publish"]["authority"], "human_gate")
 
+    def test_persisted_orchestration_reader_is_read_only(self):
+        service, *_ = self.factory
+        record = service.get_or_create("KCAMP-TEST", "manual")
+        path = service.package_root / f"{record['orchestration_id']}.json"
+        before = path.read_bytes()
+
+        records = KnowledgeCampaignOrchestrationService.read_persisted(
+            service.campaign_root
+        )
+
+        self.assertEqual([item["orchestration_id"] for item in records], [
+            record["orchestration_id"]
+        ])
+        self.assertEqual(path.read_bytes(), before)
+
     def test_stage2_learning_and_command_plans_stop_at_specialized_human_gates(self):
         learning = campaign_fixture()
         learning["work_items"][0].update({

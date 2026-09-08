@@ -91,6 +91,28 @@ class CuratorTaskNavigationService:
         return value if cls._valid("maintenance", value, task_id="") else ""
 
     @classmethod
+    def valid_review_return(cls, value: str) -> str:
+        """Accept only one exact Review Workspace item destination."""
+        parsed = cls._local(value)
+        if not parsed or parsed.path != "/review" or parsed.fragment:
+            return ""
+        pairs = parse_qsl(parsed.query, keep_blank_values=True)
+        if len(pairs) != 1 or pairs[0][0] != "item":
+            return ""
+        item_type, separator, item_id = pairs[0][1].partition(":")
+        if (
+            not separator
+            or item_type not in {
+                "curator_task", "growth_lesson", "growth_capability",
+                "command_relationship_review",
+            }
+            or not item_id
+            or not all(character.isalnum() or character in "_-" for character in item_id)
+        ):
+            return ""
+        return value
+
+    @classmethod
     def valid_task_return(cls, value: str, *, allow_previous_task: bool = True) -> str:
         """Accept only a bounded task URL whose nested origin contract also validates."""
         parsed = cls._local(value, allow_encoded_slash=True)

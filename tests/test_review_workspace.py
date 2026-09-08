@@ -20,6 +20,7 @@ class ReviewWorkspaceTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name)
+        (self.root / "app").mkdir(parents=True, exist_ok=True)
         self.store = CuratorMemoryStore(self.root / "curation_memory")
         self.previous_root = app.config.get("STRUCTURAL_REPAIR_REPOSITORY_ROOT")
         self.previous_testing = app.testing
@@ -84,6 +85,155 @@ class ReviewWorkspaceTests(unittest.TestCase):
         })
         return lesson, proposal, excluded
 
+    def add_command_relationship_review(
+        self,
+        *,
+        state_overrides=None,
+        work_overrides=None,
+        article_declaration_absent=False,
+        relationship_handoff=False,
+    ):
+        workflow_id = "vpn_connectivity_win"
+        node_id = "instr_reset_ip_stack"
+        article_id = "vpn-reset-guidance"
+        command_id = "ipconfig"
+        work_id = "KCW-COMMAND-1"
+        campaign_id = "KCP-COMMAND1"
+        orchestration_id = "KORCH-COMMAND1"
+
+        workflow_path = self.root / "app/decision_trees/vpn_connectivity_win.json"
+        workflow_path.parent.mkdir(parents=True, exist_ok=True)
+        workflow_path.write_text(json.dumps({
+            "workflow_id": workflow_id,
+            "name": "VPN Connectivity Troubleshooting (Windows)",
+            "start_node": node_id,
+            "nodes": {node_id: {
+                "type": "instruction",
+                "title": "Refresh the local DNS cache",
+                "instruction": "Run ipconfig /flushdns, then retest the VPN.",
+                "knowledge_article": article_id,
+            }},
+        }), encoding="utf-8")
+        command_path = self.root / "knowledge_base/commands/ipconfig.json"
+        command_path.parent.mkdir(parents=True, exist_ok=True)
+        command_path.write_text(json.dumps({
+            "id": command_id,
+            "name": command_id,
+            "title": "Inspect Windows Network Configuration with ipconfig",
+            "related_articles": [],
+            "risk": {"level": "Moderate", "changes_system": True},
+        }), encoding="utf-8")
+        article_path = self.root / "knowledge_base/published/vpn-reset-guidance.json"
+        article_path.parent.mkdir(parents=True, exist_ok=True)
+        article = {
+            "id": article_id,
+            "canonical_id": article_id,
+            "title": "Refresh DNS and retest a VPN",
+            "commands": [{"command": "ipconfig /flushdns"}],
+        }
+        if not article_declaration_absent:
+            article["related_commands"] = []
+        article_path.write_text(json.dumps(article), encoding="utf-8")
+
+        work = {
+            "work_item_id": work_id,
+            "campaign_id": campaign_id,
+            "gap_id": "KCG-COMMAND-1",
+            "gap_identity": (
+                f"workflow:{workflow_id}:node:{node_id}:"
+                f"missing_command_reference:{command_id}"
+            ),
+            "work_type": "command_reference",
+            "area_id": workflow_id,
+            "priority": "medium",
+            "confidence": "high",
+            "status": "proposed",
+            "workflow_id": workflow_id,
+            "workflow_filename": "vpn_connectivity_win.json",
+            "workflow_lifecycle": "built_in",
+            "node_id": node_id,
+            "article_id": article_id,
+            "command_identity": command_id,
+            "evidence": [
+                f"Workflow node {workflow_id}:{node_id} links article '{article_id}'.",
+                f"That article contains a structured command reference resolving to '{command_id}'.",
+                "The existing explicit article/command declarations are not reciprocal.",
+            ],
+        }
+        work.update(work_overrides or {})
+        if relationship_handoff:
+            work["command_relationship_review_handoff"] = (
+                ReviewWorkspaceService.command_relationship_handoff(
+                    work, ("article.related_commands",)
+                )
+            )
+        campaign_root = self.root / "knowledge_campaigns"
+        campaign_root.mkdir(parents=True, exist_ok=True)
+        (campaign_root / f"{campaign_id}.json").write_text(json.dumps({
+            "schema_version": "1.0",
+            "campaign_id": campaign_id,
+            "title": "VPN command relationship coverage",
+            "objective": "Review explicit command relationships.",
+            "status": "analyzed",
+            "created_at": "2026-09-07T00:00:00+00:00",
+            "last_analyzed_at": "2026-09-07T00:00:00+00:00",
+            "work_items": [work],
+        }), encoding="utf-8")
+        state = {
+            "work_item_id": work_id,
+            "gap_id": work["gap_id"],
+            "title": "Vpn Connectivity Win",
+            "work_type": "command_reference",
+            "priority": "medium",
+            "stage": "command_reference_review_required",
+            "state": "awaiting_human_review",
+            "next_action": "review_command_reference",
+            "action_authority": "human_gate",
+            "review_link": "/commands/ipconfig",
+        }
+        state.update(state_overrides or {})
+        orchestration_root = campaign_root / "orchestration"
+        orchestration_root.mkdir(parents=True, exist_ok=True)
+        orchestration_path = orchestration_root / f"{orchestration_id}.json"
+        orchestration_path.write_text(json.dumps({
+            "schema_version": "1.0",
+            "orchestration_id": orchestration_id,
+            "campaign_id": campaign_id,
+            "status": "awaiting_human_review",
+            "mode": "supervised",
+            "campaign_objective": "Review explicit command relationships.",
+            "work_item_states": [state],
+            "human_review_queue": [{
+                "work_item_id": work_id,
+                "action": "review_command_reference",
+                "title": "Vpn Connectivity Win",
+                "why": "Review the authoritative command package before deciding.",
+                "review_link": "/commands/ipconfig",
+            }],
+            "readiness_summary": {
+                "completion_percent": 0, "machine_ready": 0,
+                "human_review": 1, "blocked": 0,
+            },
+            "next_recommended_action": state,
+            "pipeline_summary": {"command_reference_review_required": 1},
+            "blockers": [],
+            "stale_dependencies": [],
+            "dependency_graph": {"edges": []},
+            "history": [],
+        }), encoding="utf-8")
+        return {
+            "campaign_id": campaign_id,
+            "orchestration_id": orchestration_id,
+            "work_item_id": work_id,
+            "orchestration_path": orchestration_path,
+        }
+
+    def repository_snapshot(self):
+        return {
+            str(path.relative_to(self.root)): path.read_bytes()
+            for path in self.root.rglob("*") if path.is_file()
+        }
+
     def test_get_is_read_only_and_aggregates_only_supported_items(self):
         self.save_tasks(
             self.task("GKT-OPEN"),
@@ -104,6 +254,207 @@ class ReviewWorkspaceTests(unittest.TestCase):
         self.assertNotIn("publication reasoning", page.casefold())
         self.assertEqual((self.root / "curation_memory/memory.json").read_bytes(), before)
         self.assertFalse((self.root / "curation_memory/resolution_packages").exists())
+
+    def test_pending_command_relationship_campaign_is_projected_read_only(self):
+        self.save_tasks(self.task("GKT-UNCHANGED"))
+        context = self.add_command_relationship_review()
+        before = self.repository_snapshot()
+
+        response = self.client.get(
+            f"/review?item=command_relationship_review:{context['work_item_id']}"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        page = response.get_data(as_text=True)
+        for text in (
+            "Command Relationship",
+            "VPN Connectivity Troubleshooting (Windows)",
+            "Refresh the local DNS cache",
+            "ipconfig",
+            "Moderate risk · Changes system: Yes",
+            "Supporting evidence",
+            "Exact proposed relationship",
+            "Add &#39;ipconfig&#39; to article &#39;vpn-reset-guidance&#39; related_commands.",
+            "Add &#39;vpn-reset-guidance&#39; to command &#39;ipconfig&#39; related_articles.",
+            "Inspect command",
+            "Open campaign",
+            "Decision unavailable",
+        ):
+            self.assertIn(text, page)
+        self.assertIn(
+            "/commands/ipconfig?return_to=%2Freview%3Fitem%3Dcommand_relationship_review%253AKCW-COMMAND-1",
+            page,
+        )
+        self.assertIn(
+            "/curator/growth/coverage-campaigns/KCP-COMMAND1/orchestration?return_to=%2Freview%3Fitem%3Dcommand_relationship_review%253AKCW-COMMAND-1",
+            page,
+        )
+        self.assertNotIn("Review similar items", page)
+        self.assertEqual(self.repository_snapshot(), before)
+
+        campaign = self.client.get(
+            "/curator/growth/coverage-campaigns/KCP-COMMAND1/orchestration"
+            "?return_to=%2Freview%3Fitem%3Dcommand_relationship_review%253AKCW-COMMAND-1"
+        )
+        self.assertEqual(campaign.status_code, 200)
+        self.assertIn("Return to Review", campaign.get_data(as_text=True))
+        self.assertEqual(self.repository_snapshot(), before)
+
+    def test_campaign_work_uses_exact_review_item_and_preserves_command_package(self):
+        self.save_tasks()
+        context = self.add_command_relationship_review()
+        service = ReviewWorkspaceService(self.root)
+        projected = service.find("command_relationship_review", context["work_item_id"])
+        expected_key = service.command_relationship_review_key(context["work_item_id"])
+        before = self.repository_snapshot()
+
+        response = self.client.get(
+            f"/curator/growth/coverage-campaigns/{context['campaign_id']}/orchestration"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        page = response.get_data(as_text=True)
+        self.assertEqual(projected["key"], expected_key)
+        self.assertIn(
+            f'href="/review?item=command_relationship_review:{context["work_item_id"]}"'
+            ">Open Review Workspace</a>",
+            page,
+        )
+        self.assertIn('href="/commands/ipconfig">Review authoritative package</a>', page)
+        self.assertNotIn('href="/commands/ipconfig">Open Review Workspace</a>', page)
+        self.assertEqual(self.repository_snapshot(), before)
+
+    def test_reconciled_absent_declaration_exposes_review_and_package_links(self):
+        self.save_tasks()
+        context = self.add_command_relationship_review(
+            article_declaration_absent=True,
+            relationship_handoff=True,
+        )
+        service = ReviewWorkspaceService(self.root)
+        projected = service.find("command_relationship_review", context["work_item_id"])
+        before = self.repository_snapshot()
+
+        response = self.client.get(
+            f"/curator/growth/coverage-campaigns/{context['campaign_id']}/orchestration"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        page = response.get_data(as_text=True)
+        self.assertEqual(
+            projected["key"],
+            service.command_relationship_review_key(context["work_item_id"]),
+        )
+        self.assertIn(
+            f'href="/review?item=command_relationship_review:{context["work_item_id"]}"'
+            ">Open Review Workspace</a>",
+            page,
+        )
+        self.assertIn('href="/commands/ipconfig">Review authoritative package</a>', page)
+        self.assertNotIn('href="/commands/ipconfig">Open Review Workspace</a>', page)
+        self.assertEqual(self.repository_snapshot(), before)
+
+    def test_campaign_work_fails_closed_when_review_identity_is_missing(self):
+        self.save_tasks()
+        context = self.add_command_relationship_review(work_overrides={
+            "command_identity": "",
+        })
+        before = self.repository_snapshot()
+
+        response = self.client.get(
+            f"/curator/growth/coverage-campaigns/{context['campaign_id']}/orchestration"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        page = response.get_data(as_text=True)
+        self.assertIn("Review item unavailable", page)
+        self.assertNotIn("Open Review Workspace", page)
+        self.assertIn('href="/commands/ipconfig">Review authoritative package</a>', page)
+        self.assertEqual(self.repository_snapshot(), before)
+
+    def test_campaign_work_fails_closed_when_review_identity_is_ambiguous(self):
+        self.save_tasks()
+        context = self.add_command_relationship_review()
+        campaign_path = self.root / "knowledge_campaigns" / f"{context['campaign_id']}.json"
+        campaign = json.loads(campaign_path.read_text(encoding="utf-8"))
+        campaign["work_items"].append(dict(campaign["work_items"][0]))
+        campaign_path.write_text(json.dumps(campaign), encoding="utf-8")
+        before = self.repository_snapshot()
+
+        response = self.client.get(
+            f"/curator/growth/coverage-campaigns/{context['campaign_id']}/orchestration"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        page = response.get_data(as_text=True)
+        self.assertIn("Review item unavailable", page)
+        self.assertNotIn("Open Review Workspace", page)
+        self.assertIn('href="/commands/ipconfig">Review authoritative package</a>', page)
+        self.assertEqual(self.repository_snapshot(), before)
+
+    def test_unrelated_and_completed_campaign_gates_are_not_projected(self):
+        self.save_tasks()
+        unrelated = self.add_command_relationship_review(state_overrides={
+            "next_action": "author_learning_content",
+        })
+        self.assertIsNone(ReviewWorkspaceService(self.root).find(
+            "command_relationship_review", unrelated["work_item_id"]
+        ))
+
+        value = json.loads(unrelated["orchestration_path"].read_text(encoding="utf-8"))
+        value["work_item_states"][0].update({
+            "state": "complete", "next_action": None, "action_authority": None,
+        })
+        unrelated["orchestration_path"].write_text(json.dumps(value), encoding="utf-8")
+        self.assertIsNone(ReviewWorkspaceService(self.root).find(
+            "command_relationship_review", unrelated["work_item_id"]
+        ))
+
+    def test_command_relationship_decision_is_fail_closed_without_write_service(self):
+        self.save_tasks(self.task("GKT-NEXT"))
+        context = self.add_command_relationship_review()
+        service = ReviewWorkspaceService(self.root)
+        item = service.find("command_relationship_review", context["work_item_id"])
+        before = self.repository_snapshot()
+        response = self.client.post(
+            f"/review/command_relationship_review/{context['work_item_id']}/decision",
+            data={
+                "source_fingerprint": item["source_fingerprint"],
+                "decision": "approve",
+                "reason": "The relationship is justified.",
+            },
+        )
+        self.assertIn("notice=invalid", response.location)
+        self.assertEqual(self.repository_snapshot(), before)
+
+        displayed = item["source_fingerprint"]
+        record = json.loads(context["orchestration_path"].read_text(encoding="utf-8"))
+        record["work_item_states"][0]["state"] = "complete"
+        record["work_item_states"][0]["action_authority"] = None
+        record["work_item_states"][0]["next_action"] = None
+        context["orchestration_path"].write_text(json.dumps(record), encoding="utf-8")
+        stale_before = self.repository_snapshot()
+        stale = self.client.post(
+            f"/review/command_relationship_review/{context['work_item_id']}/decision",
+            data={"source_fingerprint": displayed, "decision": "approve", "reason": "Stale"},
+        )
+        self.assertIn("notice=changed", stale.location)
+        self.assertEqual(self.repository_snapshot(), stale_before)
+
+    def test_command_page_accepts_only_validated_review_return_context(self):
+        response = self.client.get(
+            "/commands/ipconfig?return_to="
+            "%2Freview%3Fitem%3Dcommand_relationship_review%253AKCW-COMMAND-1"
+        )
+        self.assertEqual(response.status_code, 200)
+        page = response.get_data(as_text=True)
+        self.assertIn("Return to Review", page)
+        self.assertIn(
+            'href="/review?item=command_relationship_review%3AKCW-COMMAND-1"', page
+        )
+        external = self.client.get(
+            "/commands/ipconfig?return_to=https%3A%2F%2Fevil.example%2Freview"
+        ).get_data(as_text=True)
+        self.assertNotIn("evil.example", external)
 
     def test_deterministic_ordering_uses_priority_groups_and_stable_ids(self):
         self.save_tasks(
@@ -374,6 +725,7 @@ class ReviewWorkspaceTests(unittest.TestCase):
 
     def test_review_requires_auth_and_navigation_is_role_aware(self):
         self.save_tasks(self.task("GKT-A"))
+        command_review = self.add_command_relationship_review()
         app.config.update(
             TESTING=False, AUTH_TEST_BYPASS=False,
             GNOJO_STABLE_SESSION_SECRET_CONFIGURED=True,
@@ -387,6 +739,19 @@ class ReviewWorkspaceTests(unittest.TestCase):
             anonymous.post(
                 "/review/curator_task/GKT-A/decision",
                 data={"source_fingerprint": "anything", "decision": "ignore"},
+            ).status_code,
+            403,
+        )
+        self.assertEqual(
+            anonymous.get(
+                f"/review?item=command_relationship_review:{command_review['work_item_id']}"
+            ).status_code,
+            302,
+        )
+        self.assertEqual(
+            anonymous.post(
+                f"/review/command_relationship_review/{command_review['work_item_id']}/decision",
+                data={"source_fingerprint": "anything", "decision": "approve"},
             ).status_code,
             403,
         )

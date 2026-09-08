@@ -36,6 +36,12 @@ EMPTY_RUNTIME_DIRECTORIES = (
     Path("knowledge_base/deleted"),
 )
 
+PREINITIALIZATION_SCAFFOLD_DIRECTORIES = (
+    Path("lost+found"),
+    Path("knowledge_base/published"),
+    *EMPTY_RUNTIME_DIRECTORIES,
+)
+
 
 def initialize_data_root(
     *,
@@ -65,7 +71,7 @@ def initialize_data_root(
     for relative in BASELINE_DIRECTORIES:
         destination = target / relative
         destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copytree(source / relative, destination)
+        shutil.copytree(source / relative, destination, dirs_exist_ok=True)
         copied.append(relative.as_posix())
     for relative in BASELINE_FILES:
         destination = target / relative
@@ -73,7 +79,7 @@ def initialize_data_root(
         shutil.copy2(source / relative, destination)
         copied.append(relative.as_posix())
     for relative in EMPTY_RUNTIME_DIRECTORIES:
-        (target / relative).mkdir(parents=True, exist_ok=False)
+        (target / relative).mkdir(parents=True, exist_ok=True)
 
     return {
         "status": "INITIALIZED",
@@ -111,13 +117,38 @@ def _require_empty_target(target: Path) -> None:
         raise DataRootInitializationError(
             "GNOJO_DATA_ROOT exists but is not a directory."
         )
+    allowed_directories = _allowed_preinitialization_directories()
     try:
-        populated = next(target.iterdir(), None) is not None
+        _validate_preinitialization_tree(target, target, allowed_directories)
     except OSError as error:
         raise DataRootInitializationError(
             f"GNOJO_DATA_ROOT cannot be inspected: {error}"
         ) from error
-    if populated:
-        raise DataRootInitializationError(
-            "GNOJO_DATA_ROOT is already populated; initialization refused."
-        )
+
+
+def _validate_preinitialization_tree(
+    target: Path,
+    directory: Path,
+    allowed_directories: set[Path],
+) -> None:
+    with os.scandir(directory) as entries:
+        for entry in entries:
+            path = Path(entry.path)
+            relative = path.relative_to(target)
+            if (
+                entry.is_symlink()
+                or not entry.is_dir(follow_symlinks=False)
+                or relative not in allowed_directories
+            ):
+                raise DataRootInitializationError(
+                    "GNOJO_DATA_ROOT is already populated; initialization refused."
+                )
+            _validate_preinitialization_tree(target, path, allowed_directories)
+
+
+def _allowed_preinitialization_directories() -> set[Path]:
+    allowed: set[Path] = set()
+    for directory in PREINITIALIZATION_SCAFFOLD_DIRECTORIES:
+        allowed.add(directory)
+        allowed.update(parent for parent in directory.parents if parent != Path("."))
+    return allowed

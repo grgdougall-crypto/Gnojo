@@ -33,6 +33,7 @@ class DataRootInitializerTests(unittest.TestCase):
         self.temporary.cleanup()
 
     def test_fresh_root_initializes_required_baseline_and_empty_stores(self):
+        self.target.mkdir()
         before = self._fingerprint(self.source)
         result = initialize_data_root(
             source_root=self.source,
@@ -63,6 +64,54 @@ class DataRootInitializerTests(unittest.TestCase):
         ):
             self.assertFalse((self.target / excluded).exists())
         self.assertEqual(self._fingerprint(self.source), before)
+
+    def test_railway_scaffold_and_lost_found_initialize_without_deletion(self):
+        scaffold = (
+            "lost+found",
+            "app/workflow_drafts",
+            "knowledge_base/archive",
+            "knowledge_base/deleted",
+            "knowledge_base/drafts",
+            "knowledge_base/published",
+        )
+        for relative in scaffold:
+            (self.target / relative).mkdir(parents=True, exist_ok=True)
+
+        initialize_data_root(
+            source_root=self.source,
+            environment={"GNOJO_DATA_ROOT": str(self.target)},
+        )
+
+        for relative in scaffold:
+            self.assertTrue((self.target / relative).is_dir())
+        self.assertEqual(list((self.target / "lost+found").iterdir()), [])
+        self.assertTrue((self.target / "knowledge_base/published/baseline.json").is_file())
+
+    def test_file_inside_permitted_scaffold_causes_refusal(self):
+        scaffold = self.target / "app" / "workflow_drafts"
+        scaffold.mkdir(parents=True)
+        sentinel = scaffold / "existing.json"
+        sentinel.write_text("{}", encoding="utf-8")
+
+        with self.assertRaisesRegex(DataRootInitializationError, "already populated"):
+            initialize_data_root(
+                source_root=self.source,
+                environment={"GNOJO_DATA_ROOT": str(self.target)},
+            )
+
+        self.assertEqual(sentinel.read_text(encoding="utf-8"), "{}")
+
+    def test_unexpected_directory_causes_refusal(self):
+        unexpected = self.target / "unrecognized"
+        unexpected.mkdir(parents=True)
+
+        with self.assertRaisesRegex(DataRootInitializationError, "already populated"):
+            initialize_data_root(
+                source_root=self.source,
+                environment={"GNOJO_DATA_ROOT": str(self.target)},
+            )
+
+        self.assertTrue(unexpected.is_dir())
 
     def test_populated_target_is_rejected_without_overwrite(self):
         self.target.mkdir()

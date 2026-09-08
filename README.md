@@ -79,8 +79,9 @@ then initialize its baseline content once:
 python -m curator init-data-root
 ```
 
-The initializer refuses to overwrite a populated data root. It is never run
-automatically during application startup.
+The initializer refuses to overwrite a populated data root. A fresh volume may
+contain an empty `lost+found` directory and empty Gnojo runtime scaffolding. It
+is never run automatically during application startup.
 
 ## Validation
 

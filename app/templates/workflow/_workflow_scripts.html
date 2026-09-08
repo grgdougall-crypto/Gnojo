@@ -1104,7 +1104,15 @@
         const requestedNode = nodes.find((item) => item.dataset.nodeId === requestedNodeId);
         if (requestedNode) {
             selectNode(requestedNode);
-            requestedNode.scrollIntoView({block: "center"});
+            if (designer.dataset.reviewContext === "true") {
+                const nodeList = element("nodeList");
+                nodeList.scrollTop = Math.max(
+                    0,
+                    requestedNode.offsetTop - ((nodeList.clientHeight - requestedNode.clientHeight) / 2),
+                );
+            } else {
+                requestedNode.scrollIntoView({block: "center"});
+            }
             if (publishedArticleId) {
                 element("coverageAssistantMessage").textContent = "Article approved and published. You can continue reviewing this workflow.";
                 element("coverageAssistantMessage").classList.remove("is-error");

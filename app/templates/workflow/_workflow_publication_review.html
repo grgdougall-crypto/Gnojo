@@ -92,6 +92,7 @@
                                 <input type="hidden" name="csrf_token" value="{{ publication_review_csrf }}">
                                 <input type="hidden" name="finding_id" value="{{ finding.finding_id }}">
                                 <input type="hidden" name="draft_semantic_fingerprint" value="{{ lifecycle_view.draft_semantic_fingerprint }}">
+                                {% if review_context %}<input type="hidden" name="curator_task" value="{{ curator_task }}"><input type="hidden" name="curator_return" value="{{ curator_return }}"><input type="hidden" name="node" value="{{ selected_node }}">{% endif %}
                                 <label>Reviewer identity<input class="form-control" name="reviewer" maxlength="200" required></label>
                                 <label>Required reason<textarea class="form-control" name="note" rows="5" maxlength="2000" required></textarea></label>
                                 <div class="workflow-publication-finding__actions">

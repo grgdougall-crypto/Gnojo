@@ -9,7 +9,7 @@ from copy import deepcopy
 from pathlib import Path
 from secrets import compare_digest
 from typing import Any
-from urllib.parse import quote, urlencode
+from urllib.parse import parse_qsl, quote, urlencode, urlsplit, urlunsplit
 
 from app.repositories.knowledge_repository import (
     ArticleNotFoundError,
@@ -19,6 +19,7 @@ from app.repositories.knowledge_repository import (
 from app.services.curator_growth_service import CuratorGrowthService
 from app.services.curator_targeted_verification_service import CuratorTargetedVerificationService
 from app.services.curator_task_service import CuratorTaskService
+from app.services.curator_task_navigation_service import CuratorTaskNavigationService
 from app.services.curator_workflow_lifecycle_service import CuratorWorkflowLifecycleService
 from app.services.knowledge_campaign_orchestration_service import (
     KnowledgeCampaignOrchestrationError,
@@ -310,6 +311,9 @@ class ReviewWorkspaceService:
             inspect_url = f"/curator/tasks/{quote(task_id, safe='')}?" + urlencode({
                 "origin": "review_workspace", "return_to": return_to,
             })
+        inspect_url = self._with_review_workflow_context(
+            inspect_url, task_id=task_id, review_return=return_to,
+        )
         item = {
             "key": key,
             "item_type": "curator_task",
@@ -370,6 +374,34 @@ class ReviewWorkspaceService:
         )
         item["order_group"] = self._order_group(item, task)
         return item
+
+    @staticmethod
+    def _with_review_workflow_context(
+        inspect_url: str, *, task_id: str, review_return: str,
+    ) -> str:
+        """Bind a local Designer inspection link to its exact governed Review item."""
+        navigation = CuratorTaskNavigationService.resolve(
+            "review_workspace", review_return, task_id=task_id,
+        )
+        parsed = urlsplit(str(inspect_url or ""))
+        if (
+            navigation.origin != "review_workspace"
+            or parsed.scheme
+            or parsed.netloc
+            or not parsed.path.startswith("/workflow-editor/")
+            or "/" in parsed.path.removeprefix("/workflow-editor/")
+            or parsed.fragment
+        ):
+            return inspect_url
+        pairs = parse_qsl(parsed.query, keep_blank_values=True)
+        if len({key for key, _ in pairs}) != len(pairs):
+            return inspect_url
+        query = dict(pairs)
+        query["curator_task"] = task_id
+        query["curator_return"] = CuratorTaskNavigationService.task_return(
+            task_id, navigation,
+        )
+        return urlunsplit(("", "", parsed.path, urlencode(query), ""))
 
     def _article_context(self, task: dict[str, Any]) -> dict[str, str]:
         if task.get("content_type") != "article":

@@ -1,7 +1,9 @@
 import json
 import os
+import re
 import tempfile
 import unittest
+from html import unescape
 from pathlib import Path
 from unittest.mock import patch
 
@@ -9,6 +11,7 @@ os.environ.setdefault("GEMINI_API_KEY", "test-key")
 
 from app.app import app
 from app.services.curator_task_navigation_service import CuratorTaskNavigationService
+from app.services.curator_task_service import CuratorTaskService
 from app.services.curator_workflow_lifecycle_service import CuratorWorkflowLifecycleService
 from app.services.review_workspace_service import ReviewWorkspaceService
 from app.services.knowledge_campaign_orchestration_service import (
@@ -1092,6 +1095,82 @@ class ReviewWorkspaceTests(unittest.TestCase):
         ).get_data(as_text=True)
         self.assertIn("Return to Review", page)
         self.assertIn('href="/review?item=curator_task%3AGKT-A"', page)
+
+    def test_review_task_to_workflow_preserves_exact_review_context(self):
+        workflow = {
+            "workflow_id": "sample", "name": "Sample Workflow",
+            "description": "A fixture workflow.", "start_node": "step",
+            "estimated_steps": 1,
+            "nodes": {"step": {
+                "type": "resolution", "title": "Sample resolution",
+                "message": "The sample is complete.",
+            }},
+        }
+        draft_path = self.root / "app/workflow_drafts/sample.json"
+        draft_path.parent.mkdir(parents=True, exist_ok=True)
+        draft_path.write_text(json.dumps(workflow), encoding="utf-8")
+        self.save_tasks(self.task(
+            "GKT-WORK", title="Review the sample finding",
+            content_type="workflow_node", content_identifier="sample:step",
+        ))
+        review_return = "/review?item=curator_task:GKT-WORK"
+        task_return = CuratorTaskNavigationService.task_return(
+            "GKT-WORK",
+            CuratorTaskNavigationService.resolve(
+                "review_workspace", review_return, task_id="GKT-WORK",
+            ),
+        )
+        before = self.repository_snapshot()
+        previous_workflow_root = app.config.get("WORKFLOW_REPOSITORY_ROOT")
+        app.config["WORKFLOW_REPOSITORY_ROOT"] = str(self.root)
+        try:
+            with patch(
+                "app.services.curator_task_service.WorkflowDraftService.list_drafts",
+                return_value=[{
+                    "workflow_id": "sample", "filename": "sample.json",
+                    "is_damaged": False,
+                }],
+            ):
+                review_page = self.client.get(
+                    "/review?item=curator_task:GKT-WORK"
+                ).get_data(as_text=True)
+                task_page = self.client.get(task_return).get_data(as_text=True)
+            self.assertIn("Return to Review", task_page)
+            inspect_link = re.search(
+                r'<a class="btn btn-outline-info" href="([^"]+)">Inspect full content</a>',
+                review_page,
+            )
+            self.assertIsNotNone(inspect_link)
+            workflow_url = unescape(inspect_link.group(1))
+            self.assertIn("node=step", workflow_url)
+            self.assertIn("curator_task=GKT-WORK", workflow_url)
+            self.assertIn("curator_return=", workflow_url)
+            self.assertIn(
+                'href="/curator/tasks/GKT-WORK?origin=review_workspace&amp;return_to=%2Freview%3Fitem%3Dcurator_task%253AGKT-WORK">Open full Knowledge Task</a>',
+                review_page,
+            )
+            designer = self.client.get(workflow_url).get_data(as_text=True)
+            self.assertIn('data-review-context="true"', designer)
+            self.assertIn('class="workflow-review-context alert alert-info', designer)
+            self.assertIn("Review context:", designer)
+            self.assertIn("Review the sample finding", designer)
+            self.assertIn("Selected node: Sample resolution", designer)
+            self.assertIn('designer.dataset.reviewContext === "true"', designer)
+            self.assertIn('nodeList.scrollTop = Math.max(', designer)
+            self.assertIn(
+                'href="/review?item=curator_task%3AGKT-WORK">Return to Review</a>',
+                designer,
+            )
+            self.assertNotIn(">Return to Curator Task</a>", designer)
+            normal = self.client.get("/workflow-editor/sample.json?node=step").get_data(as_text=True)
+            self.assertNotIn("Review context:", normal)
+            self.assertNotIn('data-review-context="true"', normal)
+        finally:
+            if previous_workflow_root is None:
+                app.config.pop("WORKFLOW_REPOSITORY_ROOT", None)
+            else:
+                app.config["WORKFLOW_REPOSITORY_ROOT"] = previous_workflow_root
+        self.assertEqual(self.repository_snapshot(), before)
 
     @staticmethod
     def routine_fields():

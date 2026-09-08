@@ -77,6 +77,30 @@ class CuratorTaskNavigationServiceTests(unittest.TestCase):
         self.assertIn("origin=content_quality", task_return)
         self.assertIn("return_to=%2Fcontent-quality%23queueTitle", task_return)
 
+    def test_review_return_is_recovered_only_from_the_exact_validated_task_hop(self):
+        review_return = "/review?item=curator_task:GKT-TEST"
+        navigation = self.resolve("review_workspace", review_return)
+        task_return = CuratorTaskNavigationService.task_return(self.TASK_ID, navigation)
+        self.assertEqual(
+            CuratorTaskNavigationService.review_return_from_task(
+                task_return, task_id=self.TASK_ID,
+            ),
+            review_return,
+        )
+        for value, task_id in (
+            (task_return, "GKT-OTHER"),
+            ("/curator/tasks/GKT-TEST?origin=review_workspace&return_to=https%3A%2F%2Fevil.example", self.TASK_ID),
+            ("/curator/tasks/GKT-TEST?origin=knowledge_tasks&return_to=%2Fcurator%23knowledge-tasks", self.TASK_ID),
+            ("/curator/tasks/GKT-TEST/../../admin?origin=review_workspace&return_to=%2Freview", self.TASK_ID),
+        ):
+            with self.subTest(value=value):
+                self.assertEqual(
+                    CuratorTaskNavigationService.review_return_from_task(
+                        value, task_id=task_id,
+                    ),
+                    "",
+                )
+
     def test_previous_task_return_is_validated_and_bounded_to_one_hop(self):
         queue_navigation = self.resolve(
             "relationship_proposals",

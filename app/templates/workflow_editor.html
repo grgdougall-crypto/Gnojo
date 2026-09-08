@@ -22,8 +22,14 @@
     data-article-draft-url="{{ url_for('create_workflow_article_draft', filename=filename, node_id='__NODE_ID__', curator_session=curator_session|default(''), curator_item=curator_item|default('')) }}"
     data-export-url="{{ url_for('export_workflow_draft', filename=filename, export_format='__FORMAT__') }}"
     data-curator-return="{{ curator_return|default('') }}"
+    {% if review_context %}data-review-context="true"{% endif %}
 >
-    {% if curator_task and curator_return %}
+    {% if review_context %}
+    <aside class="workflow-review-context alert alert-info d-flex flex-wrap align-items-center justify-content-between gap-2" role="region" aria-label="Review context">
+        <span class="workflow-review-context__copy"><strong>Review context:</strong> {{ review_context.title }}<small class="d-block">Selected node: {{ review_context.affected }}</small></span>
+        <a class="btn btn-sm btn-outline-info" href="{{ review_context.return_url }}">Return to Review</a>
+    </aside>
+    {% elif curator_task and curator_return %}
     <aside class="alert alert-info d-flex flex-wrap align-items-center justify-content-between gap-2" role="status">
         <span><strong>Curator task:</strong> Save this node, then return for a targeted check of the current content.</span>
         <a class="btn btn-sm btn-outline-info" href="{{ curator_return }}">Return to Curator Task</a>

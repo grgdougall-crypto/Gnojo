@@ -113,6 +113,26 @@ class CuratorTaskNavigationService:
         return value
 
     @classmethod
+    def review_return_from_task(cls, value: str, *, task_id: str) -> str:
+        """Recover one exact Review destination from a validated task hop."""
+        if not cls.valid_task_return_for(value, task_id=task_id):
+            return ""
+        parsed = cls._local(value, allow_encoded_slash=True)
+        query = dict(parse_qsl(parsed.query, keep_blank_values=True))
+        if query.get("origin") != "review_workspace":
+            return ""
+        return cls.valid_review_return(query.get("return_to", ""))
+
+    @classmethod
+    def valid_task_return_for(cls, value: str, *, task_id: str) -> str:
+        """Validate a task return and bind it to the expected task identity."""
+        if not cls.valid_task_return(value):
+            return ""
+        parsed = cls._local(value, allow_encoded_slash=True)
+        expected = f"/curator/tasks/{quote(str(task_id), safe='')}"
+        return value if parsed and parsed.path == expected else ""
+
+    @classmethod
     def valid_task_return(cls, value: str, *, allow_previous_task: bool = True) -> str:
         """Accept only a bounded task URL whose nested origin contract also validates."""
         parsed = cls._local(value, allow_encoded_slash=True)

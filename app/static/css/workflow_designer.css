@@ -10,6 +10,8 @@
 }
 
 .workflow-designer { padding: 1rem 1.25rem 1.25rem; color: var(--sp-ink); }
+.workflow-review-context { position: relative; z-index: 2; margin-bottom: 1rem; }
+.workflow-review-context__copy { min-width: 0; overflow-wrap: anywhere; }
 .workflow-header { min-height: 4.5rem; margin-bottom: 1rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
 .workflow-header__identity, .workflow-header__title-row, .workflow-header__actions { display: flex; align-items: center; }
 .workflow-header__identity { gap: .75rem; min-width: 0; }

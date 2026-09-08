@@ -4,6 +4,7 @@ import tempfile
 import unittest
 from copy import deepcopy
 from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
 
 from app.app import app
 from app.repositories.workflow_publication_review_repository import (
@@ -15,6 +16,7 @@ from app.services.workflow_lifecycle_projection_service import (
     READY_FOR_PUBLICATION_REVIEW,
     WorkflowLifecycleProjectionService,
 )
+from app.services.curator_task_navigation_service import CuratorTaskNavigationService
 
 
 def workflow():
@@ -372,6 +374,40 @@ class WorkflowPublicationReasoningReviewTests(unittest.TestCase):
         self.assertIn("openPublicationReview", scripts)
         self.assertIn("closePublicationReview", scripts)
         self.assertIn('window.location.hash === "#workflowReasoningPublicationReview"', scripts)
+
+    def test_publication_review_redirect_preserves_validated_review_context(self):
+        projection = self.project()
+        finding = projection.reasoning_reviews[0]
+        review_return = "/review?item=curator_task:GKT-REVIEW"
+        task_return = CuratorTaskNavigationService.task_return(
+            "GKT-REVIEW",
+            CuratorTaskNavigationService.resolve(
+                "review_workspace", review_return, task_id="GKT-REVIEW",
+            ),
+        )
+        self.client.get("/workflow-editor/review_demo.json")
+        with self.client.session_transaction() as state:
+            csrf_token = state["workflow_publication_review_csrf"]
+
+        response = self.client.post(
+            "/workflow-editor/review_demo.json/publication-reasoning-review",
+            data={
+                "csrf_token": csrf_token,
+                "finding_id": finding.finding_id,
+                "draft_semantic_fingerprint": projection.draft_semantic_fingerprint,
+                "reviewer": "Publication Reviewer",
+                "note": "The convergence is intentional for this publication.",
+                "curator_task": "GKT-REVIEW",
+                "curator_return": task_return,
+                "node": finding.node_id,
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        query = parse_qs(urlsplit(response.location).query)
+        self.assertEqual(query["curator_task"], ["GKT-REVIEW"])
+        self.assertEqual(query["curator_return"], [task_return])
+        self.assertEqual(query["node"], [finding.node_id])
 
     def test_accepted_publication_review_is_compact_and_disclosed(self):
         initial = self.project()

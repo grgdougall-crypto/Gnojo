@@ -2987,9 +2987,38 @@ def workflow_editor(filename):
         .build(workflow)
     )
 
-    curator_return = request.args.get("curator_return", "")
-    if curator_return and not curator_return.startswith("/curator/tasks/"):
-        curator_return = ""
+    curator_task = str(request.args.get("curator_task", ""))
+    curator_return = str(request.args.get("curator_return", ""))
+    review_return = CuratorTaskNavigationService.review_return_from_task(
+        curator_return, task_id=curator_task,
+    )
+    curator_return = CuratorTaskNavigationService.valid_task_return_for(
+        curator_return, task_id=curator_task,
+    )
+    review_context = None
+    if review_return:
+        try:
+            review_task = CuratorMemoryStore(
+                repository_root / "curation_memory"
+            ).load().get("tasks", {}).get(curator_task)
+        except CuratorMemoryError:
+            review_task = None
+        if isinstance(review_task, dict):
+            affected_identity = str(review_task.get("content_identifier") or "")
+            affected_workflow, _, affected_node = affected_identity.partition(":")
+            node = (
+                workflow.get("nodes", {}).get(affected_node, {})
+                if affected_workflow == str(workflow.get("workflow_id") or "") else {}
+            )
+            affected_label = str(
+                node.get("question") or node.get("title") or node.get("instruction")
+                or node.get("message") or affected_identity
+            )
+            review_context = {
+                "title": str(review_task.get("title") or "Review finding"),
+                "affected": affected_label,
+                "return_url": review_return,
+            }
     return_to = safe_internal_return(
         request.args.get("return_to", ""),
         ("/workflow-studio", "/content-quality"),
@@ -3004,8 +3033,10 @@ def workflow_editor(filename):
         workflow_platform=workflow_platform(workflow),
         curator_session=request.args.get("curator_session", ""),
         curator_item=request.args.get("curator_item", ""),
-        curator_task=request.args.get("curator_task", ""),
+        curator_task=curator_task,
         curator_return=curator_return,
+        review_context=review_context,
+        selected_node=request.args.get("node", ""),
         curator_category=request.args.get("category", "all"),
         lifecycle_projection=lifecycle_projection,
         lifecycle_view=lifecycle_view,
@@ -3080,9 +3111,21 @@ def workflow_publication_reasoning_review(filename):
         status = "accepted"
     except WorkflowPublicationReviewRepositoryError:
         status = "invalid"
+    navigation = {}
+    curator_task = str(request.form.get("curator_task") or "")
+    curator_return = str(request.form.get("curator_return") or "")
+    if CuratorTaskNavigationService.review_return_from_task(
+        curator_return, task_id=curator_task,
+    ):
+        navigation.update(
+            curator_task=curator_task,
+            curator_return=curator_return,
+            node=str(request.form.get("node") or ""),
+        )
     return redirect(url_for(
         "workflow_editor", filename=filename,
         publication_review_status=status,
+        **navigation,
         _anchor="workflowReasoningPublicationReview",
     ))
 

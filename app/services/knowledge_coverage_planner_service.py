@@ -165,7 +165,6 @@ class KnowledgeCoveragePlannerService:
             allowed_absences = {"article.related_commands", "command.related_articles"}
             if (
                 relationship_handoff != expected_handoff
-                or not expected_handoff["normalized_absent_declarations"]
                 or not set(expected_handoff["normalized_absent_declarations"]) <= allowed_absences
             ):
                 raise KnowledgeCoveragePlannerError(
@@ -221,6 +220,21 @@ class KnowledgeCoveragePlannerService:
     @classmethod
     def campaign_fingerprint(cls, campaign: dict[str, Any]) -> str:
         return cls._fingerprint(campaign)
+
+    @staticmethod
+    def command_relationship_handoff(
+        work: dict[str, Any], absent_declarations: list[str]
+    ) -> dict[str, Any]:
+        return {
+            "schema_version": "1.0",
+            "review_item_key": f"command_relationship_review:{work.get('work_item_id')}",
+            "gap_identity": str(work.get("gap_identity") or ""),
+            "workflow_id": str(work.get("workflow_id") or ""),
+            "node_id": str(work.get("node_id") or ""),
+            "article_id": str(work.get("article_id") or ""),
+            "command_identity": str(work.get("command_identity") or ""),
+            "normalized_absent_declarations": sorted(absent_declarations),
+        }
 
     def create(self, *, title: str, domain_id: str, objective: str,
                notes: str = "", actor: str = "Human",
@@ -505,6 +519,18 @@ class KnowledgeCoveragePlannerService:
                         f"workflow:{workflow_id}:node:{node_id}:"
                         f"missing_command_reference:{command_id}"
                     )
+                    relationship_evidence_fingerprint = self._fingerprint({
+                        "gap_identity": identity,
+                        "workflow_fingerprint": provenance[workflow_id]["workflow_fingerprint"],
+                        "article": article,
+                        "command": command,
+                    })
+                    absent_declarations = [
+                        label for record, field, label in (
+                            (article, "related_commands", "article.related_commands"),
+                            (command, "related_articles", "command.related_articles"),
+                        ) if field not in record
+                    ]
                     candidates.append({
                         "gap_identity": identity,
                         "gap_type": "missing_command_reference",
@@ -524,6 +550,8 @@ class KnowledgeCoveragePlannerService:
                         "evidence_strength": 3,
                         "runtime_relevance": 0,
                         "assessment_fingerprint": provenance[workflow_id]["workflow_fingerprint"],
+                        "relationship_evidence_fingerprint": relationship_evidence_fingerprint,
+                        "normalized_absent_declarations": absent_declarations,
                         "evidence": [
                             f"Workflow node {workflow_id}:{node_id} links article '{article_id}'.",
                             f"That article contains a structured command reference resolving to '{command_id}'.",
@@ -574,6 +602,12 @@ class KnowledgeCoveragePlannerService:
             "node_id": candidate.get("node_id"),
             "article_id": candidate.get("article_id"),
             "command_identity": candidate.get("command_identity"),
+            "relationship_evidence_fingerprint": candidate.get(
+                "relationship_evidence_fingerprint"
+            ),
+            "normalized_absent_declarations": list(
+                candidate.get("normalized_absent_declarations") or []
+            ),
         }
 
     def _gap(self, campaign_id: str, gap_type: str, area: dict[str, Any], facet: str,
@@ -601,9 +635,16 @@ class KnowledgeCoveragePlannerService:
         for key in (
             "gap_identity", "workflow_id", "workflow_filename", "workflow_lifecycle",
             "node_ids", "node_id", "article_id", "command_identity",
+            "relationship_evidence_fingerprint",
         ):
             if gap.get(key) not in (None, [], ""):
                 item[key] = deepcopy(gap[key])
+        if item["work_type"] == "command_reference":
+            item["command_relationship_review_handoff"] = (
+                self.command_relationship_handoff(
+                    item, list(gap.get("normalized_absent_declarations") or [])
+                )
+            )
         return item
 
     @staticmethod

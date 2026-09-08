@@ -3,6 +3,9 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import tempfile
+import time
+from contextlib import contextmanager
 from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
@@ -82,6 +85,22 @@ class KnowledgeCampaignOrchestrationService:
     @staticmethod
     def action_policy() -> dict[str, dict[str, Any]]:
         return deepcopy(ACTION_POLICY)
+
+    @classmethod
+    def for_command_relationship_decision(
+        cls, repository_root: Path, campaign_root: Path | None = None
+    ) -> "KnowledgeCampaignOrchestrationService":
+        """Construct only the authorities needed by the bounded decision operation."""
+        value = cls.__new__(cls)
+        value.repository_root = Path(repository_root).resolve()
+        value.campaign_root = Path(
+            campaign_root or value.repository_root / "knowledge_campaigns"
+        ).resolve()
+        value.package_root = value.campaign_root / "orchestration"
+        value.planner = KnowledgeCoveragePlannerService(
+            value.repository_root, value.campaign_root
+        )
+        return value
 
     def get_or_create(self, campaign_id: str, mode: str = "supervised",
                       actor: str = "Human") -> dict[str, Any]:
@@ -204,6 +223,231 @@ class KnowledgeCampaignOrchestrationService:
         result["execution"] = {"outcomes": [outcome], "transitions": 1, "limits": deepcopy(self.limits)}
         return result
 
+    def decide_command_relationship(
+        self,
+        campaign_id: str,
+        work_item_id: str,
+        decision: str,
+        reason: str,
+        reviewer: str,
+        expected_fingerprint: str,
+    ) -> dict[str, Any]:
+        """Apply one exact campaign-owned command relationship decision atomically."""
+        decision, reason, reviewer = decision.strip(), reason.strip(), reviewer.strip()
+        if decision not in {"approve", "reject"}:
+            raise KnowledgeCampaignOrchestrationError("Unsupported command relationship decision.")
+        if not reason:
+            raise KnowledgeCampaignOrchestrationError("A decision reason is required.")
+        if not reviewer:
+            raise KnowledgeCampaignOrchestrationError("An authenticated reviewer is required.")
+        if not expected_fingerprint:
+            raise KnowledgeCampaignOrchestrationError("The review fingerprint is required.")
+
+        lock_path = self.campaign_root / ".command-relationship-decision.lock"
+        with self._decision_lock(lock_path):
+            # Local import avoids making the read-only projector depend on this writer.
+            from app.services.review_workspace_service import ReviewWorkspaceService
+
+            review = ReviewWorkspaceService(self.repository_root)
+            item = review.find("command_relationship_review", work_item_id)
+            if (
+                item is None
+                or item.get("source_fingerprint") != expected_fingerprint
+                or item.get("technical", {}).get("Campaign") != campaign_id
+            ):
+                raise KnowledgeCampaignOrchestrationError(
+                    "The command relationship review changed. Reload it before deciding."
+                )
+
+            campaign_path = self.planner._path(campaign_id)
+            orchestrations = [
+                value for value in self.read_persisted(self.campaign_root)
+                if value.get("campaign_id") == campaign_id
+            ]
+            if len(orchestrations) != 1:
+                raise KnowledgeCampaignOrchestrationError(
+                    "The campaign orchestration is missing or ambiguous."
+                )
+            orchestration = orchestrations[0]
+            orchestration_id = str(orchestration.get("orchestration_id") or "")
+            orchestration_path = self._path(orchestration_id)
+            campaign = self.planner.get(campaign_id)
+            works = [value for value in campaign.get("work_items") or [] if (
+                isinstance(value, dict)
+                and value.get("work_item_id") == work_item_id
+                and value.get("work_type") == "command_reference"
+            )]
+            states = [value for value in orchestration.get("work_item_states") or [] if (
+                isinstance(value, dict) and value.get("work_item_id") == work_item_id
+            )]
+            if len(works) != 1 or len(states) != 1 or not (
+                states[0].get("state") == "awaiting_human_review"
+                and states[0].get("action_authority") == "human_gate"
+                and states[0].get("next_action") == "review_command_reference"
+            ):
+                raise KnowledgeCampaignOrchestrationError(
+                    "The command relationship is no longer at its human review gate."
+                )
+            work = works[0]
+            handoff = work.get("command_relationship_review_handoff")
+            if not isinstance(handoff, dict) or handoff.get("review_item_key") != item.get("key"):
+                raise KnowledgeCampaignOrchestrationError(
+                    "The command relationship handoff marker is invalid."
+                )
+
+            article_id = str(work.get("article_id") or "")
+            command_id = str(work.get("command_identity") or "")
+            article_path = self.repository_root / "knowledge_base" / "published" / f"{article_id}.json"
+            command_path = self.repository_root / "knowledge_base" / "commands" / f"{command_id}.json"
+            paths = (article_path, command_path, campaign_path, orchestration_path)
+            try:
+                before = {path: path.read_bytes() for path in paths}
+                article = json.loads(before[article_path].decode("utf-8"))
+                command = json.loads(before[command_path].decode("utf-8"))
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+                raise KnowledgeCampaignOrchestrationError(
+                    f"Authoritative command relationship state could not be read: {error}"
+                ) from error
+
+            decided_at = self._now()
+            decision_record = {
+                "decision": decision,
+                "reviewer": reviewer,
+                "reason": reason,
+                "decided_at": decided_at,
+                "gap_identity": str(work.get("gap_identity") or ""),
+                "source_fingerprint": expected_fingerprint,
+                "relationship_evidence_fingerprint": str(
+                    item.get("relationship_evidence_fingerprint") or ""
+                ),
+                "article_id": article_id,
+                "command_identity": command_id,
+            }
+            replacements: dict[Path, bytes] = {}
+            if decision == "approve":
+                article_commands = article.setdefault("related_commands", [])
+                command_articles = command.setdefault("related_articles", [])
+                if not isinstance(article_commands, list) or not isinstance(command_articles, list):
+                    raise KnowledgeCampaignOrchestrationError(
+                        "Relationship declarations have an unsupported structure."
+                    )
+                if command_id not in article_commands:
+                    article_commands.append(command_id)
+                if article_id not in command_articles:
+                    command_articles.append(article_id)
+                replacements[article_path] = self._content_json_bytes(article)
+                replacements[command_path] = self._content_json_bytes(command)
+
+            work["status"] = "completed"
+            work["command_relationship_decision"] = decision_record
+            campaign.setdefault("history", []).append({
+                "event": "command_relationship_decided",
+                "at": decided_at,
+                "actor": reviewer,
+                "work_item_id": work_item_id,
+                **decision_record,
+            })
+            replacements[campaign_path] = self._json_bytes(campaign)
+
+            projected_states = deepcopy(orchestration.get("work_item_states") or [])
+            target_states = [value for value in projected_states if (
+                isinstance(value, dict) and value.get("work_item_id") == work_item_id
+            )]
+            if len(target_states) != 1:
+                raise KnowledgeCampaignOrchestrationError(
+                    "The command relationship orchestration state is ambiguous."
+                )
+            target_states[0].update(
+                stage="command_reference_review_completed",
+                state="complete",
+                next_action=None,
+                action_authority=None,
+                review_link=None,
+            )
+            orchestration.update(self._projection(campaign, projected_states))
+            self._event(
+                orchestration,
+                "command_relationship_decided",
+                reviewer,
+                work_item_id=work_item_id,
+                decision=decision,
+                reason=reason,
+                article_id=article_id,
+                command_identity=command_id,
+            )
+            orchestration.setdefault("fingerprints", {})["projection"] = self._fingerprint(
+                self._projection(campaign, projected_states)
+            )
+            replacements[orchestration_path] = self._json_bytes(orchestration)
+
+            written: list[Path] = []
+            try:
+                for path in paths:
+                    if path.read_bytes() != before[path]:
+                        raise KnowledgeCampaignOrchestrationError(
+                            "Authoritative command relationship state changed during the decision."
+                        )
+                    if path in replacements:
+                        self._atomic_write_bytes(path, replacements[path])
+                        written.append(path)
+                if decision == "approve":
+                    saved_article = json.loads(article_path.read_text(encoding="utf-8"))
+                    saved_command = json.loads(command_path.read_text(encoding="utf-8"))
+                    if (
+                        command_id not in (saved_article.get("related_commands") or [])
+                        or article_id not in (saved_command.get("related_articles") or [])
+                    ):
+                        raise KnowledgeCampaignOrchestrationError(
+                            "The reciprocal relationship could not be verified."
+                        )
+                saved_campaign = json.loads(campaign_path.read_text(encoding="utf-8"))
+                saved_orchestration = json.loads(orchestration_path.read_text(encoding="utf-8"))
+                saved_works = [value for value in saved_campaign.get("work_items") or [] if (
+                    value.get("work_item_id") == work_item_id
+                    and (value.get("command_relationship_decision") or {}).get("decision") == decision
+                )]
+                saved_states = [value for value in saved_orchestration.get("work_item_states") or [] if (
+                    value.get("work_item_id") == work_item_id and value.get("state") == "complete"
+                    and value.get("action_authority") is None and value.get("next_action") is None
+                )]
+                if len(saved_works) != 1 or len(saved_states) != 1:
+                    raise KnowledgeCampaignOrchestrationError(
+                        "The campaign human gate completion could not be verified."
+                    )
+                if review.find("command_relationship_review", work_item_id) is not None:
+                    raise KnowledgeCampaignOrchestrationError(
+                        "The campaign human gate did not close after the decision."
+                    )
+            except Exception as error:
+                rollback_errors = []
+                for path in reversed(written):
+                    try:
+                        if path.read_bytes() != replacements[path]:
+                            rollback_errors.append(f"{path.name} changed concurrently")
+                            continue
+                        self._atomic_write_bytes(path, before[path])
+                    except OSError as rollback_error:
+                        rollback_errors.append(f"{path.name}: {rollback_error}")
+                if rollback_errors:
+                    raise KnowledgeCampaignOrchestrationError(
+                        "Command relationship transaction failed and guarded rollback was incomplete: "
+                        + "; ".join(rollback_errors)
+                    ) from error
+                if isinstance(error, KnowledgeCampaignOrchestrationError):
+                    raise
+                raise KnowledgeCampaignOrchestrationError(
+                    f"Command relationship transaction failed; all writes were restored: {error}"
+                ) from error
+
+            return {
+                "campaign_id": campaign_id,
+                "orchestration_id": orchestration_id,
+                "work_item_id": work_item_id,
+                "decision": decision,
+                "article_id": article_id,
+                "command_identity": command_id,
+            }
+
     def _resolve_item(self, campaign, work):
         base = {"work_item_id": work["work_item_id"], "gap_id": work["gap_id"],
                 "title": work.get("area_id", "").replace("-", " ").title(),
@@ -213,6 +457,15 @@ class KnowledgeCampaignOrchestrationService:
                 "blocker": None, "dependencies": [], "stale": False}
         if campaign.get("status") == "draft" or not campaign.get("last_analyzed_at"):
             return self._action(base, "coverage_identified", "analyze_coverage")
+        if work.get("work_type") == "command_reference" and isinstance(
+            work.get("command_relationship_decision"), dict
+        ) and work["command_relationship_decision"].get("decision") in {"approve", "reject"}:
+            base.update(
+                stage="command_reference_review_completed", state="complete",
+                next_action=None, action_authority=None,
+                review_link=None,
+            )
+            return base
         reuse = self._reuse_for_work(campaign, work)
         if reuse and work.get("work_type") not in WORKFLOW_TYPES:
             destination = self.review_destinations.resolve(reuse)
@@ -640,6 +893,58 @@ class KnowledgeCampaignOrchestrationService:
         temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
         temporary.write_text(json.dumps(record, indent=2, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")
         temporary.replace(path)
+
+    @staticmethod
+    def _json_bytes(value: dict[str, Any]) -> bytes:
+        return (json.dumps(value, indent=2, ensure_ascii=False, sort_keys=True) + "\n").encode("utf-8")
+
+    @staticmethod
+    def _content_json_bytes(value: dict[str, Any]) -> bytes:
+        """Serialize authoritative content without reordering its existing keys."""
+        return (json.dumps(value, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
+
+    @staticmethod
+    def _atomic_write_bytes(path: Path, payload: bytes) -> None:
+        temporary_name = None
+        try:
+            with tempfile.NamedTemporaryFile("wb", dir=path.parent, delete=False, suffix=".tmp") as output:
+                temporary_name = output.name
+                output.write(payload)
+                output.flush()
+                os.fsync(output.fileno())
+            os.replace(temporary_name, path)
+        finally:
+            if temporary_name:
+                Path(temporary_name).unlink(missing_ok=True)
+
+    @staticmethod
+    @contextmanager
+    def _decision_lock(path: Path, timeout: float = 2.0):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        deadline = time.monotonic() + timeout
+        descriptor = None
+        while descriptor is None:
+            try:
+                descriptor = os.open(str(path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            except FileExistsError:
+                if time.monotonic() >= deadline:
+                    raise KnowledgeCampaignOrchestrationError(
+                        "Another command relationship decision is in progress."
+                    )
+                time.sleep(0.02)
+            except OSError as error:
+                raise KnowledgeCampaignOrchestrationError(
+                    f"The command relationship decision lock is unavailable: {error}"
+                ) from error
+        try:
+            os.write(descriptor, json.dumps({"pid": os.getpid()}).encode("utf-8"))
+            os.close(descriptor)
+            descriptor = None
+            yield
+        finally:
+            if descriptor is not None:
+                os.close(descriptor)
+            path.unlink(missing_ok=True)
 
     @staticmethod
     def _read(path):

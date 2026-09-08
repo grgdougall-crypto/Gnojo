@@ -16,7 +16,6 @@ from app.repositories.knowledge_repository import (
     KnowledgeRepository,
     KnowledgeRepositoryError,
 )
-from app.repositories.command_repository import CommandRepository
 from app.services.curator_growth_service import CuratorGrowthService
 from app.services.curator_targeted_verification_service import CuratorTargetedVerificationService
 from app.services.curator_task_service import CuratorTaskService
@@ -575,6 +574,13 @@ class ReviewWorkspaceService:
         item, reason, prerequisite = self._command_relationship_item(
             records[0], campaign, states[0], works[0]
         )
+        if item is not None and not item.get("decision_available"):
+            return {
+                "projectable": False,
+                "reason": "missing_relationship_decision_handoff",
+                "canonical_review_key": self.command_relationship_review_key(work_item_id),
+                "missing_prerequisite": self.command_relationship_handoff(works[0], []),
+            }
         return {
             "projectable": item is not None,
             "reason": reason,
@@ -586,16 +592,9 @@ class ReviewWorkspaceService:
     def command_relationship_handoff(
         cls, work: dict[str, Any], absent_declarations: list[str]
     ) -> dict[str, Any]:
-        return {
-            "schema_version": "1.0",
-            "review_item_key": cls.command_relationship_review_key(work.get("work_item_id")),
-            "gap_identity": str(work.get("gap_identity") or ""),
-            "workflow_id": str(work.get("workflow_id") or ""),
-            "node_id": str(work.get("node_id") or ""),
-            "article_id": str(work.get("article_id") or ""),
-            "command_identity": str(work.get("command_identity") or ""),
-            "normalized_absent_declarations": sorted(absent_declarations),
-        }
+        return KnowledgeCoveragePlannerService.command_relationship_handoff(
+            work, absent_declarations
+        )
 
     @staticmethod
     def _is_pending_command_review(state: Any) -> bool:
@@ -634,7 +633,7 @@ class ReviewWorkspaceService:
         ):
             return None, "workflow_node_article_conflict", None
 
-        command = CommandRepository(self.root / "knowledge_base" / "commands").get(command_id)
+        command = self._command_record(command_id)
         article = self._published_article(article_id)
         if not command or not article:
             return None, "authoritative_relationship_record_missing", None
@@ -656,8 +655,9 @@ class ReviewWorkspaceService:
         else:
             command_articles = []
             absent_declarations.append("command.related_articles")
+        prerequisite = self.command_relationship_handoff(work, absent_declarations)
+        handoff_valid = work.get("command_relationship_review_handoff") == prerequisite
         if absent_declarations:
-            prerequisite = self.command_relationship_handoff(work, absent_declarations)
             if work.get("command_relationship_review_handoff") != prerequisite:
                 return None, "missing_relationship_declaration_handoff", prerequisite
         proposed_changes = []
@@ -692,16 +692,22 @@ class ReviewWorkspaceService:
             or node.get("message") or node_id
         )
         evidence = [str(value) for value in work.get("evidence") or [] if str(value).strip()]
+        relationship_evidence_fingerprint = self._fingerprint({
+            "gap_identity": str(work.get("gap_identity") or ""),
+            "workflow_fingerprint": target.fingerprint,
+            "article": article,
+            "command": command,
+        })
         source = {
             "orchestration": orchestration,
-            "campaign": {
-                "campaign_id": campaign.get("campaign_id"),
-                "status": campaign.get("status"),
-                "work_item": work,
-            },
+            "campaign": campaign,
             "workflow_fingerprint": target.fingerprint,
+            "article_fingerprint": self._fingerprint(article),
+            "command_fingerprint": self._fingerprint(command),
             "article_declarations": article_commands,
             "command_declarations": command_articles,
+            "proposed_changes": proposed_changes,
+            "relationship_evidence_fingerprint": relationship_evidence_fingerprint,
         }
         item = {
             "key": key,
@@ -743,18 +749,19 @@ class ReviewWorkspaceService:
             "campaign_url": campaign_url,
             "task_url": "",
             "return_to": return_to,
-            "allowed_actions": (),
-            "decision_available": False,
+            "allowed_actions": (("approve", "reject") if handoff_valid else ()),
+            "decision_available": handoff_valid,
             "decision_unavailable_reason": (
-                "Approval and rejection are unavailable because the campaign currently has no "
-                "authoritative command-relationship decision/write action. No relationship or "
-                "campaign state will be changed from this page."
+                "This campaign predates the authoritative command-relationship decision "
+                "handoff. Reconcile the campaign before recording a decision."
+                if not handoff_valid else ""
             ),
             "resolve_verified": False,
             "authoritative_status": str(state.get("state") or ""),
             "batch_allowed_actions": (),
             "specialized_review": True,
             "source_fingerprint": self._fingerprint(source),
+            "relationship_evidence_fingerprint": relationship_evidence_fingerprint,
             "technical": {
                 "Campaign": str(campaign.get("campaign_id") or ""),
                 "Orchestration": str(orchestration.get("orchestration_id") or ""),
@@ -784,7 +791,41 @@ class ReviewWorkspaceService:
         except (OSError, json.JSONDecodeError):
             return None
         identity = str(article.get("canonical_id") or article.get("id") or "")
-        return article if identity == article_id else None
+        if identity != article_id:
+            return None
+        matches = 0
+        for candidate in path.parent.glob("*.json"):
+            try:
+                value = json.loads(candidate.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                return None
+            if str(value.get("canonical_id") or value.get("id") or "") == article_id:
+                matches += 1
+        return article if matches == 1 else None
+
+    def _command_record(self, command_id: str) -> dict[str, Any] | None:
+        if not command_id or any(
+            character not in "abcdefghijklmnopqrstuvwxyz0123456789-_"
+            for character in command_id
+        ):
+            return None
+        directory = self.root / "knowledge_base" / "commands"
+        path = directory / f"{command_id}.json"
+        try:
+            command = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None
+        if str(command.get("id") or "") != command_id:
+            return None
+        matches = 0
+        for candidate in directory.glob("*.json"):
+            try:
+                value = json.loads(candidate.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                return None
+            if str(value.get("id") or "") == command_id:
+                matches += 1
+        return command if matches == 1 else None
 
     def _apply_compression(
         self,

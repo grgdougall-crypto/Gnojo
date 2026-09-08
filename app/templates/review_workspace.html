@@ -85,6 +85,7 @@
     <section class="border-top pt-4" aria-labelledby="decisionTitle">
       <h3 class="h4" id="decisionTitle">Decision</h3>
       <form method="post" action="{{ url_for('review_workspace_decision', item_type=item.item_type, item_id=item.item_id) }}" class="row g-3">
+        <input type="hidden" name="authenticity_token" value="{{ authenticity_token() }}">
         <input type="hidden" name="source_fingerprint" value="{{ item.source_fingerprint }}">
         <div class="col-12"><label class="form-label" for="reviewReason">Decision reason</label><textarea class="form-control" id="reviewReason" name="reason" rows="3" required aria-describedby="reviewReasonHelp"></textarea><div class="form-text" id="reviewReasonHelp">Required for governed decisions and retained by the existing authoritative service.</div></div>
         <div class="col-12 d-flex flex-wrap gap-2">
@@ -92,6 +93,9 @@
             <button class="btn btn-success" type="submit" name="decision" value="resolve">{{ 'Resolve verified item' if item.resolve_verified else 'Resolve' }}</button>
             <button class="btn btn-outline-warning" type="submit" name="decision" value="defer">Defer</button>
             <button class="btn btn-outline-secondary" type="submit" name="decision" value="ignore">Ignore finding</button>
+          {% elif item.item_type == 'command_relationship_review' %}
+            <button class="btn btn-success" type="submit" name="decision" value="approve">Approve relationship</button>
+            <button class="btn btn-outline-danger" type="submit" name="decision" value="reject">Reject relationship</button>
           {% else %}
             <button class="btn btn-success" type="submit" name="decision" value="approve">Accept</button>
             <button class="btn btn-outline-danger" type="submit" name="decision" value="reject">Reject</button>

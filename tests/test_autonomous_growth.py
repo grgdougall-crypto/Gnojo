@@ -11,6 +11,8 @@ from app.services.autonomous_growth_service import (
     AutonomousGrowthService,
 )
 from app.services.knowledge_coverage_planner_service import KnowledgeCoveragePlannerService
+from app.services.knowledge_campaign_orchestration_service import KnowledgeCampaignOrchestrationService
+from app.services.curator_workflow_lifecycle_service import CuratorWorkflowLifecycleService
 from app.services.review_workspace_service import ReviewWorkspaceService
 from curator.__main__ import main
 
@@ -499,7 +501,7 @@ class AutonomousGrowthTests(unittest.TestCase):
         self.assertEqual([item["key"] for item in items], [
             "command_relationship_review:KCW-LEGACY001"
         ])
-        self.assertFalse(items[0]["decision_available"])
+        self.assertTrue(items[0]["decision_available"])
 
         service.run()
         repeated = planner.get("KCP-LEGACY001")
@@ -565,7 +567,7 @@ class AutonomousGrowthTests(unittest.TestCase):
         self.assertEqual([item["key"] for item in items], [
             "command_relationship_review:KCW-LEGACY001"
         ])
-        self.assertFalse(items[0]["decision_available"])
+        self.assertTrue(items[0]["decision_available"])
 
         repeated = service.run()
         self.assertEqual(repeated.campaign["disposition"], "reused")
@@ -577,6 +579,50 @@ class AutonomousGrowthTests(unittest.TestCase):
         )
         self.assertEqual(orchestration_path.read_bytes(), before[orchestration_path])
         self.assertEqual({path: path.read_bytes() for path in protected}, protected)
+        self.assertEqual(len(list(campaign_path.parent.glob("KCP-*.json"))), 1)
+
+    def test_rejected_command_gap_is_suppressed_until_evidence_changes(self):
+        service, planner, _, campaign_path, _ = self.legacy_command_fixture(
+            identities_complete=True,
+            article_declaration_absent=True,
+        )
+        service.run()
+        review = ReviewWorkspaceService(self.root)
+        item = review.find("command_relationship_review", "KCW-LEGACY001")
+        planner.candidate["relationship_evidence_fingerprint"] = (
+            item["relationship_evidence_fingerprint"]
+        )
+        KnowledgeCampaignOrchestrationService.for_command_relationship_decision(
+            self.root, self.root / "knowledge_campaigns"
+        ).decide_command_relationship(
+            "KCP-LEGACY001", "KCW-LEGACY001", "reject",
+            "The structured reference is incidental.", "Reviewer",
+            item["source_fingerprint"],
+        )
+
+        unchanged = service.run(preview=True)
+        self.assertEqual(unchanged.status, "NO-OP")
+        self.assertEqual(unchanged.campaign["disposition"], "rejected_equivalent")
+        self.assertEqual(len(list(campaign_path.parent.glob("KCP-*.json"))), 1)
+
+        article_path = self.root / "knowledge_base/published/network-guide.json"
+        article = json.loads(article_path.read_text(encoding="utf-8"))
+        article["overview"] = "Materially revised command context."
+        article_path.write_text(json.dumps(article), encoding="utf-8")
+        command = json.loads((
+            self.root / "knowledge_base/commands/ipconfig.json"
+        ).read_text(encoding="utf-8"))
+        target = CuratorWorkflowLifecycleService(self.root).resolve("network")
+        planner.candidate["relationship_evidence_fingerprint"] = review._fingerprint({
+            "gap_identity": planner.candidate["gap_identity"],
+            "workflow_fingerprint": target.fingerprint,
+            "article": article,
+            "command": command,
+        })
+
+        changed = service.run(preview=True)
+        self.assertEqual(changed.status, "SELECTED")
+        self.assertEqual(changed.campaign["disposition"], "would_create")
         self.assertEqual(len(list(campaign_path.parent.glob("KCP-*.json"))), 1)
 
     def test_legacy_command_reconciliation_fails_closed_for_ambiguity_or_changed_gate(self):

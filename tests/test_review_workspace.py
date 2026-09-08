@@ -11,6 +11,10 @@ from app.app import app
 from app.services.curator_task_navigation_service import CuratorTaskNavigationService
 from app.services.curator_workflow_lifecycle_service import CuratorWorkflowLifecycleService
 from app.services.review_workspace_service import ReviewWorkspaceService
+from app.services.knowledge_campaign_orchestration_service import (
+    KnowledgeCampaignOrchestrationError,
+    KnowledgeCampaignOrchestrationService,
+)
 from curator.growth import CuratorGrowthService as GrowthStoreService
 from curator.memory import CuratorMemoryError, CuratorMemoryStore
 from tests.test_accessibility import InteractiveParser
@@ -164,7 +168,8 @@ class ReviewWorkspaceTests(unittest.TestCase):
         if relationship_handoff:
             work["command_relationship_review_handoff"] = (
                 ReviewWorkspaceService.command_relationship_handoff(
-                    work, ("article.related_commands",)
+                    work,
+                    (["article.related_commands"] if article_declaration_absent else []),
                 )
             )
         campaign_root = self.root / "knowledge_campaigns"
@@ -351,6 +356,244 @@ class ReviewWorkspaceTests(unittest.TestCase):
         )
         self.assertIn('href="/commands/ipconfig">Review authoritative package</a>', page)
         self.assertNotIn('href="/commands/ipconfig">Open Review Workspace</a>', page)
+        self.assertEqual(self.repository_snapshot(), before)
+
+    def test_command_relationship_approval_is_reciprocal_and_completes_gate(self):
+        self.save_tasks(self.task("GKT-NEXT"))
+        context = self.add_command_relationship_review(relationship_handoff=True)
+        article_path = self.root / "knowledge_base/published/vpn-reset-guidance.json"
+        command_path = self.root / "knowledge_base/commands/ipconfig.json"
+        article = json.loads(article_path.read_text(encoding="utf-8"))
+        command = json.loads(command_path.read_text(encoding="utf-8"))
+        article["related_commands"] = ["ping"]
+        command["related_articles"] = ["existing-guide"]
+        article_path.write_text(json.dumps(article), encoding="utf-8")
+        command_path.write_text(json.dumps(command), encoding="utf-8")
+        item = ReviewWorkspaceService(self.root).find(
+            "command_relationship_review", context["work_item_id"]
+        )
+
+        response = self.client.post(
+            f"/review/command_relationship_review/{context['work_item_id']}/decision",
+            data={"decision": "approve", "reason": "The command directly supports the article.",
+                  "source_fingerprint": item["source_fingerprint"]},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("notice=relationship_approved", response.location)
+        self.assertIn("curator_task:GKT-NEXT", response.location)
+        saved_article = json.loads(article_path.read_text(encoding="utf-8"))
+        saved_command = json.loads(command_path.read_text(encoding="utf-8"))
+        self.assertEqual(saved_article["related_commands"], ["ping", "ipconfig"])
+        self.assertEqual(saved_command["related_articles"], ["existing-guide", "vpn-reset-guidance"])
+        self.assertEqual(saved_article["related_commands"].count("ipconfig"), 1)
+        self.assertEqual(saved_command["related_articles"].count("vpn-reset-guidance"), 1)
+        campaign = json.loads((self.root / "knowledge_campaigns/KCP-COMMAND1.json").read_text())
+        work = campaign["work_items"][0]
+        self.assertEqual(work["work_item_id"], context["work_item_id"])
+        self.assertEqual(work["command_relationship_decision"]["decision"], "approve")
+        self.assertEqual(work["command_relationship_decision"]["reviewer"], "Test Reviewer")
+        self.assertEqual(work["status"], "completed")
+        orchestration = json.loads(context["orchestration_path"].read_text())
+        self.assertEqual(orchestration["orchestration_id"], context["orchestration_id"])
+        self.assertEqual(orchestration["work_item_states"][0]["state"], "complete")
+        self.assertIsNone(ReviewWorkspaceService(self.root).find(
+            "command_relationship_review", context["work_item_id"]
+        ))
+
+    def test_command_relationship_approval_preserves_unrelated_json_key_order(self):
+        self.save_tasks()
+        context = self.add_command_relationship_review(relationship_handoff=True)
+        article_path = self.root / "knowledge_base/published/vpn-reset-guidance.json"
+        command_path = self.root / "knowledge_base/commands/ipconfig.json"
+        before_article = json.loads(article_path.read_text(encoding="utf-8"))
+        before_command = json.loads(command_path.read_text(encoding="utf-8"))
+        item = ReviewWorkspaceService(self.root).find(
+            "command_relationship_review", context["work_item_id"]
+        )
+
+        response = self.client.post(
+            f"/review/command_relationship_review/{context['work_item_id']}/decision",
+            data={
+                "decision": "approve",
+                "reason": "The command directly supports the article.",
+                "source_fingerprint": item["source_fingerprint"],
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        after_article = json.loads(article_path.read_text(encoding="utf-8"))
+        after_command = json.loads(command_path.read_text(encoding="utf-8"))
+        self.assertEqual(list(after_article), list(before_article))
+        self.assertEqual(list(after_command), list(before_command))
+        self.assertEqual(list(after_command["risk"]), list(before_command["risk"]))
+        after_article.pop("related_commands")
+        before_article.pop("related_commands")
+        after_command.pop("related_articles")
+        before_command.pop("related_articles")
+        self.assertEqual(after_article, before_article)
+        self.assertEqual(after_command, before_command)
+
+    def test_command_relationship_rejection_closes_gate_without_content_write(self):
+        self.save_tasks()
+        context = self.add_command_relationship_review(relationship_handoff=True)
+        article_path = self.root / "knowledge_base/published/vpn-reset-guidance.json"
+        command_path = self.root / "knowledge_base/commands/ipconfig.json"
+        before_article, before_command = article_path.read_bytes(), command_path.read_bytes()
+        item = ReviewWorkspaceService(self.root).find(
+            "command_relationship_review", context["work_item_id"]
+        )
+
+        response = self.client.post(
+            f"/review/command_relationship_review/{context['work_item_id']}/decision",
+            data={"decision": "reject", "reason": "The reference is incidental, not a relationship.",
+                  "source_fingerprint": item["source_fingerprint"]},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("notice=relationship_rejected", response.location)
+        self.assertEqual(article_path.read_bytes(), before_article)
+        self.assertEqual(command_path.read_bytes(), before_command)
+        campaign = json.loads((self.root / "knowledge_campaigns/KCP-COMMAND1.json").read_text())
+        self.assertEqual(campaign["work_items"][0]["command_relationship_decision"]["decision"], "reject")
+        self.assertEqual(campaign["work_items"][0]["status"], "completed")
+        self.assertIsNone(ReviewWorkspaceService(self.root).find(
+            "command_relationship_review", context["work_item_id"]
+        ))
+
+    def test_command_relationship_decision_does_not_resolve_unrelated_campaign_work(self):
+        self.save_tasks()
+        context = self.add_command_relationship_review(relationship_handoff=True)
+        campaign_path = self.root / "knowledge_campaigns/KCP-COMMAND1.json"
+        orchestration_path = self.root / "knowledge_campaigns/orchestration/KORCH-COMMAND1.json"
+        campaign = json.loads(campaign_path.read_text(encoding="utf-8"))
+        campaign["work_items"].append({
+            "work_item_id": "KCW-UNRELATED-WORKFLOW",
+            "campaign_id": context["campaign_id"],
+            "gap_id": "KCG-UNRELATED-WORKFLOW",
+            "work_type": "workflow",
+            "area_id": "unrelated_workflow",
+            "priority": "medium",
+            "status": "proposed",
+        })
+        campaign_path.write_text(json.dumps(campaign), encoding="utf-8")
+        orchestration = json.loads(orchestration_path.read_text(encoding="utf-8"))
+        unrelated_state = {
+            "work_item_id": "KCW-UNRELATED-WORKFLOW",
+            "gap_id": "KCG-UNRELATED-WORKFLOW",
+            "title": "Unrelated Workflow",
+            "work_type": "workflow",
+            "priority": "medium",
+            "stage": "workflow_claim_planning_ready",
+            "state": "machine_ready",
+            "next_action": "prepare_workflow_claim_plan",
+            "action_authority": "machine_safe",
+            "review_link": None,
+            "blocker": None,
+            "dependencies": [],
+            "stale": False,
+        }
+        orchestration["work_item_states"].append(unrelated_state)
+        orchestration_path.write_text(json.dumps(orchestration), encoding="utf-8")
+        item = ReviewWorkspaceService(self.root).find(
+            "command_relationship_review", context["work_item_id"]
+        )
+        service = KnowledgeCampaignOrchestrationService.for_command_relationship_decision(
+            self.root, self.root / "knowledge_campaigns"
+        )
+        self.assertFalse(hasattr(service, "workflows"))
+        self.assertFalse(hasattr(service, "research"))
+
+        with patch.object(
+            service, "_resolve_item", side_effect=AssertionError("unrelated resolver invoked")
+        ):
+            result = service.decide_command_relationship(
+                context["campaign_id"], context["work_item_id"], "approve",
+                "The explicit relationship is supported.", "Reviewer",
+                item["source_fingerprint"],
+            )
+
+        self.assertEqual(result["decision"], "approve")
+        saved = json.loads(orchestration_path.read_text(encoding="utf-8"))
+        saved_unrelated = next(value for value in saved["work_item_states"] if (
+            value["work_item_id"] == unrelated_state["work_item_id"]
+        ))
+        self.assertEqual(saved_unrelated, unrelated_state)
+        saved_target = next(value for value in saved["work_item_states"] if (
+            value["work_item_id"] == context["work_item_id"]
+        ))
+        self.assertEqual(saved_target["state"], "complete")
+        self.assertIsNone(saved_target["next_action"])
+
+    def test_command_relationship_decision_requires_reason_and_fresh_fingerprint(self):
+        self.save_tasks()
+        context = self.add_command_relationship_review(relationship_handoff=True)
+        before = self.repository_snapshot()
+        item = ReviewWorkspaceService(self.root).find(
+            "command_relationship_review", context["work_item_id"]
+        )
+        for data in (
+            {"decision": "approve", "reason": "", "source_fingerprint": item["source_fingerprint"]},
+            {"decision": "approve", "reason": "Valid reason", "source_fingerprint": "0" * 64},
+            {"decision": "maybe", "reason": "Valid reason", "source_fingerprint": item["source_fingerprint"]},
+        ):
+            response = self.client.post(
+                f"/review/command_relationship_review/{context['work_item_id']}/decision",
+                data=data,
+            )
+            self.assertEqual(response.status_code, 302)
+            self.assertEqual(self.repository_snapshot(), before)
+
+    def test_command_relationship_approval_rolls_back_when_second_write_fails(self):
+        self.save_tasks()
+        context = self.add_command_relationship_review(relationship_handoff=True)
+        before = self.repository_snapshot()
+        item = ReviewWorkspaceService(self.root).find(
+            "command_relationship_review", context["work_item_id"]
+        )
+        service = KnowledgeCampaignOrchestrationService.for_command_relationship_decision(
+            self.root, self.root / "knowledge_campaigns"
+        )
+        original = service._atomic_write_bytes
+        command_path = self.root / "knowledge_base/commands/ipconfig.json"
+
+        def fail_second(path, payload):
+            if path == command_path:
+                raise OSError("simulated second content write failure")
+            return original(path, payload)
+
+        with patch.object(service, "_atomic_write_bytes", side_effect=fail_second):
+            with self.assertRaises(KnowledgeCampaignOrchestrationError):
+                service.decide_command_relationship(
+                    context["campaign_id"], context["work_item_id"], "approve",
+                    "The relationship is supported.", "Reviewer", item["source_fingerprint"],
+                )
+        self.assertEqual(self.repository_snapshot(), before)
+
+    def test_command_relationship_approval_rolls_back_when_completion_write_fails(self):
+        self.save_tasks()
+        context = self.add_command_relationship_review(relationship_handoff=True)
+        before = self.repository_snapshot()
+        item = ReviewWorkspaceService(self.root).find(
+            "command_relationship_review", context["work_item_id"]
+        )
+        service = KnowledgeCampaignOrchestrationService.for_command_relationship_decision(
+            self.root, self.root / "knowledge_campaigns"
+        )
+        original = service._atomic_write_bytes
+        campaign_path = self.root / "knowledge_campaigns/KCP-COMMAND1.json"
+
+        def fail_completion(path, payload):
+            if path == campaign_path:
+                raise OSError("simulated campaign completion failure")
+            return original(path, payload)
+
+        with patch.object(service, "_atomic_write_bytes", side_effect=fail_completion):
+            with self.assertRaises(KnowledgeCampaignOrchestrationError):
+                service.decide_command_relationship(
+                    context["campaign_id"], context["work_item_id"], "approve",
+                    "The relationship is supported.", "Reviewer", item["source_fingerprint"],
+                )
         self.assertEqual(self.repository_snapshot(), before)
 
     def test_campaign_work_fails_closed_when_review_identity_is_missing(self):

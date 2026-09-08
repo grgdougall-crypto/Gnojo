@@ -1008,6 +1008,12 @@ def review_workspace():
             f"Batch decision saved for {count} items. {workspace['remaining']} review item"
             f"{'s' if workspace['remaining'] != 1 else ''} remaining."
         )
+    elif notice == "relationship_approved":
+        kind = "success"
+        message = "The reciprocal command relationship was applied and its campaign review gate was completed."
+    elif notice == "relationship_rejected":
+        kind = "success"
+        message = "The command relationship was rejected and its campaign review gate was completed without changing content."
     elif notice == "changed":
         kind = "warning"
         message = request.args.get(
@@ -1036,7 +1042,8 @@ def review_workspace_decision(item_type, item_id):
 
     decision = request.form.get("decision", "")
     reason = request.form.get("reason", "").strip()
-    reviewer = getattr(getattr(g, "reviewer_identity", None), "username", "") or "Human"
+    authenticated_reviewer = getattr(getattr(g, "reviewer_identity", None), "username", "")
+    reviewer = authenticated_reviewer or "Human"
     try:
         if item_type == "curator_task":
             action = {"resolve": "resolve", "defer": "defer", "ignore": "ignore"}.get(decision)
@@ -1055,9 +1062,24 @@ def review_workspace_decision(item_type, item_id):
                 "lesson" if item_type == "growth_lesson" else "proposal",
                 item_id, status, reviewer=reviewer, reason=reason,
             )
+        elif item_type == "command_relationship_review":
+            root = _structural_repository_root()
+            KnowledgeCampaignOrchestrationService.for_command_relationship_decision(
+                root, root / "knowledge_campaigns"
+            ).decide_command_relationship(
+                str(item.get("technical", {}).get("Campaign") or ""),
+                item_id,
+                decision,
+                reason,
+                authenticated_reviewer,
+                str(request.form.get("source_fingerprint") or ""),
+            )
         else:
             raise ValueError("Unsupported review item type.")
-    except (CuratorGrowthError, CuratorMemoryError, ValueError) as error:
+    except (
+        CuratorGrowthError, CuratorMemoryError,
+        KnowledgeCampaignOrchestrationError, ValueError,
+    ) as error:
         return redirect(url_for(
             "review_workspace", item=item["key"], notice="invalid", error=str(error),
         ))
@@ -1067,7 +1089,11 @@ def review_workspace_decision(item_type, item_id):
     destination = following["key"] if following else (
         refreshed[0]["key"] if refreshed and refreshed[0]["key"] != item["key"] else ""
     )
-    return redirect(url_for("review_workspace", item=destination or None, notice="saved"))
+    notice = (
+        {"approve": "relationship_approved", "reject": "relationship_rejected"}[decision]
+        if item_type == "command_relationship_review" else "saved"
+    )
+    return redirect(url_for("review_workspace", item=destination or None, notice=notice))
 
 
 @app.get("/review/<item_type>/<item_id>/batch")

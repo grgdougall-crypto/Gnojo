@@ -111,6 +111,16 @@ class AutonomousGrowthService:
                 )
 
             equivalent = equivalents[0] if equivalents else None
+            if equivalent and self._unchanged_rejected_command_gap(candidate, equivalent):
+                return self._result(
+                    "NO-OP", preview, candidate, candidate["selection_explanation"],
+                    campaign=self._campaign_summary(equivalent, "rejected_equivalent"),
+                    preparation={
+                        "outcome": "not_started",
+                        "reason": "The unchanged command relationship proposal was previously rejected.",
+                    },
+                    validation={"status": "not_run", "reason": "No new work is required."},
+                )
             if equivalent and equivalent.get("status") in {"completed", "archived"}:
                 return self._result(
                     "NO-OP",
@@ -439,9 +449,44 @@ class AutonomousGrowthService:
                 and gap.get("gap_type") == candidate["gap_type"]
                 for gap in campaign.get("gaps") or []
             )
-            if exact or represented:
+            if (exact or represented) and not self._changed_rejected_command_gap(
+                candidate, campaign
+            ):
                 matches.append(campaign)
         return sorted(matches, key=lambda item: item["campaign_id"])
+
+    @staticmethod
+    def _rejected_command_decision(campaign: dict[str, Any]) -> dict[str, Any] | None:
+        decisions = [
+            item.get("command_relationship_decision")
+            for item in campaign.get("work_items") or []
+            if isinstance(item, dict)
+            and isinstance(item.get("command_relationship_decision"), dict)
+            and item["command_relationship_decision"].get("decision") == "reject"
+        ]
+        return decisions[0] if len(decisions) == 1 else None
+
+    @classmethod
+    def _unchanged_rejected_command_gap(cls, candidate, campaign) -> bool:
+        decision = cls._rejected_command_decision(campaign)
+        return bool(
+            decision
+            and decision.get("gap_identity") == candidate.get("gap_identity")
+            and decision.get("relationship_evidence_fingerprint")
+            == candidate.get("relationship_evidence_fingerprint")
+        )
+
+    @classmethod
+    def _changed_rejected_command_gap(cls, candidate, campaign) -> bool:
+        decision = cls._rejected_command_decision(campaign)
+        return bool(
+            decision
+            and decision.get("gap_identity") == candidate.get("gap_identity")
+            and decision.get("relationship_evidence_fingerprint")
+            and candidate.get("relationship_evidence_fingerprint")
+            and decision["relationship_evidence_fingerprint"]
+            != candidate["relationship_evidence_fingerprint"]
+        )
 
     def _create_or_reuse(
         self, candidate: dict[str, Any], equivalent: dict[str, Any] | None
@@ -549,9 +594,8 @@ class AutonomousGrowthService:
         ):
             return None, "The existing work item is no longer at the command-reference human gate."
 
-        projection = ReviewWorkspaceService(
-            self.repository_root
-        ).command_relationship_review_status(
+        review_service = ReviewWorkspaceService(self.repository_root)
+        projection = review_service.command_relationship_review_status(
             equivalent["campaign_id"], work["work_item_id"]
         )
         if projection.get("projectable"):
@@ -560,11 +604,31 @@ class AutonomousGrowthService:
             return None, ""
         projection_reason = str(projection.get("reason") or "")
         relationship_handoff = None
-        if projection_reason == "missing_relationship_declaration_handoff":
+        if projection_reason in {
+            "missing_relationship_declaration_handoff",
+            "missing_relationship_decision_handoff",
+        }:
             relationship_handoff = projection.get("missing_prerequisite")
             if not isinstance(relationship_handoff, dict):
                 return None, "The command relationship handoff prerequisite is unavailable."
-        elif projection_reason != "work_identity_incomplete" or not missing:
+        elif projection_reason == "work_identity_incomplete" and missing:
+            article = review_service._published_article(binding["article_id"])
+            command = review_service._command_record(binding["command_identity"])
+            if not article or not command:
+                return None, "The authoritative command relationship records are unavailable."
+            absent = []
+            for record, field, label in (
+                (article, "related_commands", "article.related_commands"),
+                (command, "related_articles", "command.related_articles"),
+            ):
+                if field not in record:
+                    absent.append(label)
+                elif not isinstance(record.get(field), list):
+                    return None, "An authoritative relationship declaration is malformed."
+            relationship_handoff = review_service.command_relationship_handoff(
+                {**work, **binding}, absent
+            )
+        else:
             return None, (
                 "The strict command relationship Review projection rejected current state: "
                 f"{projection_reason or 'unknown conflict'}."

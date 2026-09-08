@@ -1,3 +1,5 @@
+from functools import cached_property
+
 from app.ai.gemini_provider import GeminiProvider
 from app.ai.openai_provider import OpenAIProvider
 
@@ -7,9 +9,15 @@ class ContentGenerationEngine:
     Generates structured Gnojo content drafts.
     """
 
-    def __init__(self):
-        self.primary_provider = GeminiProvider()
-        self.fallback_provider = OpenAIProvider()
+    @cached_property
+    def primary_provider(self):
+        """Construct Gemini only when command generation is requested."""
+        return GeminiProvider()
+
+    @cached_property
+    def fallback_provider(self):
+        """Construct OpenAI only when the Gemini attempt needs a fallback."""
+        return OpenAIProvider()
 
     def generate_command(
         self,

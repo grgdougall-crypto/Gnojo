@@ -72,6 +72,16 @@ Requirements: Python 3.11 or newer and Git.
 | `OPENAI_API_KEY` | Optional OpenAI access |
 | `OPENAI_MODEL` | Optional OpenAI model override |
 
+For a first deployment, set `GNOJO_DATA_ROOT` to an empty persistent directory,
+then initialize its baseline content once:
+
+```powershell
+python -m curator init-data-root
+```
+
+The initializer refuses to overwrite a populated data root. It is never run
+automatically during application startup.
+
 ## Validation
 
 Run the complete automated test suite before committing:

@@ -127,11 +127,28 @@ def parser() -> argparse.ArgumentParser:
     )
     autonomous_growth.add_argument("--repository")
     autonomous_growth.add_argument("--preview", action="store_true")
+    commands.add_parser(
+        "init-data-root",
+        help="Initialize an empty GNOJO_DATA_ROOT with deployment baseline content",
+    )
     return root
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parser().parse_args(argv)
+    if args.command == "init-data-root":
+        from app.data_root_initializer import (
+            DataRootInitializationError,
+            initialize_data_root,
+        )
+
+        try:
+            result = initialize_data_root()
+        except (DataRootInitializationError, OSError) as error:
+            print(json.dumps({"status": "FAILED", "error": str(error)}), file=sys.stderr)
+            return 2
+        print(json.dumps(result, sort_keys=True))
+        return 0
     repository = resolve_data_root(args.repository, legacy_root=Path.cwd())
     memory_path = Path(getattr(args, "memory", "curation_memory"))
     memory_path = memory_path if memory_path.is_absolute() else repository / memory_path

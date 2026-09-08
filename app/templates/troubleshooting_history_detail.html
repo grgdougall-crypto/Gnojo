@@ -56,6 +56,7 @@
     <div class="history-detail__actions">
         <a class="btn btn-primary" href="{{ url_for('wizard', workflow=record.workflow_id, restart='1') }}">Run workflow again</a>
         <form method="post" action="{{ url_for('delete_troubleshooting_history', history_id=record.id) }}" onsubmit="return confirm('Delete this history record?');">
+            <input type="hidden" name="authenticity_token" value="{{ authenticity_token() }}">
             <button class="btn btn-outline-danger" type="submit">Delete record</button>
         </form>
     </div>

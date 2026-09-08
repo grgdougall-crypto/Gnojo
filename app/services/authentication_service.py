@@ -129,6 +129,9 @@ class ReviewerAccessPolicy:
         "/content-studio",
         "/knowledge/articles/current",
     })
+    PUBLIC_CSRF_EXACT_PATHS = frozenset({
+        "/troubleshooting-history/clear",
+    })
 
     @classmethod
     def requires_reviewer(cls, path: str, method: str) -> bool:
@@ -144,6 +147,29 @@ class ReviewerAccessPolicy:
             method.upper() == "POST"
             and normalized_path.startswith("/knowledge/published/")
             and normalized_path.endswith("/revise")
+        )
+
+    @classmethod
+    def requires_csrf(cls, path: str, method: str) -> bool:
+        """Identify state-changing routes that require the shared session token."""
+        normalized_path = str(path or "")
+        normalized_method = str(method or "").upper()
+        if normalized_method not in {"POST", "PUT", "PATCH", "DELETE"}:
+            return False
+        if cls.requires_reviewer(normalized_path, normalized_method):
+            return True
+        if normalized_path in cls.PUBLIC_CSRF_EXACT_PATHS:
+            return True
+        if normalized_path == "/api/device-profiles":
+            return normalized_method == "POST"
+        if normalized_path.startswith("/api/device-profiles/"):
+            return normalized_method in {"POST", "PATCH", "DELETE"}
+        if normalized_path.startswith("/api/troubleshooting-history/"):
+            return normalized_method == "POST" and normalized_path.endswith("/feedback")
+        return bool(
+            normalized_method == "POST"
+            and normalized_path.startswith("/troubleshooting-history/")
+            and normalized_path.endswith("/delete")
         )
 
 

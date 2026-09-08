@@ -4,6 +4,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from app.app import app
+from app.services.authentication_service import AuthenticationService
 from app.services.device_profile_service import DeviceProfileError, DeviceProfileService
 
 
@@ -11,6 +12,9 @@ class DeviceProfileTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.service = DeviceProfileService(self.temp.name)
+        self.previous_testing = app.config.get("TESTING")
+        self.previous_bypass = app.config.get("AUTH_TEST_BYPASS")
+        app.config.update(TESTING=True, AUTH_TEST_BYPASS=True)
         self.client = app.test_client()
         self.patch = patch("app.app.DeviceProfileService", return_value=self.service)
         self.patch.start()
@@ -21,6 +25,10 @@ class DeviceProfileTests(unittest.TestCase):
 
     def tearDown(self):
         self.patch.stop()
+        app.config.update(
+            TESTING=self.previous_testing,
+            AUTH_TEST_BYPASS=self.previous_bypass,
+        )
         self.temp.cleanup()
 
     def test_create_activate_edit_and_delete_profile(self):
@@ -62,6 +70,44 @@ class DeviceProfileTests(unittest.TestCase):
         self.assertEqual(html.count("data-open-device-form"), 2)
         self.assertIn('querySelectorAll("[data-open-device-form]")', scripts)
         self.assertNotIn('byId("newDeviceProfileButton").addEventListener', scripts)
+
+    def test_public_profile_mutations_require_valid_csrf(self):
+        previous_bypass = app.config.get("AUTH_TEST_BYPASS")
+        app.config["AUTH_TEST_BYPASS"] = False
+        try:
+            self.assertEqual(
+                self.client.post("/api/device-profiles", json=self.payload).status_code,
+                400,
+            )
+            self.assertEqual(
+                self.client.post(
+                    "/api/device-profiles",
+                    json=self.payload,
+                    headers={"X-CSRF-Token": "invalid"},
+                ).status_code,
+                400,
+            )
+            token = "public-profile-csrf"
+            with self.client.session_transaction() as browser_session:
+                browser_session[AuthenticationService.CSRF_KEY] = token
+            headers = {"X-CSRF-Token": token}
+            created = self.client.post(
+                "/api/device-profiles", json=self.payload, headers=headers,
+            )
+            self.assertEqual(created.status_code, 201)
+            profile_id = created.get_json()["profile"]["id"]
+            self.assertEqual(self.client.get("/device-profiles").status_code, 200)
+            self.assertEqual(self.client.patch(
+                f"/api/device-profiles/{profile_id}", json=self.payload, headers=headers,
+            ).status_code, 200)
+            self.assertEqual(self.client.post(
+                f"/api/device-profiles/{profile_id}/activate", headers=headers,
+            ).status_code, 200)
+            self.assertEqual(self.client.delete(
+                f"/api/device-profiles/{profile_id}", headers=headers,
+            ).status_code, 200)
+        finally:
+            app.config["AUTH_TEST_BYPASS"] = previous_bypass
 
 
 if __name__ == "__main__":

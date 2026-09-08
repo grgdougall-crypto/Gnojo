@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from app.app import app, troubleshooting_session_environment
+from app.services.authentication_service import AuthenticationService
 from app.services.troubleshooting_history_service import TroubleshootingHistoryService
 
 
@@ -219,13 +220,18 @@ class TroubleshootingHistoryPageTests(unittest.TestCase):
         self.service_patch.start()
         self.previous_testing = app.config.get("TESTING")
         self.previous_debug = app.config.get("DEBUG")
+        self.previous_auth_bypass = app.config.get("AUTH_TEST_BYPASS")
         self.previous_environment = os.environ.get("GNOJO_SESSION_ENVIRONMENT")
         os.environ["GNOJO_SESSION_ENVIRONMENT"] = ""
-        app.config.update(TESTING=True, DEBUG=False)
+        app.config.update(TESTING=True, DEBUG=False, AUTH_TEST_BYPASS=True)
         self.client = app.test_client()
 
     def tearDown(self):
-        app.config.update(TESTING=self.previous_testing, DEBUG=self.previous_debug)
+        app.config.update(
+            TESTING=self.previous_testing,
+            DEBUG=self.previous_debug,
+            AUTH_TEST_BYPASS=self.previous_auth_bypass,
+        )
         if self.previous_environment is None:
             os.environ.pop("GNOJO_SESSION_ENVIRONMENT", None)
         else:
@@ -413,6 +419,41 @@ class TroubleshootingHistoryPageTests(unittest.TestCase):
         self.assertIn("Analytics scope", html)
         self.assertIn("Older sessions without authoritative classification", html)
         self.assertIn("Unclassified", html)
+
+    def test_public_history_mutations_require_valid_csrf(self):
+        record = self.service.start("internet", "Internet Connection", "start")
+        self.service.complete(record["id"], "resolved")
+        previous_bypass = app.config.get("AUTH_TEST_BYPASS")
+        app.config["AUTH_TEST_BYPASS"] = False
+        try:
+            feedback = f"/api/troubleshooting-history/{record['id']}/feedback"
+            payload = {"solved": "yes", "clarity": 5}
+            self.assertEqual(self.client.post(feedback, json=payload).status_code, 400)
+            self.assertEqual(self.client.post(
+                feedback, json=payload, headers={"X-CSRF-Token": "invalid"},
+            ).status_code, 400)
+
+            token = "public-history-csrf"
+            with self.client.session_transaction() as browser_session:
+                browser_session[AuthenticationService.CSRF_KEY] = token
+            headers = {"X-CSRF-Token": token}
+            self.assertEqual(
+                self.client.post(feedback, json=payload, headers=headers).status_code,
+                200,
+            )
+            self.assertEqual(self.client.get("/troubleshooting-history").status_code, 200)
+            self.assertEqual(self.client.post(
+                f"/troubleshooting-history/{record['id']}/delete", headers=headers,
+            ).status_code, 302)
+            self.assertIsNone(self.service.get(record["id"]))
+
+            remaining = self.service.start("internet", "Internet Connection", "start")
+            self.assertEqual(self.client.post(
+                "/troubleshooting-history/clear", headers=headers,
+            ).status_code, 302)
+            self.assertIsNone(self.service.get(remaining["id"]))
+        finally:
+            app.config["AUTH_TEST_BYPASS"] = previous_bypass
 
 
 if __name__ == "__main__":

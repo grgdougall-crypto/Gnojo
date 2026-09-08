@@ -222,6 +222,36 @@ class AuthenticationAccessControlTests(unittest.TestCase):
             with self.subTest(public_path=path):
                 self.assertFalse(ReviewerAccessPolicy.requires_reviewer(path, "GET"))
 
+    def test_public_history_and_profile_mutations_use_the_shared_csrf_boundary(self):
+        protected = (
+            ("POST", "/api/device-profiles"),
+            ("PATCH", "/api/device-profiles/DEV-1"),
+            ("DELETE", "/api/device-profiles/DEV-1"),
+            ("POST", "/api/device-profiles/DEV-1/activate"),
+            ("POST", "/api/troubleshooting-history/TSH-1/feedback"),
+            ("POST", "/troubleshooting-history/TSH-1/delete"),
+            ("POST", "/troubleshooting-history/clear"),
+        )
+        for method, path in protected:
+            with self.subTest(method=method, path=path):
+                self.assertFalse(ReviewerAccessPolicy.requires_reviewer(path, method))
+                self.assertTrue(ReviewerAccessPolicy.requires_csrf(path, method))
+                self.assertFalse(ReviewerAccessPolicy.requires_csrf(path, "GET"))
+
+        for method, path in (
+            ("POST", "/wizard"),
+            ("POST", "/troubleshooting-session/end"),
+            ("POST", "/api/workflow-favorites/internet"),
+        ):
+            with self.subTest(unaffected_path=path):
+                self.assertFalse(ReviewerAccessPolicy.requires_csrf(path, method))
+
+    def test_anonymous_public_page_issues_the_shared_csrf_token(self):
+        page = self.client.get("/device-profiles")
+        self.assertEqual(page.status_code, 200)
+        self.assertIn(b'name="gnojo-csrf-token"', page.data)
+        self.assertIn(b"/static/js/reviewer_csrf.js", page.data)
+
 
 if __name__ == "__main__":
     unittest.main()

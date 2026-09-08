@@ -12,6 +12,7 @@
         </div>
         {% if history_page.total_count %}
         <form method="post" action="{{ url_for('clear_troubleshooting_history') }}" onsubmit="return confirm('Clear all troubleshooting history? This cannot be undone.');">
+            <input type="hidden" name="authenticity_token" value="{{ authenticity_token() }}">
             <button class="btn btn-outline-danger" type="submit"><i class="bi bi-trash3 me-2" aria-hidden="true"></i>Clear history</button>
         </form>
         {% endif %}

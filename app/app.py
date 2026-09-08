@@ -331,10 +331,10 @@ def enforce_reviewer_access():
 
     if request.endpoint in {"static", "login", "logout"}:
         return None
-    if not ReviewerAccessPolicy.requires_reviewer(request.path, request.method):
-        return None
-
-    if identity is None:
+    reviewer_required = ReviewerAccessPolicy.requires_reviewer(
+        request.path, request.method,
+    )
+    if reviewer_required and identity is None:
         if request.method in {"GET", "HEAD"}:
             requested = request.full_path.rstrip("?")
             return redirect(url_for("login", next=requested))
@@ -344,7 +344,10 @@ def enforce_reviewer_access():
             "Sign in with the configured Reviewer/Admin account before performing this action.",
         )
 
-    if request.method in {"POST", "PUT", "PATCH", "DELETE"} and not AuthenticationService.valid_csrf():
+    if (
+        ReviewerAccessPolicy.requires_csrf(request.path, request.method)
+        and not AuthenticationService.valid_csrf()
+    ):
         return error_response(
             400,
             "Request confirmation expired",

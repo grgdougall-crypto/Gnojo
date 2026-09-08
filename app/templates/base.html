@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    {% if reviewer_authenticated %}<meta name="gnojo-csrf-token" content="{{ authenticity_token() }}">{% endif %}
+    <meta name="gnojo-csrf-token" content="{{ authenticity_token() }}">
 
     <title>{% block title %}Gnojo{% endblock %}</title>
 
@@ -181,7 +181,7 @@
     <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
     <script src="{{ url_for('static', filename='js/search.js') }}"></script>
     <script src="{{ url_for('static', filename='js/session_protection.js') }}"></script>
-    {% if reviewer_authenticated %}<script src="{{ url_for('static', filename='js/reviewer_csrf.js') }}"></script>{% endif %}
+    <script src="{{ url_for('static', filename='js/reviewer_csrf.js') }}"></script>
     <script src="{{ url_for('static', filename='js/accessibility.js') }}"></script>
     {% block scripts %}{% endblock %}
 </body>

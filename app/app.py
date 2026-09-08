@@ -183,6 +183,7 @@ from app.services.knowledge_campaign_orchestration_service import (
     KnowledgeCampaignOrchestrationService,
 )
 from app.services.campaign_blocker_destination_service import CampaignBlockerDestinationService
+from app.services.campaign_review_destination_service import CampaignReviewDestinationService
 from curator.locking import AuditAlreadyRunningError
 from curator.governance import CuratorGovernanceError
 from curator.growth import CuratorGrowthError
@@ -1343,12 +1344,26 @@ def knowledge_campaign_orchestration_detail(campaign_id):
             item["work_item_id"]: item for item in campaign.get("work_items", [])
         }
         review_service = ReviewWorkspaceService(repository_root)
+        campaign_return = url_for(
+            "knowledge_campaign_orchestration_detail", campaign_id=campaign_id
+        )
         for item in orchestration.get("work_item_states", []):
             destination = item.get("review_destination") or {}
-            if destination.get("resolved"):
-                item["review_link"] = url_for(
-                    destination["endpoint"], **destination.get("route_values", {})
+            if item.get("next_action") == "author_learning_content":
+                destination = CampaignReviewDestinationService.project_learning_authoring(
+                    repository_root, work_by_id.get(item.get("work_item_id"), {})
                 )
+                item["review_destination"] = destination
+                item["review_link"] = None
+            if destination.get("resolved"):
+                route_values = dict(destination.get("route_values", {}))
+                if item.get("next_action") == "author_learning_content":
+                    route_values.update(
+                        campaign_id=campaign_id,
+                        work_item_id=item.get("work_item_id"),
+                        return_to=campaign_return,
+                    )
+                item["review_link"] = url_for(destination["endpoint"], **route_values)
             if item.get("next_action") == "review_command_reference":
                 work_item_id = str(item.get("work_item_id") or "")
                 review_item = review_service.find(
@@ -1359,17 +1374,28 @@ def knowledge_campaign_orchestration_detail(campaign_id):
                     item["review_workspace_link"] = url_for(
                         "review_workspace", item=expected_key
                     )
-            blocker_destination = blocker_resolver.resolve(
-                campaign,
-                work_by_id.get(item.get("work_item_id"), {}),
-                item.get("blocker"),
+            blocker_destination = (
+                blocker_resolver.resolve(
+                    campaign,
+                    work_by_id.get(item.get("work_item_id"), {}),
+                    item.get("blocker"),
+                )
+                if item.get("blocker") else None
             )
             item["blocker_destination"] = blocker_destination
-            if blocker_destination.get("resolved"):
+            if blocker_destination and blocker_destination.get("resolved"):
                 item["blocker_link"] = url_for(
                     blocker_destination["endpoint"],
                     **blocker_destination.get("route_values", {}),
                 )
+        state_by_id = {
+            item.get("work_item_id"): item
+            for item in orchestration.get("work_item_states", [])
+        }
+        for item in orchestration.get("human_review_queue", []):
+            state = state_by_id.get(item.get("work_item_id"))
+            if state and state.get("action_authority") == "human_gate":
+                item["review_link"] = state.get("review_link")
     return render_template(
         "knowledge_campaign_orchestration_detail.html",
         orchestration=orchestration,
@@ -2917,9 +2943,54 @@ def knowledge_lifecycle_action(article_id, action):
 
 @app.route("/workflow-studio")
 def workflow_studio():
+    selected_workflow = str(request.args.get("workflow") or "").strip()
+    campaign_id = str(request.args.get("campaign_id") or "").strip()
+    work_item_id = str(request.args.get("work_item_id") or "").strip()
+    requested_return = str(request.args.get("return_to") or "").strip()
+    learning_context = None
+    if any((campaign_id, work_item_id, requested_return)):
+        expected_return = url_for(
+            "knowledge_campaign_orchestration_detail", campaign_id=campaign_id
+        ) if campaign_id else ""
+        return_to = safe_internal_return(
+            requested_return,
+            ("/curator/growth/coverage-campaigns",),
+        )
+        if not all((selected_workflow, campaign_id, work_item_id, return_to)) or (
+            return_to != expected_return
+        ):
+            abort(404)
+        try:
+            campaign = KnowledgeCoveragePlannerService(
+                _structural_repository_root()
+            ).get(campaign_id)
+        except KnowledgeCoveragePlannerError:
+            abort(404)
+        matches = [
+            item for item in campaign.get("work_items", [])
+            if item.get("work_item_id") == work_item_id
+            and item.get("work_type") == "learning_content"
+            and item.get("workflow_id") == selected_workflow
+        ]
+        if len(matches) != 1:
+            abort(404)
+        work_item = matches[0]
+        learning_context = {
+            "campaign_id": campaign_id,
+            "work_item_id": work_item_id,
+            "workflow_id": selected_workflow,
+            "title": work_item.get("area_title") or work_item.get("area_id")
+            or selected_workflow.replace("_", " ").title(),
+            "coverage_percent": work_item.get("coverage_percent"),
+            "return_url": return_to,
+        }
 
-    draft_service = WorkflowDraftService()
-    drafts = draft_service.list_drafts()
+    draft_path = _workflow_repository_root() / "app" / "workflow_drafts"
+    drafts = (
+        WorkflowDraftService(draft_path).list_drafts()
+        if draft_path.exists()
+        else []
+    )
     draft_by_workflow = {
         item["workflow_id"]: item
         for item in drafts
@@ -2949,10 +3020,18 @@ def workflow_studio():
             "draft_filename": existing.get("filename") if existing else None,
         })
 
+    available_workflow_ids = set(draft_by_workflow) | {
+        item["workflow_id"] for item in built_ins
+    }
+    if learning_context and selected_workflow not in available_workflow_ids:
+        abort(404)
+
     return render_template(
         "workflow_studio.html",
         drafts=drafts,
         built_ins=built_ins,
+        selected_workflow=selected_workflow if learning_context else "",
+        learning_context=learning_context,
     )
 
 
@@ -2974,7 +3053,13 @@ def copy_builtin_workflow(workflow_id):
             "This workflow cannot be copied yet",
             "The built-in workflow must pass validation before an editable copy can be created.",
         )
-    return redirect(url_for("workflow_editor", filename=filename))
+    return_to = safe_internal_return(
+        request.form.get("return_to", ""),
+        ("/curator/growth/coverage-campaigns",),
+    )
+    return redirect(url_for(
+        "workflow_editor", filename=filename, return_to=return_to or None
+    ))
 
 @app.route("/workflow-editor/<filename>")
 def workflow_editor(filename):
@@ -3038,7 +3123,11 @@ def workflow_editor(filename):
             }
     return_to = safe_internal_return(
         request.args.get("return_to", ""),
-        ("/workflow-studio", "/content-quality"),
+        (
+            "/workflow-studio",
+            "/content-quality",
+            "/curator/growth/coverage-campaigns",
+        ),
     )
     return render_template(
         "workflow_editor.html",
@@ -3063,6 +3152,8 @@ def workflow_editor(filename):
         return_label=(
             "Back to Content Quality"
             if return_to.startswith("/content-quality")
+            else "Return to Campaign Control Center"
+            if return_to.startswith("/curator/growth/coverage-campaigns/")
             else "Back to Workflow Studio"
         ),
     )

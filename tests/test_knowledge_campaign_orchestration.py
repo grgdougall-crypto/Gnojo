@@ -256,17 +256,159 @@ class KnowledgeCampaignOrchestrationTests(unittest.TestCase):
         self.assertEqual(after, before)
         create.assert_not_called()
 
+    def test_learning_gate_links_to_exact_workflow_with_campaign_return_context(self):
+        campaign = campaign_fixture()
+        campaign["work_items"][0].update({
+            "work_type": "learning_content",
+            "workflow_id": "low_storage",
+            "workflow_filename": "low_storage.json",
+            "workflow_lifecycle": "built_in",
+            "area_title": "Low Disk Space",
+            "coverage_percent": 32,
+        })
+        built_in_root = self.root / "app" / "decision_trees"
+        built_in_root.mkdir(parents=True)
+        (built_in_root / "low_storage.json").write_text(json.dumps({
+            "workflow_id": "low_storage", "name": "Low Disk Space",
+            "start_node": "start",
+            "nodes": {"start": {"type": "resolution", "message": "Done"}},
+        }), encoding="utf-8")
+        projection = {
+            "orchestration_id": "KORCH-TEST", "campaign_id": "KCAMP-TEST",
+            "campaign_objective": "Improve Low Disk Space learning guidance.",
+            "status": "awaiting_human_review", "mode": "supervised",
+            "readiness_summary": {"completion_percent": 0, "machine_ready": 0,
+                                  "human_review": 1, "blocked": 0},
+            "pipeline_summary": {}, "next_recommended_action": None,
+            "work_item_states": [{
+                "work_item_id": "KCW-1", "work_type": "learning_content",
+                "title": "Low Storage", "stage": "learning_authoring_required",
+                "state": "awaiting_human_review", "next_action": "author_learning_content",
+                "action_authority": "human_gate", "review_link": "/workflow-studio",
+                "blocker": None,
+            }],
+            "human_review_queue": [{
+                "work_item_id": "KCW-1", "title": "Low Storage",
+                "action": "author_learning_content", "review_link": "/workflow-studio",
+            }],
+            "blockers": [], "stale_dependencies": [],
+            "dependency_graph": {"edges": []}, "history": [],
+        }
+        planner = Mock()
+        planner.get.return_value = campaign
+        before = sorted(
+            (path.relative_to(self.root).as_posix(), path.read_bytes())
+            for path in self.root.rglob("*") if path.is_file()
+        )
+        flask_app.config.update(TESTING=True)
+        with (
+            patch("app.app._structural_repository_root", return_value=self.root),
+            patch.object(
+                KnowledgeCampaignOrchestrationService,
+                "read_persisted",
+                return_value=[deepcopy(projection)],
+            ),
+            patch("app.app.KnowledgeCoveragePlannerService", return_value=planner),
+        ):
+            response = flask_app.test_client().get(
+                "/curator/growth/coverage-campaigns/KCAMP-TEST/orchestration"
+            )
+        after = sorted(
+            (path.relative_to(self.root).as_posix(), path.read_bytes())
+            for path in self.root.rglob("*") if path.is_file()
+        )
+        rendered = response.get_data(as_text=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("/workflow-studio?workflow=low_storage", rendered)
+        self.assertIn("campaign_id=KCAMP-TEST", rendered)
+        self.assertIn("work_item_id=KCW-1", rendered)
+        self.assertIn("#workflow-low_storage", rendered)
+        self.assertNotIn("This blocker has no governed internal destination.", rendered)
+        self.assertEqual(after, before)
+
+    def test_workflow_studio_renders_exact_learning_target_and_return_path_read_only(self):
+        campaign = campaign_fixture()
+        campaign["work_items"][0].update({
+            "work_type": "learning_content", "workflow_id": "low_storage",
+            "area_title": "Low Disk Space", "coverage_percent": 32,
+        })
+        planner = Mock()
+        planner.get.return_value = campaign
+        drafts = Mock()
+        drafts.list_drafts.return_value = []
+        return_to = "/curator/growth/coverage-campaigns/KCAMP-TEST/orchestration"
+        before = sorted(
+            (path.relative_to(self.root).as_posix(), path.read_bytes())
+            for path in self.root.rglob("*") if path.is_file()
+        )
+        with (
+            patch("app.app._structural_repository_root", return_value=self.root),
+            patch("app.app.KnowledgeCoveragePlannerService", return_value=planner),
+            patch("app.app.WorkflowDraftService", return_value=drafts),
+        ):
+            response = flask_app.test_client().get(
+                "/workflow-studio",
+                query_string={
+                    "workflow": "low_storage", "campaign_id": "KCAMP-TEST",
+                    "work_item_id": "KCW-1", "return_to": return_to,
+                },
+            )
+        after = sorted(
+            (path.relative_to(self.root).as_posix(), path.read_bytes())
+            for path in self.root.rglob("*") if path.is_file()
+        )
+        rendered = response.get_data(as_text=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Campaign learning review: Low Disk Space", rendered)
+        self.assertIn("Learning coverage is 32%", rendered)
+        self.assertIn("Campaign target", rendered)
+        self.assertIn(f'href="{return_to}"', rendered)
+        self.assertEqual(after, before)
+
+    def test_workflow_studio_learning_context_fails_closed_on_identity_mismatch(self):
+        campaign = campaign_fixture()
+        planner = Mock()
+        planner.get.return_value = campaign
+        with (
+            patch("app.app._structural_repository_root", return_value=self.root),
+            patch("app.app.KnowledgeCoveragePlannerService", return_value=planner),
+        ):
+            response = flask_app.test_client().get(
+                "/workflow-studio",
+                query_string={
+                    "workflow": "low_storage", "campaign_id": "KCAMP-TEST",
+                    "work_item_id": "KCW-1",
+                    "return_to": "/curator/growth/coverage-campaigns/KCAMP-TEST/orchestration",
+                },
+            )
+        self.assertEqual(response.status_code, 404)
+
     def test_stage2_learning_and_command_plans_stop_at_specialized_human_gates(self):
         learning = campaign_fixture()
         learning["work_items"][0].update({
             "work_type": "learning_content", "workflow_id": "network",
             "workflow_filename": "network.json", "workflow_lifecycle": "draft",
         })
-        service, *_ = factory_fixture(self.root / "learning", learning)
+        learning_root = self.root / "learning"
+        draft_root = learning_root / "app" / "workflow_drafts"
+        draft_root.mkdir(parents=True)
+        (draft_root / "network.json").write_text(json.dumps({
+            "workflow_id": "network", "name": "Network", "start_node": "start",
+            "nodes": {"start": {"type": "resolution", "message": "Done"}},
+        }), encoding="utf-8")
+        service, *_ = factory_fixture(learning_root, learning)
         record = service.get_or_create("KCAMP-TEST")
         state = record["work_item_states"][0]
         self.assertEqual(state["next_action"], "author_learning_content")
-        self.assertEqual(state["review_link"], "/workflow-editor/network.json")
+        self.assertEqual(state["review_link"], "/workflow-studio?workflow=network")
+        self.assertEqual(state["review_destination"], {
+            "resolved": True,
+            "owner": "workflow",
+            "resource_type": "learning_authoring_workflow",
+            "resource_id": "network",
+            "endpoint": "workflow_studio",
+            "route_values": {"workflow": "network", "_anchor": "workflow-network"},
+        })
         self.assertEqual(state["action_authority"], "human_gate")
 
         command = campaign_fixture()
@@ -278,6 +420,20 @@ class KnowledgeCampaignOrchestrationTests(unittest.TestCase):
         self.assertEqual(state["next_action"], "review_command_reference")
         self.assertEqual(state["review_link"], "/commands/ipconfig")
         self.assertEqual(ACTION_POLICY["review_command_reference"]["authority"], "human_gate")
+
+    def test_unresolved_learning_workflow_fails_closed_without_generic_destination(self):
+        campaign = campaign_fixture()
+        campaign["work_items"][0].update({
+            "work_type": "learning_content",
+            "workflow_id": "missing_workflow",
+            "workflow_filename": "missing_workflow.json",
+            "workflow_lifecycle": "built_in",
+        })
+        service, *_ = factory_fixture(self.root / "missing-learning", campaign)
+        state = service.get_or_create("KCAMP-TEST")["work_item_states"][0]
+        self.assertEqual(state["state"], "blocked")
+        self.assertEqual(state["blocker"]["blocker_type"], "learning_authoring_target")
+        self.assertIsNone(state["review_link"])
 
     def test_evidence_and_claim_human_gates(self):
         service, _, research, evidence, generation, claims, *_ = self.factory

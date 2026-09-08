@@ -5,6 +5,9 @@ from typing import Any
 
 from app.repositories.knowledge_repository import KnowledgeRepository
 from app.services.article_identity_resolver import ArticleIdentityResolver
+from app.services.curator_workflow_lifecycle_service import (
+    CuratorWorkflowLifecycleService,
+)
 from app.services.workflow_draft_service import WorkflowDraftService
 
 
@@ -43,6 +46,34 @@ class CampaignReviewDestinationService:
                                    "workflow_editor", {"filename": draft["filename"]})
             return self._missing(kind, identifier)
         return self._missing(kind, str(opportunity.get("target_asset") or ""))
+
+    def resolve_learning_authoring(
+        self, work_item: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Resolve one learning gap to its exact authoritative workflow."""
+        return self.project_learning_authoring(self.repository_root, work_item)
+
+    @classmethod
+    def project_learning_authoring(
+        cls, repository_root: Path, work_item: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Project a learning destination without initializing writable stores."""
+        workflow_id = str(work_item.get("workflow_id") or "").strip()
+        if work_item.get("work_type") != "learning_content" or not workflow_id:
+            return cls._missing("learning_content", workflow_id)
+        lifecycle = CuratorWorkflowLifecycleService(Path(repository_root).resolve())
+        if len(lifecycle.drafts(workflow_id)) > 1:
+            return cls._missing("learning_content", workflow_id)
+        target = lifecycle.resolve(workflow_id)
+        if target is None or target.workflow_id != workflow_id:
+            return cls._missing("learning_content", workflow_id)
+        return cls._found(
+            "workflow",
+            "learning_authoring_workflow",
+            workflow_id,
+            "workflow_studio",
+            {"workflow": workflow_id, "_anchor": f"workflow-{workflow_id}"},
+        )
 
     @staticmethod
     def _found(owner, resource_type, resource_id, endpoint, values):

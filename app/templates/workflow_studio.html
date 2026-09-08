@@ -6,6 +6,19 @@
 
 <div class="container py-5">
 
+    {% if learning_context %}
+    <aside class="alert alert-info d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4" role="region" aria-label="Campaign learning-authoring context">
+        <span>
+            <strong>Campaign learning review: {{ learning_context.title }}</strong>
+            <small class="d-block">
+                {% if learning_context.coverage_percent is not none %}Learning coverage is {{ learning_context.coverage_percent }}%. {% endif %}
+                Open or create the editable workflow to author the governed learning guidance.
+            </small>
+        </span>
+        <a class="btn btn-sm btn-outline-info" href="{{ learning_context.return_url }}">Return to Campaign Control Center</a>
+    </aside>
+    {% endif %}
+
     <div
         class="d-flex flex-wrap justify-content-between
                align-items-start gap-3 mb-5"
@@ -47,13 +60,14 @@
 
         {% for draft in drafts %}
 
-            <div class="col-md-6 col-xl-4">
+            <div class="col-md-6 col-xl-4" id="workflow-{{ draft.workflow_id }}">
 
-                <div class="card h-100 shadow-sm content-card">
+                <div class="card h-100 shadow-sm content-card{% if draft.workflow_id == selected_workflow %} border-info{% endif %}">
 
                     <div class="card-body">
 
                         <span class="badge {% if draft.is_damaged %}text-bg-danger{% else %}text-bg-secondary{% endif %}">{% if draft.is_damaged %}Needs attention{% else %}Draft{% endif %}</span>
+                        {% if draft.workflow_id == selected_workflow %}<span class="badge text-bg-info">Campaign target</span>{% endif %}
                         <span class="badge text-bg-primary">{{ draft.category }}</span>
                         <span class="badge text-bg-light border">{{ draft.platform }}</span>
 
@@ -64,10 +78,7 @@
                         <p class="text-muted mb-4">{% if draft.is_damaged %}Gnojo could not read this file safely. Restore it from a backup or inspect the JSON before reopening it.{% elif draft.progress_mode == 'branch_aware' %}Branch-aware progress · Path length adapts to the selected route.{% elif draft.estimated_steps %}{{ draft.estimated_steps }} planned steps{% else %}Static progress · Step estimate not set{% endif %}</p>
 
                         {% if not draft.is_damaged %}<a
-    href="{{ url_for(
-        'workflow_editor',
-        filename=draft.filename
-    ) }}"
+    href="{{ url_for('workflow_editor', filename=draft.filename, return_to=learning_context.return_url) if learning_context and draft.workflow_id == selected_workflow else url_for('workflow_editor', filename=draft.filename) }}"
     class="btn btn-outline-primary btn-sm"
     aria-label="Open {{ draft.name }} in Workflow Designer"
 >
@@ -126,11 +137,12 @@
 
     <div class="row g-4">
         {% for workflow in built_ins %}
-            <div class="col-md-6 col-xl-4">
-                <article class="card h-100 shadow-sm content-card">
+            <div class="col-md-6 col-xl-4" id="{% if workflow.draft_filename %}workflow-built-in-{% else %}workflow-{% endif %}{{ workflow.workflow_id }}">
+                <article class="card h-100 shadow-sm content-card{% if workflow.workflow_id == selected_workflow and not workflow.draft_filename %} border-info{% endif %}">
                     <div class="card-body d-flex flex-column">
                         <div class="d-flex flex-wrap gap-2">
                             <span class="badge text-bg-dark">Built-in</span>
+                            {% if workflow.workflow_id == selected_workflow and not workflow.draft_filename %}<span class="badge text-bg-info">Campaign target</span>{% endif %}
                             <span class="badge text-bg-primary">{{ workflow.category }}</span>
                             <span class="badge text-bg-light border">{{ workflow.platform }}</span>
                         </div>
@@ -138,11 +150,12 @@
                         <p class="text-muted">{{ workflow.description }}</p>
                         <p class="small text-muted mt-auto mb-3">{% if workflow.progress_mode == 'branch_aware' %}Branch-aware progress · Path length adapts to the selected route.{% elif workflow.estimated_steps %}{{ workflow.estimated_steps }} planned steps{% else %}Static progress · Step estimate not set{% endif %}</p>
                         {% if workflow.draft_filename %}
-                            <a class="btn btn-outline-primary btn-sm align-self-start" href="{{ url_for('workflow_editor', filename=workflow.draft_filename) }}" aria-label="Open editable copy of {{ workflow.name }}">
+                            <a class="btn btn-outline-primary btn-sm align-self-start" href="{{ url_for('workflow_editor', filename=workflow.draft_filename, return_to=learning_context.return_url) if learning_context and workflow.workflow_id == selected_workflow else url_for('workflow_editor', filename=workflow.draft_filename) }}" aria-label="Open editable copy of {{ workflow.name }}">
                                 <i class="bi bi-pencil-square me-2" aria-hidden="true"></i>Open in Designer
                             </a>
                         {% else %}
                             <form method="post" action="{{ url_for('copy_builtin_workflow', workflow_id=workflow.workflow_id) }}">
+                                {% if learning_context and workflow.workflow_id == selected_workflow %}<input type="hidden" name="return_to" value="{{ learning_context.return_url }}">{% endif %}
                                 <button class="btn btn-outline-primary btn-sm" type="submit" aria-label="Create editable copy of {{ workflow.name }}">
                                     <i class="bi bi-copy me-2" aria-hidden="true"></i>Create Editable Copy
                                 </button>

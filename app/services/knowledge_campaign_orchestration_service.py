@@ -482,10 +482,20 @@ class KnowledgeCampaignOrchestrationService:
                                "workflow_ids": list(reuse.get("workflow_ids") or [])})
             return base
         if work.get("work_type") == "learning_content":
-            filename = str(work.get("workflow_filename") or "")
-            base["review_link"] = (
-                f"/workflow-editor/{filename}" if filename and work.get("workflow_lifecycle") == "draft"
-                else "/workflow-studio"
+            destination = self.review_destinations.resolve_learning_authoring(work)
+            if not destination.get("resolved"):
+                return self._blocked(
+                    base,
+                    "learning_authoring_target",
+                    "Workflow authoring",
+                    destination.get(
+                        "reason", "The learning-authoring workflow could not be resolved."
+                    ),
+                    "Reconcile the campaign workflow identity before authoring learning content.",
+                )
+            base.update(
+                review_destination=destination,
+                review_link=f"/workflow-studio?workflow={destination['resource_id']}",
             )
             return self._gate(
                 base, "learning_authoring_required", "author_learning_content"
@@ -875,7 +885,8 @@ class KnowledgeCampaignOrchestrationService:
         return {"work_item_id": item["work_item_id"], "title": item["title"], "phase": item["stage"],
                 "action": item["next_action"], "why": "A governed approval boundary has been reached.",
                 "risk": item.get("priority", "medium"), "provenance": item.get("package_id"),
-                "review_link": item.get("review_link")}
+                "review_link": item.get("review_link"),
+                "review_destination": deepcopy(item.get("review_destination"))}
 
     @staticmethod
     def _stale_entry(item):

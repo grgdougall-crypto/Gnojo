@@ -1319,47 +1319,60 @@ def knowledge_campaign_orchestration_detail(campaign_id):
         ]
         if len(matches) == 1:
             orchestration = deepcopy(matches[0])
-        elif review_return_to or len(matches) > 1:
+        elif len(matches) > 1:
             raise KnowledgeCampaignOrchestrationError(
                 "The campaign orchestration could not be resolved unambiguously."
             )
         else:
-            # Preserve the established first-open behavior when no orchestration
-            # has been persisted yet. Existing campaign views remain read-only.
-            orchestration = KnowledgeCampaignOrchestrationService().get_or_create(campaign_id)
+            orchestration = None
     except (KnowledgeCampaignOrchestrationError, KnowledgeCoveragePlannerError):
         abort(404)
     blocker_resolver = CampaignBlockerDestinationService()
     try:
         campaign = KnowledgeCoveragePlannerService(repository_root, campaign_root).get(campaign_id)
     except KnowledgeCoveragePlannerError:
+        if orchestration is None:
+            abort(404)
         # Synthetic/test orchestration projections may not have a persisted
         # campaign.  Related blocker navigation is optional display context;
         # the orchestration page itself remains authoritative and usable.
         campaign = {"campaign_id": campaign_id, "work_items": []}
-    work_by_id = {item["work_item_id"]: item for item in campaign.get("work_items", [])}
-    review_service = ReviewWorkspaceService(repository_root)
-    for item in orchestration.get("work_item_states", []):
-        destination = item.get("review_destination") or {}
-        if destination.get("resolved"):
-            item["review_link"] = url_for(destination["endpoint"], **destination.get("route_values", {}))
-        if item.get("next_action") == "review_command_reference":
-            work_item_id = str(item.get("work_item_id") or "")
-            review_item = review_service.find("command_relationship_review", work_item_id)
-            expected_key = review_service.command_relationship_review_key(work_item_id)
-            if review_item and expected_key and review_item.get("key") == expected_key:
-                item["review_workspace_link"] = url_for(
-                    "review_workspace", item=expected_key
+    if orchestration:
+        work_by_id = {
+            item["work_item_id"]: item for item in campaign.get("work_items", [])
+        }
+        review_service = ReviewWorkspaceService(repository_root)
+        for item in orchestration.get("work_item_states", []):
+            destination = item.get("review_destination") or {}
+            if destination.get("resolved"):
+                item["review_link"] = url_for(
+                    destination["endpoint"], **destination.get("route_values", {})
                 )
-        blocker_destination = blocker_resolver.resolve(
-            campaign, work_by_id.get(item.get("work_item_id"), {}), item.get("blocker"))
-        item["blocker_destination"] = blocker_destination
-        if blocker_destination.get("resolved"):
-            item["blocker_link"] = url_for(blocker_destination["endpoint"],
-                                            **blocker_destination.get("route_values", {}))
+            if item.get("next_action") == "review_command_reference":
+                work_item_id = str(item.get("work_item_id") or "")
+                review_item = review_service.find(
+                    "command_relationship_review", work_item_id
+                )
+                expected_key = review_service.command_relationship_review_key(work_item_id)
+                if review_item and expected_key and review_item.get("key") == expected_key:
+                    item["review_workspace_link"] = url_for(
+                        "review_workspace", item=expected_key
+                    )
+            blocker_destination = blocker_resolver.resolve(
+                campaign,
+                work_by_id.get(item.get("work_item_id"), {}),
+                item.get("blocker"),
+            )
+            item["blocker_destination"] = blocker_destination
+            if blocker_destination.get("resolved"):
+                item["blocker_link"] = url_for(
+                    blocker_destination["endpoint"],
+                    **blocker_destination.get("route_values", {}),
+                )
     return render_template(
         "knowledge_campaign_orchestration_detail.html",
         orchestration=orchestration,
+        campaign=campaign,
         orchestration_error=request.args.get("orchestration_error", ""),
         orchestration_notice=request.args.get("orchestration_notice", ""),
         review_return_to=review_return_to,

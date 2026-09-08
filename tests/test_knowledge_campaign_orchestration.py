@@ -181,6 +181,81 @@ class KnowledgeCampaignOrchestrationTests(unittest.TestCase):
         ])
         self.assertEqual(path.read_bytes(), before)
 
+    def test_existing_orchestration_detail_get_renders_persisted_state(self):
+        projection = {
+            "orchestration_id": "KORCH-TEST", "campaign_id": "KCAMP-TEST",
+            "campaign_objective": "Build coverage", "status": "active",
+            "mode": "supervised",
+            "readiness_summary": {"completion_percent": 0, "machine_ready": 0,
+                                  "human_review": 0, "blocked": 0},
+            "pipeline_summary": {}, "next_recommended_action": None,
+            "work_item_states": [], "human_review_queue": [], "blockers": [],
+            "stale_dependencies": [], "dependency_graph": {"edges": []},
+            "history": [],
+        }
+        planner = Mock()
+        planner.get.return_value = campaign_fixture()
+        flask_app.config.update(TESTING=True)
+        with (
+            patch("app.app._structural_repository_root", return_value=self.root),
+            patch.object(
+                KnowledgeCampaignOrchestrationService,
+                "read_persisted",
+                return_value=[projection],
+            ),
+            patch("app.app.KnowledgeCoveragePlannerService", return_value=planner),
+        ):
+            response = flask_app.test_client().get(
+                "/curator/growth/coverage-campaigns/KCAMP-TEST/orchestration"
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Campaign Control Center", response.data)
+        self.assertIn(b"KORCH-TEST", response.data)
+        self.assertNotIn(b"Control Center not started", response.data)
+
+    def test_missing_orchestration_detail_get_is_repeatably_read_only(self):
+        planner = Mock()
+        planner.get.return_value = campaign_fixture()
+        before = sorted(
+            (path.relative_to(self.root).as_posix(), path.read_bytes())
+            for path in self.root.rglob("*") if path.is_file()
+        )
+        flask_app.config.update(TESTING=True)
+        return_to = "/review?item=curator_task%3AGKT-TEST"
+        with (
+            patch("app.app._structural_repository_root", return_value=self.root),
+            patch.object(
+                KnowledgeCampaignOrchestrationService,
+                "read_persisted",
+                return_value=[],
+            ),
+            patch.object(
+                KnowledgeCampaignOrchestrationService, "get_or_create"
+            ) as create,
+            patch("app.app.KnowledgeCoveragePlannerService", return_value=planner),
+        ):
+            client = flask_app.test_client()
+            first = client.get(
+                "/curator/growth/coverage-campaigns/KCAMP-TEST/orchestration",
+                query_string={"return_to": return_to},
+            )
+            second = client.get(
+                "/curator/growth/coverage-campaigns/KCAMP-TEST/orchestration",
+                query_string={"return_to": return_to},
+            )
+        after = sorted(
+            (path.relative_to(self.root).as_posix(), path.read_bytes())
+            for path in self.root.rglob("*") if path.is_file()
+        )
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 200)
+        self.assertIn(b"Control Center not started", first.data)
+        self.assertIn(b"Return to Coverage Campaign", first.data)
+        self.assertIn(b"Return to Review", first.data)
+        self.assertIn(return_to.encode(), first.data)
+        self.assertEqual(after, before)
+        create.assert_not_called()
+
     def test_stage2_learning_and_command_plans_stop_at_specialized_human_gates(self):
         learning = campaign_fixture()
         learning["work_items"][0].update({
@@ -428,7 +503,10 @@ class KnowledgeCampaignOrchestrationTests(unittest.TestCase):
         service.continue_campaign.return_value = deepcopy(projection)
         service.get_or_create.return_value = deepcopy(projection)
         flask_app.config.update(TESTING=True)
-        with patch("app.app.KnowledgeCampaignOrchestrationService", return_value=service):
+        with patch(
+            "app.app.KnowledgeCampaignOrchestrationService", return_value=service,
+        ) as orchestration_type:
+            orchestration_type.read_persisted.return_value = [deepcopy(projection)]
             response = flask_app.test_client().post(
                 "/curator/growth/orchestration/KORCH-TEST/continue",
                 data={"campaign_id": "KCAMP-TEST"}, follow_redirects=True,
@@ -456,7 +534,10 @@ class KnowledgeCampaignOrchestrationTests(unittest.TestCase):
         }
         service.get_or_create.return_value = detail
         flask_app.config.update(TESTING=True)
-        with patch("app.app.KnowledgeCampaignOrchestrationService", return_value=service):
+        with patch(
+            "app.app.KnowledgeCampaignOrchestrationService", return_value=service,
+        ) as orchestration_type:
+            orchestration_type.read_persisted.return_value = [deepcopy(detail)]
             response = flask_app.test_client().post(
                 "/curator/growth/orchestration/KORCH-TEST/continue",
                 data={"campaign_id": "KCAMP-TEST"}, follow_redirects=True,
@@ -493,7 +574,10 @@ class KnowledgeCampaignOrchestrationTests(unittest.TestCase):
         service.advance_item.return_value = deepcopy(projection)
         service.get_or_create.return_value = deepcopy(projection)
         flask_app.config.update(TESTING=True)
-        with patch("app.app.KnowledgeCampaignOrchestrationService", return_value=service):
+        with patch(
+            "app.app.KnowledgeCampaignOrchestrationService", return_value=service,
+        ) as orchestration_type:
+            orchestration_type.read_persisted.return_value = [deepcopy(projection)]
             response = flask_app.test_client().post(
                 "/curator/growth/orchestration/KORCH-TEST/items/KCW-1/advance",
                 data={"campaign_id": "KCAMP-TEST"}, follow_redirects=True,
@@ -521,7 +605,10 @@ class KnowledgeCampaignOrchestrationTests(unittest.TestCase):
         }
         service.get_or_create.return_value = detail
         flask_app.config.update(TESTING=True)
-        with patch("app.app.KnowledgeCampaignOrchestrationService", return_value=service):
+        with patch(
+            "app.app.KnowledgeCampaignOrchestrationService", return_value=service,
+        ) as orchestration_type:
+            orchestration_type.read_persisted.return_value = [deepcopy(detail)]
             response = flask_app.test_client().post(
                 "/curator/growth/orchestration/KORCH-TEST/items/KCW-1/advance",
                 data={"campaign_id": "KCAMP-TEST"}, follow_redirects=True,

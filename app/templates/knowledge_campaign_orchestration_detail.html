@@ -16,6 +16,20 @@
   </article>
 {% endmacro %}
 {% block content %}
+{% if not orchestration %}
+<div class="container curator-page" id="main-content" aria-labelledby="controlTitle">
+  {% with curator_active='growth' %}{% include 'partials/_curator_nav.html' %}{% endwith %}
+  {% if review_return_to %}<p><a class="btn btn-sm btn-outline-secondary" href="{{ review_return_to }}">Return to Review</a></p>{% endif %}
+  <nav aria-label="Breadcrumb"><a href="{{ url_for('knowledge_coverage_campaign_detail', campaign_id=campaign.campaign_id) }}">Coverage Campaign</a> / Control Center</nav>
+  <header class="curator-heading"><div><span class="section-eyebrow">Supervised Knowledge Factory</span><h1 id="controlTitle">Campaign Control Center</h1><p>{{ campaign.objective }}</p></div></header>
+  <section class="quality-section" aria-labelledby="notStartedTitle">
+    <span class="section-eyebrow">Campaign orchestration</span>
+    <h2 id="notStartedTitle">Control Center not started</h2>
+    <p>No persisted orchestration exists for this campaign. Opening this page does not create or advance campaign state.</p>
+    <a class="btn btn-primary" href="{{ url_for('knowledge_coverage_campaign_detail', campaign_id=campaign.campaign_id) }}">Return to Coverage Campaign</a>
+  </section>
+</div>
+{% else %}
 {% set human_items = orchestration.work_item_states|selectattr('action_authority', 'equalto', 'human_gate')|list %}
 {% set machine_items = orchestration.work_item_states|selectattr('action_authority', 'equalto', 'machine_safe')|list %}
 {% set primary_human = human_items|first %}
@@ -61,4 +75,5 @@
   <details class="quality-section"><summary><span><span class="section-eyebrow">Traceability</span><strong class="d-block h2 mb-0">Dependency Graph</strong><small>{{ orchestration.dependency_graph.edges|length }} relationship{{ '' if orchestration.dependency_graph.edges|length == 1 else 's' }}</small></span></summary><ul class="mt-3">{% for edge in orchestration.dependency_graph.edges %}<li><code>{{ edge.from }}</code> → <code>{{ edge.to }}</code></li>{% else %}<li>No dependencies recorded.</li>{% endfor %}</ul></details>
   <details class="quality-section"><summary><span><span class="section-eyebrow">History</span><strong class="d-block h2 mb-0">Orchestration Runs</strong><small>{{ orchestration.history|length }} recorded event{{ '' if orchestration.history|length == 1 else 's' }}</small></span></summary><ol class="mt-3">{% for event in orchestration.history|reverse %}<li><strong>{{ event.event|replace('_',' ')|title }}</strong> · {{ event.at }} · {{ event.actor }}</li>{% endfor %}</ol></details>
 </div>
+{% endif %}
 {% endblock %}

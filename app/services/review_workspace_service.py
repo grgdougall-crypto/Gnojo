@@ -92,7 +92,10 @@ class ReviewWorkspaceService:
         )
         projected.extend(self._command_relationship_items())
         self._apply_compression(projected, task_records, lessons, proposals)
-        return sorted(projected, key=lambda item: (item["order_group"], item["key"]))
+        ordered = sorted(projected, key=lambda item: (item["order_group"], item["key"]))
+        for item in ordered:
+            item["queue_reason"] = self._queue_reason(item)
+        return ordered
 
     def find(self, item_type: str, item_id: str) -> dict[str, Any] | None:
         return next((item for item in self.items()
@@ -716,6 +719,10 @@ class ReviewWorkspaceService:
             "item_id": work_id,
             "finding_id": str(work.get("gap_id") or state.get("gap_id") or ""),
             "title": f"Review {command_id} relationship",
+            "relationship_summary": (
+                f"Decide whether command '{command_id}' meaningfully supports article "
+                f"'{article.get('title') or article_id}' and should be declared on both records."
+            ),
             "summary": (
                 "The linked article contains a structured command reference resolving "
                 "to the existing risk-classified Command Library record, but the explicit "
@@ -744,6 +751,17 @@ class ReviewWorkspaceService:
             "precedent": "This campaign gate requires an individual human decision.",
             "evidence": evidence,
             "proposed_changes": proposed_changes,
+            "relationship_preview": ({
+                "record": "Article",
+                "field": "related_commands",
+                "value": command_id,
+                "change": "Already declared" if command_id in article_commands else "Add",
+            }, {
+                "record": "Command",
+                "field": "related_articles",
+                "value": article_id,
+                "change": "Already declared" if article_id in command_articles else "Add",
+            }),
             "inspect_url": command_url,
             "inspect_label": "Inspect command",
             "campaign_url": campaign_url,
@@ -1026,6 +1044,19 @@ class ReviewWorkspaceService:
         if str(item.get("current_state") or "").casefold() in ReviewWorkspaceService.CORRECTED_VERIFICATION_STATUSES:
             return 2
         return 3
+
+    @staticmethod
+    def _queue_reason(item: dict[str, Any]) -> str:
+        descriptions = {
+            0: "High-priority and safety-related items are reviewed first; stable identity breaks ties.",
+            1: "Governed items with limited precedent or confidence follow urgent work; stable identity breaks ties.",
+            2: "A current correction signal is ready for human closure confirmation; stable identity breaks ties.",
+            3: "This is the next remaining item in stable identity order.",
+        }
+        return descriptions.get(
+            item.get("order_group"),
+            "This item follows the Review queue's deterministic order.",
+        )
 
     @staticmethod
     def _fingerprint(value: dict[str, Any]) -> str:

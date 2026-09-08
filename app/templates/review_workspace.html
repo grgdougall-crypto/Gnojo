@@ -16,6 +16,7 @@
       <div>
         <span class="badge text-bg-info mb-2">{{ item.type_label }}</span>
         <h2 id="reviewItemTitle">{{ item.title }}</h2>
+        {% if item.relationship_summary %}<p class="mb-1">{{ item.relationship_summary }}</p>{% endif %}
         <p class="text-secondary mb-0">{{ item.affected_content }}</p>
       </div>
       <div class="d-flex flex-wrap align-items-start gap-2" aria-label="Review item signals">
@@ -24,13 +25,14 @@
         {% if item.confidence %}<span class="badge text-bg-secondary">{{ item.confidence|title }} confidence</span>{% endif %}
       </div>
     </div>
+    <p class="small text-secondary mb-3"><strong>Why this item is next:</strong> {{ item.queue_reason }}</p>
 
     <div class="row g-4">
       <section class="col-lg-6" aria-labelledby="foundTitle"><h3 class="h5" id="foundTitle">What Gnojo found</h3><p>{{ item.summary }}</p></section>
       <section class="col-lg-6" aria-labelledby="nowTitle"><h3 class="h5" id="nowTitle">What is true now</h3><p><strong>{{ item.current_state|replace('_', ' ')|title }}</strong></p><p>{{ item.current_detail }}</p></section>
       <section class="col-lg-6" aria-labelledby="mattersTitle"><h3 class="h5" id="mattersTitle">Why it matters</h3><p>{{ item.impact }}</p></section>
       {% if item.item_type == 'command_relationship_review' %}
-      <section class="col-lg-6" aria-labelledby="reviewScopeTitle"><h3 class="h5" id="reviewScopeTitle">Review scope</h3><p class="mb-0">This command relationship is individually governed and is not eligible for compressed or batch review.</p></section>
+      <section class="col-lg-6" aria-labelledby="reviewScopeTitle"><h3 class="h5" id="reviewScopeTitle">Review scope</h3><p class="mb-2">This command relationship is individually governed and is not eligible for compressed or batch review.</p><div class="border rounded p-3"><strong>If approved</strong><ul class="small mb-0 mt-2">{% for change in item.relationship_preview %}<li><strong>{{ change.record }} <code>{{ change.field }}</code>:</strong> {{ change.change }} <code>{{ change.value }}</code></li>{% endfor %}</ul></div></section>
       {% else %}
       <section class="col-lg-6" aria-labelledby="compressionTitle">
         <div class="d-flex flex-wrap align-items-center gap-2 mb-2"><h3 class="h5 mb-0" id="compressionTitle">Review compression</h3><span class="badge {{ 'text-bg-info' if item.compression.classification == 'Routine pattern' else 'text-bg-warning' if item.compression.classification == 'Mixed precedent' else 'text-bg-secondary' }}">{{ item.compression.classification }}</span></div>
@@ -38,6 +40,7 @@
         <p class="mb-2">{{ item.compression.prior_summary }}</p>
         <p class="small text-secondary mb-2"><strong>Similarity basis:</strong> {{ item.compression.basis }}</p>
         <p class="small text-secondary mb-0">{{ item.compression.advisory }}</p>
+        <details class="small mt-2"><summary>What Routine, Mixed, and Novel mean</summary><ul class="mb-0 mt-2"><li><strong>Routine:</strong> strong precedent exists.</li><li><strong>Mixed:</strong> partial precedent exists.</li><li><strong>Novel:</strong> little or no useful precedent exists.</li></ul></details>
         {% if item.batch_review_available %}
         <a class="btn btn-sm btn-outline-info mt-3" href="{{ url_for('review_workspace_batch_preview', item_type=item.item_type, item_id=item.item_id) }}">Review similar items ({{ item.batch_review_count }})</a>
         {% elif item.compression.similar_open_count >= 2 and item.batch_review_count < 2 %}
@@ -54,9 +57,11 @@
       </section>
       {% endif %}
       <section class="col-12" aria-labelledby="recommendationTitle"><h3 class="h5" id="recommendationTitle">Gnojo recommendation</h3><p>{{ item.recommendation }}</p></section>
-      {% if item.evidence %}<section class="col-lg-6" aria-labelledby="evidenceTitle"><h3 class="h5" id="evidenceTitle">Supporting evidence</h3><ul class="mb-0">{% for evidence in item.evidence %}<li>{{ evidence }}</li>{% endfor %}</ul></section>{% endif %}
-      {% if item.proposed_changes %}<section class="col-lg-6" aria-labelledby="proposedRelationshipTitle"><h3 class="h5" id="proposedRelationshipTitle">Exact proposed relationship</h3><ul class="mb-0">{% for change in item.proposed_changes %}<li>{{ change }}</li>{% endfor %}</ul></section>{% endif %}
+      {% if item.evidence %}<details class="col-lg-6"><summary><strong id="evidenceTitle">Supporting evidence</strong></summary><ul class="mb-0 mt-2" aria-labelledby="evidenceTitle">{% for evidence in item.evidence %}<li>{{ evidence }}</li>{% endfor %}</ul></details>{% endif %}
+      {% if item.proposed_changes and item.item_type != 'command_relationship_review' %}<section class="col-lg-6" aria-labelledby="proposedRelationshipTitle"><h3 class="h5" id="proposedRelationshipTitle">Exact proposed relationship</h3><ul class="mb-0">{% for change in item.proposed_changes %}<li>{{ change }}</li>{% endfor %}</ul></section>{% endif %}
     </div>
+
+    {% if item.resolve_verified %}<div class="alert alert-success mt-4 mb-3"><strong>Appears Corrected</strong><p class="mb-0">Curator no longer detects the issue in current content. Confirm the correction to close the finding.</p></div>{% endif %}
 
     <div class="d-flex flex-wrap gap-2 mb-4">
       <a class="btn btn-outline-info" href="{{ item.inspect_url }}">{{ item.inspect_label or 'Inspect full content' }}</a>
@@ -75,6 +80,7 @@
     <section class="border-top pt-4" aria-labelledby="decisionTitle">
       <h3 class="h4" id="decisionTitle">Decision unavailable</h3>
       <p>{{ item.decision_unavailable_reason }}</p>
+      {% if item.item_type == 'command_relationship_review' %}<p class="small text-secondary"><strong>Approve</strong> would write only the missing reciprocal declarations. <strong>Reject</strong> would leave both records unchanged and record why the relationship is unsupported. Neither action is available until the governed handoff is valid.</p>{% endif %}
       <div class="d-flex flex-wrap gap-2">
         <button class="btn btn-success" type="button" disabled>Approve relationship</button>
         <button class="btn btn-outline-danger" type="button" disabled>Reject relationship</button>
@@ -84,10 +90,12 @@
     {% else %}
     <section class="border-top pt-4" aria-labelledby="decisionTitle">
       <h3 class="h4" id="decisionTitle">Decision</h3>
+      {% if item.item_type == 'curator_task' %}<p class="small text-secondary"><strong>Resolve</strong> closes the finding after review. <strong>Defer</strong> keeps it actionable for later. <strong>Ignore finding</strong> records a decision not to act. <strong>Skip for now</strong> moves to the next item without saving a decision.</p>
+      {% elif item.item_type == 'command_relationship_review' %}<p class="small text-secondary"><strong>Approve</strong> writes only the missing reciprocal declarations and completes this campaign gate. <strong>Reject</strong> leaves both records unchanged and records why the relationship is unsupported.</p>{% endif %}
       <form method="post" action="{{ url_for('review_workspace_decision', item_type=item.item_type, item_id=item.item_id) }}" class="row g-3">
         <input type="hidden" name="authenticity_token" value="{{ authenticity_token() }}">
         <input type="hidden" name="source_fingerprint" value="{{ item.source_fingerprint }}">
-        <div class="col-12"><label class="form-label" for="reviewReason">Decision reason</label><textarea class="form-control" id="reviewReason" name="reason" rows="3" required aria-describedby="reviewReasonHelp"></textarea><div class="form-text" id="reviewReasonHelp">Required for governed decisions and retained by the existing authoritative service.</div></div>
+        <div class="col-12"><label class="form-label" for="reviewReason">Decision reason</label><textarea class="form-control" id="reviewReason" name="reason" rows="2" required aria-describedby="reviewReasonHelp"></textarea><div class="form-text" id="reviewReasonHelp">Required and retained with the governed decision.</div></div>
         <div class="col-12 d-flex flex-wrap gap-2">
           {% if item.item_type == 'curator_task' %}
             <button class="btn btn-success" type="submit" name="decision" value="resolve">{{ 'Resolve verified item' if item.resolve_verified else 'Resolve' }}</button>

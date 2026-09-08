@@ -278,9 +278,12 @@ class ReviewWorkspaceTests(unittest.TestCase):
             "ipconfig",
             "Moderate risk · Changes system: Yes",
             "Supporting evidence",
-            "Exact proposed relationship",
-            "Add &#39;ipconfig&#39; to article &#39;vpn-reset-guidance&#39; related_commands.",
-            "Add &#39;vpn-reset-guidance&#39; to command &#39;ipconfig&#39; related_articles.",
+            "Decide whether command &#39;ipconfig&#39; meaningfully supports article",
+            "If approved",
+            "related_commands",
+            "related_articles",
+            "Approve</strong> would write only the missing reciprocal declarations",
+            "Reject</strong> would leave both records unchanged",
             "Inspect command",
             "Open campaign",
             "Decision unavailable",
@@ -891,6 +894,12 @@ class ReviewWorkspaceTests(unittest.TestCase):
         page = self.client.get("/review").get_data(as_text=True)
         self.assertIn("Review compression", page)
         self.assertIn("Novel / insufficient precedent", page)
+        self.assertIn("Why this item is next:", page)
+        self.assertIn("Routine:</strong> strong precedent exists.", page)
+        self.assertIn("Mixed:</strong> partial precedent exists.", page)
+        self.assertIn("Novel:</strong> little or no useful precedent exists.", page)
+        self.assertIn("Resolve</strong> closes the finding after review.", page)
+        self.assertIn("Skip for now</strong> moves to the next item without saving a decision.", page)
         for forbidden in ("Accept similar items", "Resolve all", "Ignore all"):
             self.assertNotIn(forbidden, page)
         self.assertEqual((self.root / "curation_memory/memory.json").read_bytes(), before)
@@ -976,6 +985,15 @@ class ReviewWorkspaceTests(unittest.TestCase):
         self.save_tasks(task)
         service = ReviewWorkspaceService(self.root)
         self.assertTrue(service.find("curator_task", "GKT-FRESH")["resolve_verified"])
+        before = (self.root / "curation_memory/memory.json").read_bytes()
+        page = self.client.get("/review?item=curator_task:GKT-FRESH").get_data(as_text=True)
+        self.assertIn("Appears Corrected", page)
+        self.assertIn(
+            "Curator no longer detects the issue in current content. "
+            "Confirm the correction to close the finding.",
+            page,
+        )
+        self.assertEqual((self.root / "curation_memory/memory.json").read_bytes(), before)
         state = self.store.load()
         state["tasks"]["GKT-FRESH"]["current_verification"]["affected_fingerprint"] = "stale"
         self.store.save(state)

@@ -7,6 +7,7 @@ import re
 from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
+from app.data_root import resolve_application_root, resolve_data_root
 from typing import Any
 
 from app.knowledge.article_schema import create_article_template
@@ -45,12 +46,12 @@ class KnowledgeDraftGenerationService:
                  taxonomy_path: Path | None = None,
                  policy_path: Path | None = None,
                  repository: KnowledgeRepository | None = None):
-        self.repository_root = (repository_root or Path(__file__).resolve().parents[2]).resolve()
+        self.repository_root = resolve_data_root(repository_root, legacy_root=Path(__file__).resolve().parents[2])
         self.campaign_root = (campaign_root or self.repository_root / "knowledge_campaigns").resolve()
         self.package_root = self.campaign_root / "draft_generation"
         self.planner = KnowledgeCoveragePlannerService(
             self.repository_root, self.campaign_root,
-            taxonomy_path or self.repository_root / "app" / "data" / "knowledge_coverage_taxonomy.json",
+            taxonomy_path or resolve_application_root(repository_root) / "app" / "data" / "knowledge_coverage_taxonomy.json",
         )
         self.research = KnowledgeSourceResearchService(
             self.repository_root, self.campaign_root,

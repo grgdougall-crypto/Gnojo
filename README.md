@@ -66,6 +66,7 @@ Requirements: Python 3.11 or newer and Git.
 | `GNOJO_SESSION_LIFETIME_MINUTES` | Reviewer session lifetime in minutes; defaults to `480` |
 | `GNOJO_DEBUG` | Set to `true` only for local debugging |
 | `GNOJO_SESSION_ENVIRONMENT` | Classify new troubleshooting sessions as `production`, `development`, or `test`; older records remain unclassified |
+| `GNOJO_DATA_ROOT` | Optional persistent root for runtime-mutable repositories; unset preserves the repository-relative local layout |
 | `GEMINI_API_KEY` | Optional Gemini access |
 | `GEMINI_MODEL` | Optional Gemini model override |
 | `OPENAI_API_KEY` | Optional OpenAI access |

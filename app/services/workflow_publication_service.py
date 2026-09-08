@@ -7,6 +7,8 @@ from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
 
+from app.data_root import resolve_data_path
+
 from app.services.workflow_validation_service import WorkflowValidationService
 
 
@@ -18,8 +20,10 @@ class WorkflowPublicationService:
     """Create immutable, numbered workflow publication snapshots."""
 
     def __init__(self, publication_path=None):
-        self.publication_path = Path(publication_path) if publication_path else (
-            Path(__file__).resolve().parent.parent / "workflow_publications"
+        self.publication_path = resolve_data_path(
+            "app", "workflow_publications",
+            explicit_path=publication_path,
+            legacy_path=Path(__file__).resolve().parent.parent / "workflow_publications",
         )
         self.publication_path.mkdir(parents=True, exist_ok=True)
 

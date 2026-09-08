@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from app.data_root import resolve_data_path
 from typing import Any
 
 
@@ -9,7 +10,11 @@ class CampaignBlockerDestinationService:
     """Read-only resolver for exact governed workspaces behind campaign blockers."""
 
     def __init__(self, campaign_root: Path | None = None):
-        self.campaign_root = Path(campaign_root or Path.cwd() / "knowledge_campaigns").resolve()
+        self.campaign_root = resolve_data_path(
+            "knowledge_campaigns",
+            explicit_path=campaign_root,
+            legacy_path=Path.cwd() / "knowledge_campaigns",
+        ).resolve()
 
     def resolve(self, campaign: dict[str, Any], work_item: dict[str, Any],
                 blocker: dict[str, Any] | None) -> dict[str, Any]:

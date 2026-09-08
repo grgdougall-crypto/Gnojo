@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from app.data_root import resolve_data_root
 from typing import Any
 
 from curator.growth import CuratorGrowthService as GrowthStoreService
@@ -12,7 +13,7 @@ class CuratorGrowthService:
     """Application-facing Curator Growth review service."""
 
     def __init__(self, repository_root: Path | None = None):
-        self.root = (repository_root or Path(__file__).resolve().parents[2]).resolve()
+        self.root = resolve_data_root(repository_root, legacy_root=Path(__file__).resolve().parents[2])
         self.store = CuratorMemoryStore(self.root / "curation_memory")
         self.growth = GrowthStoreService(self.store)
 

@@ -23,6 +23,7 @@ import shutil
 import tempfile
 from pathlib import Path
 from typing import Any
+from app.data_root import resolve_data_path
 from app.services.knowledge_identity_service import (
     KnowledgeIdentityError,
     KnowledgeIdentityService,
@@ -68,9 +69,9 @@ class KnowledgeRepository:
         if knowledge_base_directory is None:
             project_root = Path(__file__).resolve().parents[2]
 
-            knowledge_base_directory = (
-                project_root
-                / "knowledge_base"
+            knowledge_base_directory = resolve_data_path(
+                "knowledge_base",
+                legacy_path=project_root / "knowledge_base",
             )
 
         self.knowledge_base_directory = knowledge_base_directory

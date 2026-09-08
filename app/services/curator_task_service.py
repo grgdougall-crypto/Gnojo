@@ -3,6 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
+from app.data_root import resolve_data_root
 from typing import Any
 from urllib.parse import quote, urlencode
 
@@ -22,7 +23,7 @@ class CuratorTaskService:
     STATUSES = ("open", "in_progress", "deferred", "ignored", "resolved")
 
     def __init__(self, repository_root: Path | None = None):
-        self.repository_root = (repository_root or Path(__file__).resolve().parents[2]).resolve()
+        self.repository_root = resolve_data_root(repository_root, legacy_root=Path(__file__).resolve().parents[2])
         self.store = CuratorMemoryStore(self.repository_root / "curation_memory")
 
     def get(self, task_id: str, *, session_id: str = "", return_to: str = "",

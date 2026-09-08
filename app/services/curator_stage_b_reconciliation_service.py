@@ -7,6 +7,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from app.data_root import resolve_data_root
 from typing import Any, Callable
 from uuid import uuid4
 
@@ -99,7 +100,7 @@ class CuratorStageBReconciliationService:
         now: Callable[[], datetime] | None = None,
         lock_timeout: float = 2.0,
     ):
-        self.root = (repository_root or Path(__file__).resolve().parents[2]).resolve()
+        self.root = resolve_data_root(repository_root, legacy_root=Path(__file__).resolve().parents[2])
         self.memory = CuratorMemoryStore(self.root / "curation_memory")
         self.journal = StageBJournalRepository(self.root / "curation_memory")
         self.lifecycle = CuratorWorkflowLifecycleService(self.root)

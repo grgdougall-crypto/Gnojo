@@ -1,5 +1,7 @@
 import json
 from pathlib import Path
+
+from app.data_root import resolve_data_path
 from copy import deepcopy
 from contextlib import contextmanager
 
@@ -20,12 +22,14 @@ class WorkflowDraftService:
     """
 
     def __init__(self, drafts_path=None):
-        self.drafts_path = Path(drafts_path) if drafts_path else (
-            Path(__file__).resolve().parent.parent / "workflow_drafts"
+        self.drafts_path = resolve_data_path(
+            "app", "workflow_drafts",
+            explicit_path=drafts_path,
+            legacy_path=Path(__file__).resolve().parent.parent / "workflow_drafts",
         )
 
         self.drafts_path.mkdir(
-            exist_ok=True
+            parents=True, exist_ok=True
         )
         self.persistence = WorkflowDraftPersistence(self.drafts_path)
 

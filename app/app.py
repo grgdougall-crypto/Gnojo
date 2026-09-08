@@ -25,6 +25,7 @@ from dataclasses import asdict
 
 from markupsafe import Markup, escape
 from dotenv import load_dotenv
+from app.data_root import resolve_data_root
 
 from app.engine.decision_engine import DecisionEngine
 from app.knowledge.knowledge_base import KnowledgeBase
@@ -2358,7 +2359,7 @@ def curator_assisted_resolution_batch():
 
 def _structural_repository_root() -> Path:
     configured = app.config.get("STRUCTURAL_REPAIR_REPOSITORY_ROOT")
-    return Path(configured).resolve() if configured else Path(app.root_path).parent.resolve()
+    return resolve_data_root(configured, legacy_root=Path(app.root_path).parent)
 
 
 def _structural_csrf_token() -> str:
@@ -2677,7 +2678,7 @@ def curator_fix_start():
     sessions = session_service.list_sessions()
     if request.method == "POST":
         try:
-            memory = CuratorMemoryStore(Path(app.root_path).parent / "curation_memory").load()
+            memory = CuratorMemoryStore(_structural_repository_root() / "curation_memory").load()
             audits = memory.get("audits", [])
             audit_id = audits[-1].get("run_id") if audits else None
             session, resumed = session_service.create_or_resume(
@@ -3069,7 +3070,7 @@ def workflow_editor(filename):
 
 def _workflow_repository_root() -> Path:
     configured = app.config.get("WORKFLOW_REPOSITORY_ROOT")
-    return Path(configured).resolve() if configured else Path(app.root_path).parent.resolve()
+    return resolve_data_root(configured, legacy_root=Path(app.root_path).parent)
 
 
 def _publication_review_csrf_token() -> str:

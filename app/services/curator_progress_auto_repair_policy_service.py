@@ -5,6 +5,7 @@ import os
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from app.data_root import resolve_data_root
 from typing import Any, Callable
 
 from app.repositories.structural_repair_application_repository import (
@@ -85,7 +86,7 @@ class CuratorProgressAutoRepairPolicyService:
         application_repository: StructuralRepairApplicationRepository | None = None,
         lifecycle_projection_service: WorkflowLifecycleProjectionService | None = None,
     ):
-        self.root = (repository_root or Path(__file__).resolve().parents[2]).resolve()
+        self.root = resolve_data_root(repository_root, legacy_root=Path(__file__).resolve().parents[2])
         self.curator_root = self.root / "curation_memory"
         self.store = CuratorMemoryStore(self.curator_root)
         self.registry = CuratorRepairAdapterRegistry()

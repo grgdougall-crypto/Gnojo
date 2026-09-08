@@ -3,6 +3,7 @@ from collections import Counter, defaultdict
 from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
+from app.data_root import resolve_data_root
 from typing import Any
 
 from app.repositories.knowledge_repository import KnowledgeRepository
@@ -22,7 +23,7 @@ class KnowledgeIntegrityService:
     """Explain and safely repair cross-store knowledge identity problems."""
 
     def __init__(self, root: Path | None = None):
-        self.root = (root or Path(__file__).resolve().parents[2]).resolve()
+        self.root = resolve_data_root(root, legacy_root=Path(__file__).resolve().parents[2])
         self.repository = KnowledgeRepository(self.root / "knowledge_base")
         self.identities = ArticleIdentityResolver(self.repository)
 

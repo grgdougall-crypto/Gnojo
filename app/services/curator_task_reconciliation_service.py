@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from app.data_root import resolve_data_root
 from typing import Any
 
 from curator.memory import CuratorMemoryStore
@@ -10,7 +11,7 @@ class CuratorTaskReconciliationService:
     """Resolve only tasks whose recorded evidence matches a verified repair."""
 
     def __init__(self, repository_root: Path | None = None):
-        self.root = (repository_root or Path(__file__).resolve().parents[2]).resolve()
+        self.root = resolve_data_root(repository_root, legacy_root=Path(__file__).resolve().parents[2])
         self.store = CuratorMemoryStore(self.root / "curation_memory")
 
     def reconcile(self, item: dict[str, Any], *, session_id: str, verified: bool) -> list[str]:

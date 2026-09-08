@@ -1,14 +1,20 @@
 from pathlib import Path
 import json
 
+from app.data_root import resolve_data_path
+
 
 class CommandRepository:
     """
     Loads command records from the Command Library.
     """
 
-    def __init__(self, base_path="knowledge_base/commands"):
-        self.base_path = Path(base_path)
+    def __init__(self, base_path=None):
+        self.base_path = resolve_data_path(
+            "knowledge_base", "commands",
+            explicit_path=base_path,
+            legacy_path="knowledge_base/commands",
+        )
 
     def get_all(self):
         commands = []

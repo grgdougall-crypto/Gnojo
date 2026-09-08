@@ -4,6 +4,7 @@ import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
+from app.data_root import resolve_data_root
 from typing import Any
 
 from app.repositories.knowledge_repository import ArticleNotFoundError, KnowledgeRepository
@@ -35,7 +36,7 @@ class CuratorWorkflowLifecycleService:
     PRECEDENCE = ("draft", "published", "built_in")
 
     def __init__(self, repository_root: Path | None = None):
-        self.root = (repository_root or Path(__file__).resolve().parents[2]).resolve()
+        self.root = resolve_data_root(repository_root, legacy_root=Path(__file__).resolve().parents[2])
 
     def resolve(self, workflow_id: str) -> ActionableWorkflow | None:
         return self._draft(workflow_id) or self._published(workflow_id) or self._built_in(workflow_id)

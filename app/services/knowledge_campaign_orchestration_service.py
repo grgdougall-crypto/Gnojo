@@ -9,6 +9,7 @@ from contextlib import contextmanager
 from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
+from app.data_root import resolve_data_root
 from typing import Any
 
 from app.services.knowledge_claim_planning_service import KnowledgeClaimPlanningService
@@ -64,7 +65,7 @@ class KnowledgeCampaignOrchestrationService:
                  *, planner=None, research=None, evidence=None, generation=None,
                  claims=None, assembly=None, workflows=None, review_destinations=None, max_transitions: int = 24,
                  max_work_items: int = 12, max_external_operations: int = 1):
-        self.repository_root = (repository_root or Path(__file__).resolve().parents[2]).resolve()
+        self.repository_root = resolve_data_root(repository_root, legacy_root=Path(__file__).resolve().parents[2])
         self.campaign_root = (campaign_root or self.repository_root / "knowledge_campaigns").resolve()
         self.package_root = self.campaign_root / "orchestration"
         self.planner = planner or KnowledgeCoveragePlannerService(self.repository_root, self.campaign_root)

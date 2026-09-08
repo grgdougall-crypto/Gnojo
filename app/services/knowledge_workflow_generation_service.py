@@ -7,6 +7,7 @@ import tempfile
 from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
+from app.data_root import resolve_data_root
 from typing import Any
 
 from app.services.workflow_draft_service import WorkflowDraftService
@@ -36,7 +37,7 @@ class KnowledgeWorkflowGenerationService:
     }
 
     def __init__(self, repository_root=None, campaign_root=None, drafts_path=None):
-        self.repository_root = Path(repository_root) if repository_root else Path(__file__).resolve().parents[2]
+        self.repository_root = resolve_data_root(repository_root, legacy_root=Path(__file__).resolve().parents[2])
         self.campaign_root = Path(campaign_root) if campaign_root else self.repository_root / "knowledge_campaigns"
         self.package_root = self.campaign_root / "workflow_generation"
         self.package_root.mkdir(parents=True, exist_ok=True)

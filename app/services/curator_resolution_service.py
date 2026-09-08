@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
+from app.data_root import resolve_data_root
 from typing import Any
 
 from app.knowledge.article_schema import create_article_template
@@ -23,7 +24,7 @@ from curator.resolution import ResolutionPackageError, ResolutionPackageReposito
 
 class CuratorResolutionService:
     def __init__(self, repository_root: Path | None = None):
-        self.root = (repository_root or Path(__file__).resolve().parents[2]).resolve()
+        self.root = resolve_data_root(repository_root, legacy_root=Path(__file__).resolve().parents[2])
         self.memory = CuratorMemoryStore(self.root / "curation_memory")
         self.packages = ResolutionPackageRepository(self.root / "curation_memory")
         self.analyzer = ArticleCandidateAnalyzer(self.root)

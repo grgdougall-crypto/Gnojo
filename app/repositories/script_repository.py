@@ -1,12 +1,18 @@
 import json
 from pathlib import Path
 
+from app.data_root import resolve_data_path
+
 
 class ScriptRepository:
     """Loads curated diagnostic script metadata and source text."""
 
-    def __init__(self, base_path="knowledge_base/scripts"):
-        self.base_path = Path(base_path)
+    def __init__(self, base_path=None):
+        self.base_path = resolve_data_path(
+            "knowledge_base", "scripts",
+            explicit_path=base_path,
+            legacy_path="knowledge_base/scripts",
+        )
         self.catalog_path = self.base_path / "catalog.json"
 
     def get_all(self):

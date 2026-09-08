@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+from app.data_root import resolve_data_path
+
 
 class KnowledgeBase:
     """
@@ -8,9 +10,9 @@ class KnowledgeBase:
     """
 
     def __init__(self):
-        self.knowledge_path = (
-            Path(__file__).parent.parent.parent
-            / "knowledge_base"
+        self.knowledge_path = resolve_data_path(
+            "knowledge_base",
+            legacy_path=Path(__file__).parent.parent.parent / "knowledge_base",
         )
 
         self.published_path = (

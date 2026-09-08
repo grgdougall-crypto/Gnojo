@@ -4,6 +4,7 @@ import hashlib
 import re
 from collections import Counter, defaultdict
 from pathlib import Path
+from app.data_root import resolve_data_root
 from typing import Any, Iterable
 from urllib.parse import urlparse
 
@@ -91,7 +92,7 @@ class FindingFactory:
 class CuratorChecks:
     def __init__(self, repository_root: Path | None = None,
                  active_rules: ActiveRuleRegistry | None = None):
-        root = (repository_root or Path(__file__).resolve().parents[1]).resolve()
+        root = resolve_data_root(repository_root, legacy_root=Path(__file__).resolve().parents[1])
         self.root = root
         self.active_rules = active_rules or ActiveRuleRegistry.from_repository(root)
         self.lifecycle = CuratorWorkflowLifecycleService(root)

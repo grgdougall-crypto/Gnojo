@@ -3,6 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
+from app.data_root import resolve_data_root
 from typing import Any
 
 from app.services.curator_fix_session_service import CuratorFixSessionService
@@ -16,7 +17,7 @@ class CuratorSessionReconciliationService:
     """Refresh unresolved maintenance conclusions against current repository truth."""
 
     def __init__(self, repository_root: Path | None = None):
-        self.root = (repository_root or Path(__file__).resolve().parents[2]).resolve()
+        self.root = resolve_data_root(repository_root, legacy_root=Path(__file__).resolve().parents[2])
         self.sessions = CuratorFixSessionService(self.root)
         self.integrity = KnowledgeIntegrityService(self.root)
         self.planner = CuratorRepairPlanner(self.root)

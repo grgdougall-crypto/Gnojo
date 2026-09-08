@@ -3,6 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from app.data_root import resolve_data_root
 from typing import Any
 from urllib.parse import urlencode
 
@@ -59,9 +60,9 @@ class AutonomousGrowthService:
         max_transitions: int = 12,
         max_external_operations: int = 1,
     ):
-        self.repository_root = (
-            repository_root or Path(__file__).resolve().parents[2]
-        ).resolve()
+        self.repository_root = resolve_data_root(
+            repository_root, legacy_root=Path(__file__).resolve().parents[2]
+        )
         self.campaign_root = (
             campaign_root or self.repository_root / "knowledge_campaigns"
         ).resolve()

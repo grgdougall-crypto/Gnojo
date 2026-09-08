@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
+from app.data_root import resolve_data_root
 from typing import Any
 
 from curator.governance import CuratorGovernancePolicy
@@ -27,7 +28,7 @@ class CuratorContentQualityBridgeService:
     FINDING_TYPE = "frequently_confusing_step"
 
     def __init__(self, repository_root: Path | None = None):
-        self.repository_root = (repository_root or Path(__file__).resolve().parents[2]).resolve()
+        self.repository_root = resolve_data_root(repository_root, legacy_root=Path(__file__).resolve().parents[2])
         self.store = CuratorMemoryStore(self.repository_root / "curation_memory")
 
     def send(self, item: dict[str, Any]) -> dict[str, Any]:

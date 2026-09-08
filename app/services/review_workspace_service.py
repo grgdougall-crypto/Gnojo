@@ -7,6 +7,7 @@ import tempfile
 from collections import Counter, defaultdict
 from copy import deepcopy
 from pathlib import Path
+from app.data_root import resolve_data_root
 from secrets import compare_digest
 from typing import Any
 from urllib.parse import parse_qsl, quote, urlencode, urlsplit, urlunsplit
@@ -51,7 +52,7 @@ class ReviewWorkspaceService:
     })
 
     def __init__(self, repository_root: Path | None = None):
-        self.root = (repository_root or Path(__file__).resolve().parents[2]).resolve()
+        self.root = resolve_data_root(repository_root, legacy_root=Path(__file__).resolve().parents[2])
         self.tasks = CuratorTaskService(self.root)
         self.growth = CuratorGrowthService(self.root)
 

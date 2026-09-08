@@ -4,6 +4,8 @@ import re
 import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+from app.data_root import resolve_data_path
 from uuid import uuid4
 
 
@@ -17,10 +19,10 @@ class TroubleshootingHistoryService:
     ENVIRONMENT_SCOPES = SESSION_ENVIRONMENTS | {"unclassified", "all"}
 
     def __init__(self, history_path=None):
-        self.history_path = (
-            Path(history_path)
-            if history_path
-            else Path(__file__).resolve().parent.parent / "troubleshooting_history"
+        self.history_path = resolve_data_path(
+            "app", "troubleshooting_history",
+            explicit_path=history_path,
+            legacy_path=Path(__file__).resolve().parent.parent / "troubleshooting_history",
         )
         self.history_path.mkdir(parents=True, exist_ok=True)
 

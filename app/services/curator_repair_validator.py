@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from app.data_root import resolve_data_root
 from typing import Any
 
 from app.services.knowledge_integrity_service import KnowledgeIntegrityService
@@ -10,7 +11,7 @@ from app.services.workflow_validation_service import WorkflowValidationService
 
 class CuratorRepairValidator:
     def __init__(self, repository_root: Path | None = None):
-        self.root = (repository_root or Path(__file__).resolve().parents[2]).resolve()
+        self.root = resolve_data_root(repository_root, legacy_root=Path(__file__).resolve().parents[2])
 
     def relationship(self, item: dict[str, Any]) -> dict[str, Any]:
         evidence = item["affected_content"]

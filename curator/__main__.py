@@ -5,6 +5,7 @@ import json
 import sys
 from dataclasses import asdict
 from pathlib import Path
+from app.data_root import resolve_data_root
 
 from .auditor import CuratorAuditor
 from .locking import AuditAlreadyRunningError, AuditLock
@@ -18,7 +19,7 @@ def parser() -> argparse.ArgumentParser:
     root = argparse.ArgumentParser(prog="python -m curator", description="Gnojo Curator read-only auditor")
     commands = root.add_subparsers(dest="command", required=True)
     audit = commands.add_parser("audit", help="Audit Gnojo content without modifying it")
-    audit.add_argument("--repository", default=".")
+    audit.add_argument("--repository")
     audit.add_argument("--output", default="curation_runs")
     audit.add_argument("--platform")
     audit.add_argument("--category")
@@ -29,7 +30,7 @@ def parser() -> argparse.ArgumentParser:
     tasks = commands.add_parser("tasks", help="Inspect or update persistent Knowledge Tasks")
     tasks.add_argument("action", choices=("list", "update"))
     tasks.add_argument("task_id", nargs="?")
-    tasks.add_argument("--repository", default=".")
+    tasks.add_argument("--repository")
     tasks.add_argument("--memory", default="curation_memory")
     tasks.add_argument("--status", choices=("open", "in_progress", "resolved", "ignored", "superseded"))
     tasks.add_argument("--owner", choices=("Curator", "Researcher", "Workflow Designer", "Script Engineer", "QA Reviewer", "Human"))
@@ -42,7 +43,7 @@ def parser() -> argparse.ArgumentParser:
         required=True,
         choices=("health", "audit", "integrity", "progress-policy", "analytics"),
     )
-    observe.add_argument("--repository", default=".")
+    observe.add_argument("--repository")
     observe.add_argument("--results", default="curation_observations")
     observe.add_argument("--memory", default="curation_memory")
     observe.add_argument("--trigger", choices=("manual", "scheduled"), default="manual")
@@ -51,7 +52,7 @@ def parser() -> argparse.ArgumentParser:
         "refresh-progress-verification",
         help="Run the single allowlisted Stage B progress-verification reconciliation",
     )
-    refresh.add_argument("--repository", default=".")
+    refresh.add_argument("--repository")
     refresh.add_argument("--task-id")
     refresh.add_argument("--trigger", choices=("manual", "scheduled"), default="manual")
     refresh.add_argument("--correlation-id", default="")
@@ -63,7 +64,7 @@ def parser() -> argparse.ArgumentParser:
             "reconciliation"
         ),
     )
-    terminal_refresh.add_argument("--repository", default=".")
+    terminal_refresh.add_argument("--repository")
     terminal_refresh.add_argument("--task-id")
     terminal_refresh.add_argument(
         "--trigger", choices=("manual", "scheduled"), default="manual"
@@ -77,7 +78,7 @@ def parser() -> argparse.ArgumentParser:
             "synchronization"
         ),
     )
-    evidence_sync.add_argument("--repository", default=".")
+    evidence_sync.add_argument("--repository")
     evidence_sync.add_argument("--task-id")
     evidence_sync.add_argument(
         "--trigger", choices=("manual", "scheduled"), default="manual"
@@ -91,7 +92,7 @@ def parser() -> argparse.ArgumentParser:
             "reconciliation"
         ),
     )
-    convergence_refresh.add_argument("--repository", default=".")
+    convergence_refresh.add_argument("--repository")
     convergence_refresh.add_argument("--task-id")
     convergence_refresh.add_argument(
         "--trigger", choices=("manual", "scheduled"), default="manual"
@@ -105,7 +106,7 @@ def parser() -> argparse.ArgumentParser:
             "reconciliation"
         ),
     )
-    signal_refresh.add_argument("--repository", default=".")
+    signal_refresh.add_argument("--repository")
     signal_refresh.add_argument("--task-id")
     signal_refresh.add_argument(
         "--trigger", choices=("manual", "scheduled"), default="manual"
@@ -116,7 +117,7 @@ def parser() -> argparse.ArgumentParser:
         "stage-b-scheduled",
         help="Run the code-allowlisted scheduled Stage B reconciliation set",
     )
-    scheduled_stage_b.add_argument("--repository", default=".")
+    scheduled_stage_b.add_argument("--repository")
     scheduled_stage_b.add_argument("--dry-run", action="store_true")
     scheduled_stage_b.add_argument("--correlation-id", default="")
     scheduled_stage_b.add_argument("--max-candidates", type=int, default=5)
@@ -124,14 +125,14 @@ def parser() -> argparse.ArgumentParser:
         "autonomous-growth",
         help="Select and prepare one bounded knowledge coverage campaign",
     )
-    autonomous_growth.add_argument("--repository", default=".")
+    autonomous_growth.add_argument("--repository")
     autonomous_growth.add_argument("--preview", action="store_true")
     return root
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parser().parse_args(argv)
-    repository = Path(args.repository).resolve()
+    repository = resolve_data_root(args.repository, legacy_root=Path.cwd())
     memory_path = Path(getattr(args, "memory", "curation_memory"))
     memory_path = memory_path if memory_path.is_absolute() else repository / memory_path
     if args.command == "autonomous-growth":

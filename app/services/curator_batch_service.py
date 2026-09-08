@@ -4,6 +4,7 @@ import json
 import os
 from datetime import datetime, timezone
 from pathlib import Path
+from app.data_root import resolve_data_root
 from typing import Any
 
 from app.services.curator_resolution_service import CuratorResolutionService
@@ -12,7 +13,7 @@ from curator.resolution import ResolutionPackageError
 
 class CuratorBatchService:
     def __init__(self, repository_root: Path | None = None):
-        self.root = (repository_root or Path(__file__).resolve().parents[2]).resolve()
+        self.root = resolve_data_root(repository_root, legacy_root=Path(__file__).resolve().parents[2])
         self.service = CuratorResolutionService(self.root)
         self.lock_path = self.root / ".curator-resolution-batch.lock"
 

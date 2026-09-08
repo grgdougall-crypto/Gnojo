@@ -7,6 +7,7 @@ import re
 from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
+from app.data_root import resolve_application_root, resolve_data_root
 from typing import Any
 from uuid import uuid4
 
@@ -59,10 +60,10 @@ class KnowledgeCoveragePlannerService:
     def __init__(self, repository_root: Path | None = None,
                  campaign_root: Path | None = None,
                  taxonomy_path: Path | None = None):
-        self.repository_root = (repository_root or Path(__file__).resolve().parents[2]).resolve()
+        self.repository_root = resolve_data_root(repository_root, legacy_root=Path(__file__).resolve().parents[2])
         self.campaign_root = (campaign_root or self.repository_root / "knowledge_campaigns").resolve()
         self.taxonomy_path = taxonomy_path or (
-            self.repository_root / "app" / "data" / "knowledge_coverage_taxonomy.json"
+            resolve_application_root(repository_root) / "app" / "data" / "knowledge_coverage_taxonomy.json"
         )
 
     def taxonomy(self) -> dict[str, Any]:

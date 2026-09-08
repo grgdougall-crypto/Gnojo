@@ -10,6 +10,7 @@ from copy import deepcopy
 from datetime import datetime, timezone
 from html.parser import HTMLParser
 from pathlib import Path
+from app.data_root import resolve_application_root, resolve_data_root
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
 
@@ -241,10 +242,11 @@ class KnowledgeSourceResearchService:
                  search_providers: dict[str, Any] | None = None,
                  http_validator: SourceHTTPValidator | None = None,
                  taxonomy_path: Path | None = None):
-        self.repository_root = (repository_root or Path(__file__).resolve().parents[2]).resolve()
+        self.repository_root = resolve_data_root(repository_root, legacy_root=Path(__file__).resolve().parents[2])
         self.campaign_root = (campaign_root or self.repository_root / "knowledge_campaigns").resolve()
         self.package_root = self.campaign_root / "research"
-        self.policy = SourceAuthorityPolicy(policy_path or self.repository_root / "app" / "data" / "source_authority_policy.json")
+        application_root = resolve_application_root(repository_root)
+        self.policy = SourceAuthorityPolicy(policy_path or application_root / "app" / "data" / "source_authority_policy.json")
         self.search_providers = search_providers or {"microsoft_learn": MicrosoftLearnSearchProvider()}
         self.http_validator = http_validator or SourceHTTPValidator()
         self.planner = KnowledgeCoveragePlannerService(

@@ -4,6 +4,8 @@ import re
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
+
+from app.data_root import resolve_data_path
 from uuid import uuid4
 
 
@@ -17,7 +19,11 @@ class DeviceProfileService:
     CONNECTION_TYPES = {"Ethernet", "Wi-Fi", "Cellular", "VPN", "Offline", "Other"}
 
     def __init__(self, profile_path=None):
-        self.profile_path = Path(profile_path) if profile_path else Path(__file__).resolve().parent.parent / "device_profiles"
+        self.profile_path = resolve_data_path(
+            "app", "device_profiles",
+            explicit_path=profile_path,
+            legacy_path=Path(__file__).resolve().parent.parent / "device_profiles",
+        )
         self.profile_path.mkdir(parents=True, exist_ok=True)
 
     def list(self):

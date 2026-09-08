@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 from datetime import datetime, timezone
 from pathlib import Path
+from app.data_root import resolve_data_root
 
 from . import __version__
 from .checks import CuratorChecks, SEVERITY_ORDER
@@ -14,8 +15,8 @@ from .reporting import AuditReportWriter
 
 
 class CuratorAuditor:
-    def __init__(self, repository_root: Path | str = ".", output_root: Path | str = "curation_runs", memory_root: Path | str = "curation_memory"):
-        self.repository_root = Path(repository_root).resolve()
+    def __init__(self, repository_root: Path | str | None = None, output_root: Path | str = "curation_runs", memory_root: Path | str = "curation_memory"):
+        self.repository_root = resolve_data_root(repository_root, legacy_root=Path.cwd())
         output = Path(output_root)
         self.output_root = (output if output.is_absolute() else self.repository_root / output).resolve()
         memory = Path(memory_root)

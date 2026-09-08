@@ -5,6 +5,8 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from app.data_root import resolve_data_path
+
 
 class ScriptAuthoringError(ValueError):
     pass
@@ -20,8 +22,12 @@ class ScriptAuthoringService:
         "Cross-platform": {"PowerShell"},
     }
 
-    def __init__(self, base_path="knowledge_base/scripts"):
-        self.base_path = Path(base_path)
+    def __init__(self, base_path=None):
+        self.base_path = resolve_data_path(
+            "knowledge_base", "scripts",
+            explicit_path=base_path,
+            legacy_path="knowledge_base/scripts",
+        )
         self.catalog_path = self.base_path / "catalog.json"
 
     def validate(self, draft, existing_ids=(), check_unique=True):

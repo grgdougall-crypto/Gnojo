@@ -16,6 +16,7 @@ class CrossWorkspaceNavigationTests(unittest.TestCase):
         self.root = Path(self.temporary.name)
         self.previous_root = app.config.get("STRUCTURAL_REPAIR_REPOSITORY_ROOT")
         app.config.update(TESTING=True, STRUCTURAL_REPAIR_REPOSITORY_ROOT=str(self.root))
+        (self.root / "app" / "workflow_drafts").mkdir(parents=True, exist_ok=True)
 
         source_root = Path(__file__).resolve().parents[1]
         for relative in (

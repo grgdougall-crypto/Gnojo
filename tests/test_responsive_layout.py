@@ -1,12 +1,31 @@
+import tempfile
 import unittest
 from pathlib import Path
 
 from app.app import app
+from tests.ui_fixtures import write_ui_workflow
 
 
 class ResponsiveLayoutTests(unittest.TestCase):
     def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.root = Path(self.temporary.name)
+        write_ui_workflow(self.root)
+        self.previous_testing = app.config.get("TESTING")
+        self.previous_workflow_root = app.config.get("WORKFLOW_REPOSITORY_ROOT")
+        app.config.update(
+            TESTING=True,
+            WORKFLOW_REPOSITORY_ROOT=str(self.root),
+        )
         self.client = app.test_client()
+
+    def tearDown(self):
+        app.config["TESTING"] = self.previous_testing
+        if self.previous_workflow_root is None:
+            app.config.pop("WORKFLOW_REPOSITORY_ROOT", None)
+        else:
+            app.config["WORKFLOW_REPOSITORY_ROOT"] = self.previous_workflow_root
+        self.temporary.cleanup()
 
     def test_major_pages_render_for_responsive_browser_checks(self):
         routes = (

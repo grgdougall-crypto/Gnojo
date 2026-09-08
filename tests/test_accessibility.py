@@ -1,10 +1,11 @@
-import re
+import tempfile
 import unittest
-from html import unescape
 from html.parser import HTMLParser
 from pathlib import Path
 
 from app.app import app
+from curator.memory import CuratorMemoryStore
+from tests.ui_fixtures import write_ui_workflow
 
 
 class InteractiveParser(HTMLParser):
@@ -45,12 +46,51 @@ class InteractiveParser(HTMLParser):
 
 class AccessibilityTests(unittest.TestCase):
     def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.root = Path(self.temporary.name)
+        write_ui_workflow(self.root)
+        (self.root / "curation_memory").mkdir(parents=True, exist_ok=True)
+        store = CuratorMemoryStore(self.root / "curation_memory")
+        state = store.load()
+        state["tasks"] = {"GKT-A11Y": {
+            "task_id": "GKT-A11Y", "finding_id": "CUR-A11Y",
+            "status": "open", "owner": "Human", "priority": "Medium",
+            "classification": "Risk", "finding_type": "ui_fixture",
+            "title": "Accessibility fixture", "content_type": "workflow",
+            "content_identifier": "vpn_connectivity_win",
+            "curator_rule": "CUR-UI-FIXTURE",
+            "explanation": "Exercise the task-detail landmark.",
+            "recommended_action": "Inspect the rendered task.",
+            "confidence": "high", "knowledge_debt_score": 1,
+            "first_seen": "2026-01-01T00:00:00+00:00",
+            "last_seen": "2026-01-01T00:00:00+00:00", "times_observed": 1,
+            "related_content": [], "related_workflows": [],
+            "related_articles": [], "related_commands": [], "related_scripts": [],
+            "evidence": ["Fixture evidence."], "history": [],
+            "resolution_history": [],
+        }}
+        store.save(state)
         self.previous_testing = app.config.get("TESTING")
-        app.config["TESTING"] = True
+        self.previous_workflow_root = app.config.get("WORKFLOW_REPOSITORY_ROOT")
+        self.previous_structural_root = app.config.get("STRUCTURAL_REPAIR_REPOSITORY_ROOT")
+        app.config.update(
+            TESTING=True,
+            WORKFLOW_REPOSITORY_ROOT=str(self.root),
+            STRUCTURAL_REPAIR_REPOSITORY_ROOT=str(self.root),
+        )
         self.client = app.test_client()
 
     def tearDown(self):
         app.config["TESTING"] = self.previous_testing
+        for key, value in (
+            ("WORKFLOW_REPOSITORY_ROOT", self.previous_workflow_root),
+            ("STRUCTURAL_REPAIR_REPOSITORY_ROOT", self.previous_structural_root),
+        ):
+            if value is None:
+                app.config.pop(key, None)
+            else:
+                app.config[key] = value
+        self.temporary.cleanup()
 
     def parse(self, route):
         response = self.client.get(route)
@@ -95,10 +135,7 @@ class AccessibilityTests(unittest.TestCase):
                 _, parser = self.parse(route)
                 self.assertEqual(parser.main_count, 1)
 
-        curator_html, _ = self.parse("/curator")
-        task_link = re.search(r'href="([^\"]*/curator/tasks/[^\"]+)"', curator_html)
-        self.assertIsNotNone(task_link)
-        _, task_parser = self.parse(unescape(task_link.group(1)))
+        _, task_parser = self.parse("/curator/tasks/GKT-A11Y")
         self.assertEqual(task_parser.main_count, 1)
 
     def test_scoped_active_controls_have_programmatic_names(self):

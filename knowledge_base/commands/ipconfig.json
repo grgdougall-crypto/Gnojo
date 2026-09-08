@@ -88,7 +88,8 @@
   ],
   "related_articles": [
     "inspect-windows-network-ipconfig",
-    "ethernet-connection-check"
+    "ethernet-connection-check",
+    "vpn-connectivity-win-instr-reset-ip-stack"
   ],
   "tags": [
     "networking",

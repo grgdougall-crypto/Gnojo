@@ -97,5 +97,8 @@
       "published_at": "2026-08-21T06:26:21.140039+00:00",
       "reviewed_by": "Gnojo reviewer"
     }
+  ],
+  "related_commands": [
+    "ipconfig"
   ]
 }

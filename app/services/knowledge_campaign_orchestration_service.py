@@ -931,7 +931,10 @@ class KnowledgeCampaignOrchestrationService:
 
     @staticmethod
     @contextmanager
-    def _decision_lock(path: Path, timeout: float = 2.0):
+    def _decision_lock(
+        path: Path, timeout: float = 2.0,
+        operation: str = "command relationship decision",
+    ):
         path.parent.mkdir(parents=True, exist_ok=True)
         deadline = time.monotonic() + timeout
         descriptor = None
@@ -941,12 +944,12 @@ class KnowledgeCampaignOrchestrationService:
             except FileExistsError:
                 if time.monotonic() >= deadline:
                     raise KnowledgeCampaignOrchestrationError(
-                        "Another command relationship decision is in progress."
+                        f"Another {operation} is in progress."
                     )
                 time.sleep(0.02)
             except OSError as error:
                 raise KnowledgeCampaignOrchestrationError(
-                    f"The command relationship decision lock is unavailable: {error}"
+                    f"The {operation} lock is unavailable: {error}"
                 ) from error
         try:
             os.write(descriptor, json.dumps({"pid": os.getpid()}).encode("utf-8"))

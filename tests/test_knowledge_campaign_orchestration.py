@@ -323,6 +323,11 @@ class KnowledgeCampaignOrchestrationTests(unittest.TestCase):
         self.assertIn("campaign_id=KCAMP-TEST", rendered)
         self.assertIn("work_item_id=KCW-1", rendered)
         self.assertIn("#workflow-low_storage", rendered)
+        self.assertIn("Prepare Learning Draft", rendered)
+        self.assertIn(
+            "/curator/growth/orchestration/KORCH-TEST/items/KCW-1/learning-draft",
+            rendered,
+        )
         self.assertNotIn("This blocker has no governed internal destination.", rendered)
         self.assertEqual(after, before)
 

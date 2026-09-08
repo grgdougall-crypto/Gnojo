@@ -184,6 +184,10 @@ from app.services.knowledge_campaign_orchestration_service import (
 )
 from app.services.campaign_blocker_destination_service import CampaignBlockerDestinationService
 from app.services.campaign_review_destination_service import CampaignReviewDestinationService
+from app.services.campaign_learning_draft_preparation_service import (
+    CampaignLearningDraftPreparationError,
+    CampaignLearningDraftPreparationService,
+)
 from curator.locking import AuditAlreadyRunningError
 from curator.governance import CuratorGovernanceError
 from curator.growth import CuratorGrowthError
@@ -1364,6 +1368,13 @@ def knowledge_campaign_orchestration_detail(campaign_id):
                         return_to=campaign_return,
                     )
                 item["review_link"] = url_for(destination["endpoint"], **route_values)
+                if item.get("next_action") == "author_learning_content":
+                    item["learning_preparation_link"] = url_for(
+                        "knowledge_campaign_learning_draft",
+                        orchestration_id=orchestration["orchestration_id"],
+                        work_item_id=item.get("work_item_id"),
+                        campaign_id=campaign_id,
+                    )
             if item.get("next_action") == "review_command_reference":
                 work_item_id = str(item.get("work_item_id") or "")
                 review_item = review_service.find(
@@ -1403,6 +1414,56 @@ def knowledge_campaign_orchestration_detail(campaign_id):
         orchestration_error=request.args.get("orchestration_error", ""),
         orchestration_notice=request.args.get("orchestration_notice", ""),
         review_return_to=review_return_to,
+    )
+
+
+@app.route(
+    "/curator/growth/orchestration/<orchestration_id>/items/"
+    "<work_item_id>/learning-draft",
+    methods=["GET", "POST"],
+)
+def knowledge_campaign_learning_draft(orchestration_id, work_item_id):
+    service = CampaignLearningDraftPreparationService(
+        _structural_repository_root()
+    )
+    campaign_id = str(request.values.get("campaign_id") or "").strip()
+    try:
+        if request.method == "POST":
+            identity = getattr(g, "reviewer_identity", None)
+            result = service.prepare(
+                campaign_id,
+                orchestration_id,
+                work_item_id,
+                actor=getattr(identity, "username", "Reviewer"),
+            )
+            preview = None
+        else:
+            preview = service.preview(
+                campaign_id, orchestration_id, work_item_id
+            )
+            result = None
+    except CampaignLearningDraftPreparationError as error:
+        return redirect(url_for(
+            "knowledge_campaign_orchestration_detail",
+            campaign_id=campaign_id,
+            orchestration_error=str(error),
+        ))
+    context = result or preview
+    campaign_return = url_for(
+        "knowledge_campaign_orchestration_detail", campaign_id=campaign_id
+    )
+    workflow_return = campaign_return
+    workflow_url = url_for(
+        "workflow_editor",
+        filename=context["workflow_filename"],
+        return_to=workflow_return,
+    )
+    return render_template(
+        "campaign_learning_draft_preparation.html",
+        preview=preview,
+        result=result,
+        campaign_return=campaign_return,
+        workflow_url=workflow_url,
     )
 
 

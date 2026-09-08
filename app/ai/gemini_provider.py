@@ -28,6 +28,7 @@ class GeminiProvider(AIProvider):
         self.client = genai.Client(
             api_key=api_key
         )
+        self.model = "gemini-2.5-flash"
 
     def generate_command(
         self,
@@ -126,7 +127,7 @@ class GeminiProvider(AIProvider):
     def find_authoritative_sources(self, prompt):
         """Find current web sources using Google Search grounding."""
         response = self.client.models.generate_content(
-            model="gemini-2.5-flash",
+            model=self.model,
             contents=prompt,
             config=types.GenerateContentConfig(
                 tools=[types.Tool(google_search=types.GoogleSearch())]
@@ -171,7 +172,7 @@ class GeminiProvider(AIProvider):
         """
 
         response = self.client.models.generate_content(
-            model="gemini-2.5-flash",
+            model=self.model,
             contents=prompt,
         )
 

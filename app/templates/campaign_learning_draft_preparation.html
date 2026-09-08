@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Prepare Learning Draft | Gnojo{% endblock %}
+{% block content %}
+<div class="container curator-page" id="main-content" aria-labelledby="learningDraftTitle">
+  <nav aria-label="Breadcrumb"><a href="{{ campaign_return }}">Campaign Control Center</a> / Prepare Learning Draft</nav>
+  <header class="curator-heading">
+    <div><span class="section-eyebrow">Supervised learning authoring</span><h1 id="learningDraftTitle">Prepare Learning Draft</h1><p>{{ (result or preview).workflow_name }}</p></div>
+    <a class="btn btn-outline-secondary" href="{{ campaign_return }}">Return to Campaign Control Center</a>
+  </header>
+
+  {% if preview %}
+  <section class="quality-section" aria-labelledby="previewTitle">
+    <span class="section-eyebrow">Review before execution</span><h2 id="previewTitle">Current draft scan</h2>
+    <div class="curator-metrics">
+      <article><span>Nodes scanned</span><strong>{{ preview.nodes_scanned }}</strong></article>
+      <article><span>Existing help preserved</span><strong>{{ preview.existing_help_preserved }}</strong></article>
+      <article><span>Blank eligible nodes</span><strong>{{ preview.eligible_count }}</strong></article>
+    </div>
+    {% if preview.eligible_nodes %}<ul>{% for node in preview.eligible_nodes %}<li><strong>{{ node.title }}</strong> <code>{{ node.node_id }}</code></li>{% endfor %}</ul>{% else %}<p>No eligible blank Help Text fields remain in the current draft.</p>{% endif %}
+    <p class="text-muted">Configured AI providers will be tried in their existing order. Valid suggestions will be saved only to blank Help Text fields. Existing help, workflow structure, publication state, and the campaign human gate remain unchanged.</p>
+    {% if preview.eligible_count %}<form method="post" action="{{ url_for('knowledge_campaign_learning_draft', orchestration_id=preview.orchestration_id, work_item_id=preview.work_item_id) }}">
+      <input type="hidden" name="authenticity_token" value="{{ authenticity_token() }}">
+      <input type="hidden" name="campaign_id" value="{{ preview.campaign_id }}">
+      <button class="btn btn-warning" type="submit">Prepare Learning Draft</button>
+    </form>{% endif %}
+  </section>
+  {% else %}
+  <section class="quality-section" aria-labelledby="resultTitle">
+    <span class="section-eyebrow">Preparation result</span><h2 id="resultTitle">{{ result.status|replace('_', ' ')|title }}</h2>
+    <div class="curator-metrics">
+      <article><span>Nodes scanned</span><strong>{{ result.nodes_scanned }}</strong></article>
+      <article><span>Existing help preserved</span><strong>{{ result.existing_help_preserved }}</strong></article>
+      <article><span>Generated and saved</span><strong>{{ result.generated_saved }}</strong></article>
+      <article><span>Remaining blank</span><strong>{{ result.remaining_blank_eligible_nodes|length }}</strong></article>
+    </div>
+    {% if result.generated_nodes %}<h3 class="h5">Saved help text</h3><ul>{% for node in result.generated_nodes %}<li><strong>{{ node.title }}</strong> · {{ node.provider }} / {{ node.model }}</li>{% endfor %}</ul>{% endif %}
+    {% if result.skipped_failed_nodes %}<h3 class="h5">Skipped or failed</h3><ul>{% for node in result.skipped_failed_nodes %}<li><code>{{ node.node_id }}</code> — {{ node.reason }}</li>{% endfor %}</ul>{% endif %}
+    <div class="d-flex flex-wrap gap-2"><a class="btn btn-primary" href="{{ workflow_url }}">Inspect Workflow Draft</a><a class="btn btn-outline-secondary" href="{{ campaign_return }}">Return to Campaign Control Center</a></div>
+    <p class="text-muted mt-3 mb-0">Nothing was published and the campaign remains at its human review gate.</p>
+  </section>
+  {% endif %}
+</div>
+{% endblock %}

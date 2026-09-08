@@ -42,7 +42,7 @@ class WorkflowHelpTextService:
         self.providers = providers
         self.fallback = fallback or WorkflowCoverageService()
 
-    def suggest(self, workflow, node_id, node):
+    def suggest(self, workflow, node_id, node, *, allow_fallback=True):
         self._validate_inputs(workflow, node_id, node)
         context = self._context(workflow, node_id, node)
         prompt = self._prompt(context)
@@ -59,17 +59,26 @@ class WorkflowHelpTextService:
                 return {
                     "help_text": help_text,
                     "provider": provider_name,
+                    "model": str(
+                        getattr(provider, "model", None)
+                        or provider.__class__.__name__
+                    ),
                     "used_fallback": False,
                     "quality_checks": self._quality_checks(node, help_text),
                 }
             except Exception as error:
                 provider_errors.append(f"{provider_name}: {error}")
 
+        if not allow_fallback:
+            raise WorkflowHelpTextError(
+                "Configured AI providers did not return valid help text."
+            )
         help_text = self.fallback.generate_help_text(node)
         self.validate_candidate(node, help_text)
         return {
             "help_text": help_text,
             "provider": "Local fallback",
+            "model": "deterministic-local-fallback",
             "used_fallback": True,
             "quality_checks": self._quality_checks(node, help_text),
             "provider_errors": provider_errors,

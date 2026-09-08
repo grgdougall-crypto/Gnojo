@@ -443,13 +443,7 @@ class KnowledgeCoveragePlannerService:
                 continue
             workflow_id = row["workflow_id"]
             workflow = workflows[workflow_id]
-            missing = []
-            for node_id, node in sorted((workflow.get("nodes") or {}).items()):
-                if not isinstance(node, dict) or node.get("type") not in {"question", "instruction"}:
-                    continue
-                if node.get("help_text") or self._safety_ambiguous(node):
-                    continue
-                missing.append(node_id)
+            missing = self.learning_help_text_candidate_ids(workflow)
             if not missing:
                 continue
             identity = f"workflow:{workflow_id}:weak_learning_coverage"
@@ -478,6 +472,18 @@ class KnowledgeCoveragePlannerService:
                 "expected_human_gate": "Workflow Designer learning authoring",
             })
         return candidates
+
+    @classmethod
+    def learning_help_text_candidate_ids(cls, workflow: dict[str, Any]) -> list[str]:
+        """Return the exact nodes used by weak-learning coverage detection."""
+        return [
+            node_id
+            for node_id, node in sorted((workflow.get("nodes") or {}).items())
+            if isinstance(node, dict)
+            and node.get("type") in {"question", "instruction"}
+            and not str(node.get("help_text") or "").strip()
+            and not cls._safety_ambiguous(node)
+        ]
 
     def _command_reference_candidates(self, records, workflows, provenance):
         commands = {

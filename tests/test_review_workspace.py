@@ -322,11 +322,11 @@ class ReviewWorkspaceTests(unittest.TestCase):
         self.assertEqual(projected["key"], expected_key)
         self.assertIn(
             f'href="/review?item=command_relationship_review:{context["work_item_id"]}"'
-            ">Open Review Workspace</a>",
+            ">Review Decision</a>",
             page,
         )
-        self.assertIn('href="/commands/ipconfig">Review authoritative package</a>', page)
-        self.assertNotIn('href="/commands/ipconfig">Open Review Workspace</a>', page)
+        self.assertIn('href="/commands/ipconfig">Inspect Command Reference</a>', page)
+        self.assertNotIn('href="/commands/ipconfig">Review Decision</a>', page)
         self.assertEqual(self.repository_snapshot(), before)
 
     def test_reconciled_absent_declaration_exposes_review_and_package_links(self):
@@ -351,11 +351,52 @@ class ReviewWorkspaceTests(unittest.TestCase):
         )
         self.assertIn(
             f'href="/review?item=command_relationship_review:{context["work_item_id"]}"'
-            ">Open Review Workspace</a>",
+            ">Review Decision</a>",
             page,
         )
-        self.assertIn('href="/commands/ipconfig">Review authoritative package</a>', page)
-        self.assertNotIn('href="/commands/ipconfig">Open Review Workspace</a>', page)
+        self.assertIn('href="/commands/ipconfig">Inspect Command Reference</a>', page)
+        self.assertNotIn('href="/commands/ipconfig">Review Decision</a>', page)
+        self.assertEqual(self.repository_snapshot(), before)
+
+    def test_campaign_human_gate_is_primary_and_machine_work_is_secondary(self):
+        self.save_tasks()
+        context = self.add_command_relationship_review(relationship_handoff=True)
+        orchestration_path = context["orchestration_path"]
+        orchestration = json.loads(orchestration_path.read_text(encoding="utf-8"))
+        orchestration["work_item_states"].append({
+            "work_item_id": "KCW-MACHINE-1", "gap_id": "KCG-MACHINE-1",
+            "title": "Prepare DHCP research", "work_type": "knowledge_article",
+            "priority": "medium", "stage": "research_needed", "state": "machine_ready",
+            "next_action": "prepare_research", "action_authority": "machine_safe",
+            "review_link": None, "blocker": None, "dependencies": [], "stale": False,
+        })
+        orchestration["readiness_summary"]["machine_ready"] = 1
+        orchestration["next_recommended_action"] = {
+            "title": "Prepare DHCP research", "next_action": "prepare_research",
+        }
+        orchestration_path.write_text(json.dumps(orchestration), encoding="utf-8")
+        before = self.repository_snapshot()
+
+        response = self.client.get(
+            f"/curator/growth/coverage-campaigns/{context['campaign_id']}/orchestration"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        page = response.get_data(as_text=True)
+        self.assertIn("1 human decision is blocking campaign progress.", page)
+        self.assertIn("Continue Machine-ready Work", page)
+        next_action = page[page.index('id="nextTitle"'):page.index("</section>", page.index('id="nextTitle"'))]
+        self.assertIn("Review Decision", next_action)
+        self.assertNotIn("Prepare Research", next_action)
+        self.assertLess(page.index("Human action required"), page.index("Machine-ready work"))
+        self.assertIn("Factory Stages", page)
+        self.assertIn("Intervention Required", page)
+        parser = InteractiveParser()
+        parser.feed(page)
+        self.assertEqual(parser.main_count, 1)
+        self.assertEqual(len(parser.ids), len(set(parser.ids)))
+        for button in parser.buttons:
+            self.assertTrue(button["text"].strip() or button["attrs"].get("aria-label"))
         self.assertEqual(self.repository_snapshot(), before)
 
     def test_command_relationship_approval_is_reciprocal_and_completes_gate(self):
@@ -610,8 +651,8 @@ class ReviewWorkspaceTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         page = response.get_data(as_text=True)
         self.assertIn("Review item unavailable", page)
-        self.assertNotIn("Open Review Workspace", page)
-        self.assertIn('href="/commands/ipconfig">Review authoritative package</a>', page)
+        self.assertNotIn('href="/commands/ipconfig">Review Decision</a>', page)
+        self.assertIn('href="/commands/ipconfig">Inspect Command Reference</a>', page)
         self.assertEqual(self.repository_snapshot(), before)
 
     def test_campaign_work_fails_closed_when_review_identity_is_ambiguous(self):
@@ -630,8 +671,8 @@ class ReviewWorkspaceTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         page = response.get_data(as_text=True)
         self.assertIn("Review item unavailable", page)
-        self.assertNotIn("Open Review Workspace", page)
-        self.assertIn('href="/commands/ipconfig">Review authoritative package</a>', page)
+        self.assertNotIn('href="/commands/ipconfig">Review Decision</a>', page)
+        self.assertIn('href="/commands/ipconfig">Inspect Command Reference</a>', page)
         self.assertEqual(self.repository_snapshot(), before)
 
     def test_unrelated_and_completed_campaign_gates_are_not_projected(self):

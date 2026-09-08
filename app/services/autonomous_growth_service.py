@@ -75,17 +75,34 @@ class AutonomousGrowthService:
         self.max_transitions = max(1, int(max_transitions))
         self.max_external_operations = max(0, int(max_external_operations))
 
-    def run(self, *, preview: bool = False) -> AutonomousGrowthResult:
+    def run(
+        self,
+        *,
+        preview: bool = False,
+        _selected_candidate: dict[str, Any] | None = None,
+    ) -> AutonomousGrowthResult:
         try:
-            assessments = [
-                self.planner.assess_domain(domain["id"])
-                for domain in self.planner.domains()
-            ]
-            stage2_candidates = (
-                self.planner.assess_stage2_candidates()
-                if hasattr(self.planner, "assess_stage2_candidates") else []
-            )
-            candidate = self._select(assessments, stage2_candidates)
+            if _selected_candidate is None:
+                domains = [
+                    domain for domain in self.planner.domains()
+                    if not domain.get("batch_only")
+                ]
+                domain_ids = {domain["id"] for domain in domains}
+                assessments = [
+                    self.planner.assess_domain(domain["id"])
+                    for domain in domains
+                ]
+                stage2_candidates = (
+                    self.planner.assess_stage2_candidates()
+                    if hasattr(self.planner, "assess_stage2_candidates") else []
+                )
+                stage2_candidates = [
+                    item for item in stage2_candidates
+                    if item.get("domain_id") in domain_ids
+                ]
+                candidate = self._select(assessments, stage2_candidates)
+            else:
+                candidate = deepcopy(_selected_candidate)
             if candidate is None:
                 return self._result(
                     "NO-OP",
@@ -244,8 +261,37 @@ class AutonomousGrowthService:
                 },
             )
 
+    def ranked_candidates(
+        self, domain_id: str
+    ) -> list[dict[str, Any]]:
+        """Return supported candidates for one exact domain without writing state."""
+        assessment = self.planner.assess_domain(domain_id)
+        stage2_candidates = (
+            self.planner.assess_stage2_candidates()
+            if hasattr(self.planner, "assess_stage2_candidates") else []
+        )
+        scoped = [
+            item for item in stage2_candidates
+            if item.get("domain_id") == domain_id
+        ]
+        return self._rank_candidates([assessment], scoped)
+
+    def prepare_ranked_candidate(
+        self, candidate: dict[str, Any], *, preview: bool = False
+    ) -> AutonomousGrowthResult:
+        """Run the existing governed path for one internally ranked candidate."""
+        return self.run(preview=preview, _selected_candidate=candidate)
+
     def _select(self, assessments: list[dict[str, Any]],
                 stage2_candidates: list[dict[str, Any]] | None = None) -> dict[str, Any] | None:
+        candidates = self._rank_candidates(assessments, stage2_candidates)
+        return candidates[0] if candidates else None
+
+    def _rank_candidates(
+        self,
+        assessments: list[dict[str, Any]],
+        stage2_candidates: list[dict[str, Any]] | None = None,
+    ) -> list[dict[str, Any]]:
         candidates = []
         for assessment in assessments:
             areas = {
@@ -318,9 +364,7 @@ class AutonomousGrowthService:
             if candidate:
                 candidate["selection_explanation"] = self._selection_explanation(candidate)
                 candidates.append(candidate)
-        if not candidates:
-            return None
-        return min(
+        return sorted(
             candidates,
             key=lambda item: (
                 item["ranking"]["type_priority"],
@@ -692,8 +736,16 @@ class AutonomousGrowthService:
             if state.get("state") == "complete":
                 return self._result(
                     "NO-OP", False, candidate, candidate["selection_explanation"],
-                    campaign=self._campaign_summary(campaign, disposition),
-                    preparation={"outcome": "already_prepared", "artifacts": outcomes},
+                    campaign={
+                        **self._campaign_summary(campaign, disposition),
+                        "orchestration_id": record["orchestration_id"],
+                        "work_item_id": state.get("work_item_id"),
+                    },
+                    preparation={
+                        "outcome": "already_prepared",
+                        "work_item_id": state.get("work_item_id"),
+                        "artifacts": outcomes,
+                    },
                     validation={"status": "passed", "basis": "existing_pipeline_projection"},
                     human_review=self._human_review(record, state),
                 )
@@ -757,10 +809,12 @@ class AutonomousGrowthService:
             campaign={
                 **self._campaign_summary(campaign, disposition),
                 "orchestration_id": record["orchestration_id"],
+                "work_item_id": state.get("work_item_id"),
             },
             preparation={
                 "outcome": "prepared_for_human_review",
                 "stage": state.get("stage"),
+                "work_item_id": state.get("work_item_id"),
                 "artifacts": outcomes,
             },
             validation={

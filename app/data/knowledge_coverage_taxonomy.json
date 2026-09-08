@@ -15,6 +15,20 @@
         {"id": "vpn", "title": "VPN", "terms": ["vpn", "virtual private network"]},
         {"id": "higher-layer", "title": "Higher-Layer Connectivity", "terms": ["proxy", "firewall", "browser", "website", "application-specific", "higher-layer"]}
       ]
+    },
+    {
+      "id": "desktop-support",
+      "title": "Desktop Support",
+      "category": "Desktop Support",
+      "platforms": ["Windows"],
+      "batch_only": true,
+      "areas": [
+        {"id": "application-crashes", "title": "Application Crashes", "terms": ["application", "crash", "freezes", "failure"]},
+        {"id": "storage", "title": "Storage", "terms": ["disk", "storage", "space", "drive"]},
+        {"id": "sound", "title": "Sound", "terms": ["sound", "audio", "speaker", "volume"]},
+        {"id": "printing", "title": "Printing", "terms": ["printer", "printing", "print queue", "paper"]},
+        {"id": "performance", "title": "Computer Performance", "terms": ["slow", "performance", "task manager", "startup"]}
+      ]
     }
   ]
 }

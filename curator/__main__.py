@@ -127,6 +127,14 @@ def parser() -> argparse.ArgumentParser:
     )
     autonomous_growth.add_argument("--repository")
     autonomous_growth.add_argument("--preview", action="store_true")
+    library_growth = commands.add_parser(
+        "grow-library",
+        help="Select and prepare one supervised library Growth batch",
+    )
+    library_growth.add_argument("--repository")
+    library_growth.add_argument("--domain", required=True)
+    library_growth.add_argument("--limit", type=int, choices=(1, 2, 3), default=3)
+    library_growth.add_argument("--preview", action="store_true")
     commands.add_parser(
         "init-data-root",
         help="Initialize an empty GNOJO_DATA_ROOT with deployment baseline content",
@@ -158,6 +166,18 @@ def main(argv: list[str] | None = None) -> int:
         result = AutonomousGrowthService(repository).run(preview=args.preview)
         print(json.dumps(result.as_dict(), sort_keys=True))
         return 2 if result.status == "BLOCKED" else 0
+    if args.command == "grow-library":
+        from app.services.supervised_library_growth_batch_service import (
+            SupervisedLibraryGrowthBatchService,
+        )
+
+        result = SupervisedLibraryGrowthBatchService(repository).run(
+            domain=args.domain,
+            limit=args.limit,
+            preview=args.preview,
+        )
+        print(json.dumps(result.as_dict(), sort_keys=True))
+        return 2 if result.status in {"BLOCKED", "PARTIAL"} else 0
     if args.command == "stage-b-scheduled":
         from curator.stage_b_scheduled_runner import (
             CuratorStageBScheduledRunner,

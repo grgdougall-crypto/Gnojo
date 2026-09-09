@@ -124,6 +124,59 @@ class KnowledgeSourceResearchTests(unittest.TestCase):
         path.write_text(json.dumps(article), encoding="utf-8")
         return path
 
+    def capability_article_service(self):
+        taxonomy = {
+            "schema_version": "1.0",
+            "domains": [{
+                "id": "desktop-support", "title": "Desktop Support",
+                "category": "Desktop Support", "platforms": ["Windows"],
+                "capability_catalog": "capabilities.json", "areas": [],
+            }],
+        }
+        catalog = {
+            "schema_version": "1.0", "catalog_id": "test-capabilities",
+            "domain_id": "desktop-support", "title": "Test capabilities",
+            "capabilities": [{
+                "id": "vpn-article", "title": "VPN Article", "level": "core",
+                "platform": "Windows", "category": "Networking",
+                "terms": ["vpn", "connectivity"],
+                "expected_artifacts": ["article"], "likely_relationships": [],
+                "artifact_matches": {"workflow": [], "article": [], "command": []},
+            }],
+        }
+        self.taxonomy.write_text(json.dumps(taxonomy), encoding="utf-8")
+        (self.root / "capabilities.json").write_text(json.dumps(catalog), encoding="utf-8")
+        planner = KnowledgeCoveragePlannerService(
+            self.root, self.campaign_root, self.taxonomy
+        )
+        identity = "capability:desktop-support:windows:vpn-article:missing_article"
+        candidate = {
+            "gap_identity": identity, "gap_type": "missing_article",
+            "domain_id": "desktop-support", "area_id": "vpn-article",
+            "area_title": "VPN Article", "capability_id": "vpn-article",
+            "capability_level": "core", "capability_category": "Networking",
+            "platform": "Windows", "expected_artifacts": ["article"],
+            "likely_relationships": [], "evidence": ["Article coverage is absent."],
+        }
+        campaign = planner.create(
+            title="VPN Article Coverage", domain_id="desktop-support",
+            objective="Prepare a governed article draft.",
+            actor="Autonomous Growth Stage 1",
+            metadata={
+                "initiated_by": "autonomous_growth_stage1",
+                "gap_identity": identity,
+                "selected_gap": candidate,
+            },
+        )
+        campaign = planner.analyze(campaign["campaign_id"])
+        gap = campaign["gaps"][0]
+        work = campaign["work_items"][0]
+        service = KnowledgeSourceResearchService(
+            self.root, self.campaign_root, self.policy,
+            {"microsoft_learn": self.search}, self.validator, self.taxonomy,
+        )
+        return service, campaign, gap, work
+
     def test_request_has_stable_identity_associations_defaults_and_history(self):
         first = self.create(); second = self.create()
         self.assertEqual(first["package_id"], second["package_id"])
@@ -147,6 +200,46 @@ class KnowledgeSourceResearchTests(unittest.TestCase):
         package = self.service.run(self.create()["package_id"], force_external=True)
         self.assertIn("Microsoft Windows VPN", package["research_query"])
         self.assertEqual(self.search.calls[0][1], ("learn.microsoft.com", "support.microsoft.com"))
+
+    def test_capability_missing_article_enters_catalog_governed_research(self):
+        service, campaign, gap, work = self.capability_article_service()
+
+        package = service.create(campaign["campaign_id"], gap["gap_id"], work["work_item_id"])
+        researched = service.run(package["package_id"], force_external=True)
+
+        context = researched["capability_article_context"]
+        self.assertEqual(context["gap_identity"], gap["gap_identity"])
+        self.assertEqual(context["capability_id"], "vpn-article")
+        self.assertEqual(context["expected_artifact"], "article")
+        self.assertEqual(context["terms"], ["vpn", "connectivity"])
+        self.assertIn("VPN Article", researched["research_query"])
+        self.assertEqual(researched["status"], "ready_for_review")
+
+    def test_capability_missing_article_identity_mismatch_fails_closed(self):
+        service, campaign, gap, work = self.capability_article_service()
+        persisted = service.planner.get(campaign["campaign_id"])
+        persisted["work_items"][0]["gap_identity"] = (
+            "capability:desktop-support:windows:other:missing_article"
+        )
+        service.planner._save(persisted)
+
+        with self.assertRaisesRegex(
+            KnowledgeSourceResearchError, "identity is missing, stale, or ambiguous"
+        ):
+            service.create(campaign["campaign_id"], gap["gap_id"], work["work_item_id"])
+
+    def test_capability_missing_article_package_fails_if_catalog_terms_change(self):
+        service, campaign, gap, work = self.capability_article_service()
+        package = service.create(campaign["campaign_id"], gap["gap_id"], work["work_item_id"])
+        catalog_path = self.root / "capabilities.json"
+        catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+        catalog["capabilities"][0]["terms"] = ["changed governed term"]
+        catalog_path.write_text(json.dumps(catalog), encoding="utf-8")
+
+        with self.assertRaisesRegex(
+            KnowledgeSourceResearchError, "context is missing or stale"
+        ):
+            service.run(package["package_id"], force_external=True)
 
     def test_canonicalization_removes_tracking_fragment_and_duplicate_results(self):
         self.search.results *= 2

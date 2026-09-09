@@ -76,7 +76,81 @@ class KnowledgeCoveragePlannerService:
         return value
 
     def domains(self) -> list[dict[str, Any]]:
-        return deepcopy(self.taxonomy()["domains"])
+        domains = deepcopy(self.taxonomy()["domains"])
+        for domain in domains:
+            if domain.get("capability_catalog"):
+                catalog = self.capability_catalog(domain["id"])
+                domain["areas"] = deepcopy(catalog["capabilities"])
+                domain["capability_catalog_id"] = catalog["catalog_id"]
+                domain["capability_catalog_version"] = catalog["schema_version"]
+        return domains
+
+    def capability_catalog(self, domain_id: str) -> dict[str, Any]:
+        """Load one immutable, code-owned capability catalog fail-closed."""
+        domains = self.taxonomy()["domains"]
+        matches = [item for item in domains if item.get("id") == domain_id]
+        if len(matches) != 1 or not matches[0].get("capability_catalog"):
+            raise KnowledgeCoveragePlannerError(
+                f"Coverage domain '{domain_id}' has no capability catalog."
+            )
+        filename = str(matches[0]["capability_catalog"] or "").strip()
+        if not filename or Path(filename).name != filename:
+            raise KnowledgeCoveragePlannerError("Capability catalog path is invalid.")
+        path = self.taxonomy_path.parent / filename
+        try:
+            value = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as error:
+            raise KnowledgeCoveragePlannerError(
+                f"Unable to read capability catalog: {error}"
+            ) from error
+        capabilities = value.get("capabilities")
+        if (
+            value.get("schema_version") != "1.0"
+            or value.get("domain_id") != domain_id
+            or not str(value.get("catalog_id") or "").strip()
+            or not isinstance(capabilities, list)
+            or not capabilities
+        ):
+            raise KnowledgeCoveragePlannerError("Unsupported capability catalog.")
+        identifiers = set()
+        allowed_artifacts = {"workflow", "article", "command_reference"}
+        allowed_relationships = {"workflow_article", "article_command_reference"}
+        for capability in capabilities:
+            expected = capability.get("expected_artifacts")
+            matches_by_type = capability.get("artifact_matches")
+            identifier = str(capability.get("id") or "").strip()
+            if (
+                not identifier
+                or identifier in identifiers
+                or not str(capability.get("title") or "").strip()
+                or capability.get("level") not in {"core", "optional", "advanced"}
+                or not str(capability.get("platform") or "").strip()
+                or not str(capability.get("category") or "").strip()
+                or not isinstance(capability.get("terms"), list)
+                or not capability.get("terms")
+                or not isinstance(expected, list)
+                or not expected
+                or len(expected) != len(set(expected))
+                or not set(expected) <= allowed_artifacts
+                or not isinstance(capability.get("likely_relationships"), list)
+                or not set(capability.get("likely_relationships") or []) <= allowed_relationships
+                or len(capability.get("likely_relationships") or []) != len(set(
+                    capability.get("likely_relationships") or []
+                ))
+                or not isinstance(matches_by_type, dict)
+                or set(matches_by_type) != {"workflow", "article", "command"}
+                or not all(isinstance(matches_by_type[key], list)
+                           for key in matches_by_type)
+                or any(
+                    len(matches_by_type[key]) != len(set(matches_by_type[key]))
+                    for key in matches_by_type
+                )
+            ):
+                raise KnowledgeCoveragePlannerError(
+                    "Capability catalog contains an invalid or ambiguous capability."
+                )
+            identifiers.add(identifier)
+        return deepcopy(value)
 
     def list_campaigns(self) -> list[dict[str, Any]]:
         if not self.campaign_root.exists():
@@ -287,6 +361,7 @@ class KnowledgeCoveragePlannerService:
             "areas": areas,
             "reuse_opportunities": reuse,
             "gaps": gaps,
+            "capability_summary": self._capability_summary(areas, gaps),
             "fingerprint": self._fingerprint({
                 "domain": domain_id, "assets": assets, "areas": areas,
                 "reuse": reuse, "gaps": gaps,
@@ -328,13 +403,20 @@ class KnowledgeCoveragePlannerService:
         reuse = self._reuse_opportunities(campaign_id, domain, records)
         gaps = self._gaps(campaign_id, domain, area_results, reuse)
         seed = self._selected_seed_gap(campaign_id, campaign.get("creation_metadata") or {})
-        if seed and not any(
-            item.get("gap_type") == seed.get("gap_type")
-            and item.get("gap_identity") == seed.get("gap_identity")
-            for item in gaps
-        ):
-            gaps.append(seed)
-            gaps.sort(key=lambda item: (item["area_id"], item["gap_type"], item["gap_id"]))
+        if seed:
+            matching_seed = [
+                item for item in gaps
+                if item.get("gap_type") == seed.get("gap_type")
+                and item.get("gap_identity") == seed.get("gap_identity")
+            ]
+            if seed.get("capability_id"):
+                # A capability-driven autonomous campaign governs one exact
+                # selected gap; the full catalog remains a read-only domain
+                # projection rather than becoming dozens of unrelated work items.
+                gaps = matching_seed or [seed]
+            elif not matching_seed:
+                gaps.append(seed)
+                gaps.sort(key=lambda item: (item["area_id"], item["gap_type"], item["gap_id"]))
         work_items = [self._work_item(campaign_id, gap) for gap in gaps]
         fingerprint = self._fingerprint({
             "assets": assets, "areas": area_results, "gaps": gaps,
@@ -351,6 +433,7 @@ class KnowledgeCoveragePlannerService:
                 "areas": area_results,
                 "covered_areas": sum(1 for item in area_results if item["coverage_percent"] == 100),
                 "total_areas": len(area_results),
+                "capability_summary": self._capability_summary(area_results, gaps),
                 "fingerprint": fingerprint,
             },
             "existing_assets": assets,
@@ -388,6 +471,21 @@ class KnowledgeCoveragePlannerService:
                               if isinstance(node, dict)]
             linked_articles = {str(node.get("knowledge_article")) for node in workflow_nodes
                                if node.get("knowledge_article")}
+            article_ids = {record.identifier for record in articles}
+            command_ids = {record.identifier for record in commands}
+            article_command_ids = set()
+            for record in articles:
+                article_command_ids.update(str(value) for value in (
+                    record.raw.get("related_commands") or []
+                ))
+                for reference in record.raw.get("commands") or []:
+                    if isinstance(reference, dict):
+                        command = str(reference.get("command") or "").strip().casefold()
+                        article_command_ids.update(
+                            command_id for command_id in command_ids
+                            if command == command_id.casefold()
+                            or command.startswith(command_id.casefold() + " ")
+                        )
             facets = {
                 "workflow": bool(workflows),
                 "article": bool(articles),
@@ -398,6 +496,33 @@ class KnowledgeCoveragePlannerService:
                 "safety_authorization": self._safety_covered(workflow_nodes),
                 "relationships_reuse": bool(linked_articles),
             }
+            expected_artifacts = list(area.get("expected_artifacts") or [])
+            expected_relationships = list(area.get("likely_relationships") or [])
+            artifact_facets = {
+                "workflow": bool(workflows),
+                "article": bool(articles),
+                "command_reference": bool(commands),
+            }
+            relationship_facets = {
+                "workflow_article": bool(linked_articles.intersection(article_ids)),
+                "article_command_reference": bool(
+                    article_command_ids.intersection(command_ids)
+                ),
+            }
+            covered_expected = sum(
+                artifact_facets[name] for name in expected_artifacts
+            )
+            covered_relationships = sum(
+                relationship_facets.get(name, False) for name in expected_relationships
+            )
+            required_count = len(expected_artifacts) + len(expected_relationships)
+            capability_status = (
+                "covered" if required_count and (
+                    covered_expected + covered_relationships == required_count
+                )
+                else "missing" if expected_artifacts and covered_expected == 0
+                else "partial"
+            )
             results.append({
                 "area_id": area["id"], "title": area["title"], "facets": facets,
                 "workflow_count": len(workflows), "article_count": len(articles),
@@ -409,6 +534,16 @@ class KnowledgeCoveragePlannerService:
                 "relevant_node_count": len(workflow_nodes),
                 "coverage_percent": round(sum(facets.values()) * 100 / len(facets)),
                 "asset_ids": sorted(record.identifier for record in matched),
+                "capability_id": area.get("id") if area.get("expected_artifacts") else None,
+                "capability_level": area.get("level"),
+                "capability_category": area.get("category"),
+                "platform": area.get("platform") or (domain.get("platforms") or [""])[0],
+                "domain_id": domain["id"],
+                "expected_artifacts": expected_artifacts,
+                "likely_relationships": expected_relationships,
+                "artifact_facets": artifact_facets,
+                "relationship_facets": relationship_facets,
+                "capability_status": capability_status,
             })
         return sorted(assets.values(), key=lambda item: (item["content_type"], item["identifier"])), results
 
@@ -422,11 +557,27 @@ class KnowledgeCoveragePlannerService:
             "relationships_reuse": "missing_relationship",
         }
         for area in areas:
-            for facet, covered in area["facets"].items():
-                if not covered:
-                    gaps.append(self._gap(campaign_id, facet_types[facet], area, facet))
-            if area["workflow_count"] and area["relevant_node_count"] < 3:
-                gaps.append(self._gap(campaign_id, "shallow_coverage", area, "workflow"))
+            if area.get("capability_id"):
+                for artifact in area.get("expected_artifacts") or []:
+                    if not area["artifact_facets"][artifact]:
+                        gap_type = {
+                            "workflow": "missing_workflow",
+                            "article": "missing_article",
+                            "command_reference": "missing_command_reference",
+                        }[artifact]
+                        gaps.append(self._gap(
+                            campaign_id, gap_type, area, artifact,
+                            evidence=[
+                                f"The governed capability catalog expects {artifact.replace('_', ' ')} coverage for {area['title']}.",
+                                "No exact allowlisted artifact identity is present in the current inventory.",
+                            ],
+                        ))
+            else:
+                for facet, covered in area["facets"].items():
+                    if not covered:
+                        gaps.append(self._gap(campaign_id, facet_types[facet], area, facet))
+                if area["workflow_count"] and area["relevant_node_count"] < 3:
+                    gaps.append(self._gap(campaign_id, "shallow_coverage", area, "workflow"))
         for item in reuse:
             area = {"area_id": item["areas"][0], "title": item["areas"][0].replace("-", " ").title()}
             gaps.append(self._gap(campaign_id, "reusable_pattern", area, "relationships_reuse",
@@ -571,11 +722,14 @@ class KnowledgeCoveragePlannerService:
         return list(unique.values())
 
     def _selected_seed_gap(self, campaign_id, metadata):
-        if metadata.get("initiated_by") != "autonomous_growth_stage2":
+        if metadata.get("initiated_by") not in {
+            "autonomous_growth_stage1", "autonomous_growth_stage2"
+        }:
             return None
         candidate = metadata.get("selected_gap")
         if not isinstance(candidate, dict) or candidate.get("gap_type") not in {
             "weak_learning_coverage", "missing_command_reference",
+            "missing_article", "missing_workflow",
         }:
             return None
         identity = str(candidate.get("gap_identity") or "")
@@ -590,13 +744,23 @@ class KnowledgeCoveragePlannerService:
             candidate.get(key) for key in ("workflow_id", "node_id", "command_identity")
         ):
             return None
+        if candidate["gap_type"] in {"missing_article", "missing_workflow"} and not (
+            candidate.get("area_id") and candidate.get("capability_id")
+        ):
+            return None
+        facet = {
+            "weak_learning_coverage": "learning",
+            "missing_command_reference": "command_reference",
+            "missing_article": "article",
+            "missing_workflow": "workflow",
+        }[candidate["gap_type"]]
         return {
             "gap_id": self._stable_id("KCG", campaign_id, identity),
             "gap_identity": identity,
             "gap_type": candidate["gap_type"],
             "area_id": candidate.get("area_id") or candidate.get("workflow_id"),
             "area_title": candidate.get("area_title") or candidate.get("title"),
-            "facet": "learning" if candidate["gap_type"] == "weak_learning_coverage" else "command_reference",
+            "facet": facet,
             "summary": candidate.get("title"),
             "priority": "medium",
             "confidence": "high",
@@ -615,18 +779,74 @@ class KnowledgeCoveragePlannerService:
             "normalized_absent_declarations": list(
                 candidate.get("normalized_absent_declarations") or []
             ),
+            "capability_id": candidate.get("capability_id"),
+            "capability_level": candidate.get("capability_level"),
+            "capability_category": candidate.get("capability_category"),
+            "platform": candidate.get("platform"),
+            "expected_artifacts": list(candidate.get("expected_artifacts") or []),
+            "likely_relationships": list(candidate.get("likely_relationships") or []),
         }
 
     def _gap(self, campaign_id: str, gap_type: str, area: dict[str, Any], facet: str,
              evidence: list[str] | None = None, discriminator: str = "", **relationships) -> dict[str, Any]:
         gap_id = self._stable_id("KCG", campaign_id, area["area_id"], gap_type, discriminator)
-        return {
+        result = {
             "gap_id": gap_id, "gap_type": gap_type, "area_id": area["area_id"],
             "area_title": area["title"], "facet": facet,
             "summary": f"{area['title']} has {gap_type.replace('_', ' ')}.",
             "priority": "medium" if gap_type.startswith("missing_") else "low",
             "confidence": "high", "evidence": evidence or [f"Coverage facet '{facet}' is not present in the current inventory."],
             **relationships,
+        }
+        if area.get("capability_id"):
+            platform = re.sub(
+                r"[^a-z0-9]+", "-", str(area.get("platform") or "").casefold()
+            ).strip("-")
+            result.update({
+                "gap_identity": (
+                    f"capability:{area['domain_id']}:{platform}:"
+                    f"{area['capability_id']}:{gap_type}"
+                ),
+                "capability_id": area["capability_id"],
+                "capability_level": area.get("capability_level"),
+                "capability_category": area.get("capability_category"),
+                "platform": area.get("platform"),
+                "expected_artifacts": list(area.get("expected_artifacts") or []),
+                "likely_relationships": list(area.get("likely_relationships") or []),
+            })
+        return result
+
+    @staticmethod
+    def _capability_summary(
+        areas: list[dict[str, Any]], gaps: list[dict[str, Any]]
+    ) -> dict[str, Any]:
+        capabilities = [item for item in areas if item.get("capability_id")]
+        counts = {"covered": 0, "partial": 0, "missing": 0}
+        categories: dict[str, list[dict[str, Any]]] = {}
+        for item in capabilities:
+            status = item.get("capability_status") or "partial"
+            counts[status] += 1
+            categories.setdefault(item.get("capability_category") or "Other", []).append({
+                "capability_id": item["capability_id"],
+                "title": item["title"],
+                "level": item.get("capability_level"),
+                "status": status,
+                "artifact_facets": deepcopy(item.get("artifact_facets") or {}),
+                "relationship_facets": deepcopy(item.get("relationship_facets") or {}),
+            })
+        gap_counts = {
+            name: sum(1 for item in gaps if item.get("gap_type") == name)
+            for name in (
+                "missing_workflow", "missing_article", "missing_command_reference"
+            )
+        }
+        gap_counts["weak_learning_coverage"] = 0
+        return {
+            "total": len(capabilities), **counts, "gap_counts": gap_counts,
+            "categories": [
+                {"name": name, "capabilities": sorted(values, key=lambda row: row["title"])}
+                for name, values in sorted(categories.items())
+            ],
         }
 
     def _work_item(self, campaign_id: str, gap: dict[str, Any]) -> dict[str, Any]:
@@ -642,7 +862,9 @@ class KnowledgeCoveragePlannerService:
         for key in (
             "gap_identity", "workflow_id", "workflow_filename", "workflow_lifecycle",
             "node_ids", "node_id", "article_id", "command_identity",
-            "relationship_evidence_fingerprint",
+            "relationship_evidence_fingerprint", "capability_id",
+            "capability_level", "capability_category", "platform",
+            "expected_artifacts", "likely_relationships",
         ):
             if gap.get(key) not in (None, [], ""):
                 item[key] = deepcopy(gap[key])
@@ -741,6 +963,16 @@ class KnowledgeCoveragePlannerService:
         return opportunities
 
     def _matches_area(self, record: Any, area: dict[str, Any], domain: dict[str, Any]) -> bool:
+        exact = area.get("artifact_matches")
+        if isinstance(exact, dict):
+            key = {"workflow": "workflow", "article": "article", "command": "command"}.get(
+                record.content_type
+            )
+            if not key or record.identifier not in exact.get(key, []):
+                return False
+            platform = record.platform.casefold()
+            return (not platform or "cross-platform" in platform or
+                    str(area.get("platform") or "").casefold() in platform)
         text = self._search_text(record.raw)
         if not self._term_match(text, area["terms"]):
             return False

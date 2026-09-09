@@ -4,7 +4,7 @@
 <main class="container curator-page" id="main-content" aria-labelledby="batchTitle">
   {% with curator_active='growth' %}{% include 'partials/_curator_nav.html' %}{% endwith %}
   <header class="curator-heading">
-    <div><span class="section-eyebrow">Supervised Campaign Autopilot</span><h1 id="batchTitle">Batch Propagation</h1><p>{{ batch.domain.title }} · {{ batch.selected_count }} workflow{{ '' if batch.selected_count == 1 else 's' }}</p></div>
+    <div><span class="section-eyebrow">Supervised Campaign Autopilot</span><h1 id="batchTitle">Batch Propagation</h1><p>{{ batch.domain.title }} · {{ batch.selected_count }} workflow{{ '' if batch.selected_count == 1 else 's' }}</p><a href="{{ url_for('growth_operations', domain=batch.domain.id, limit=batch.requested_limit) }}">Propagate Next Batch</a></div>
     <span class="badge text-bg-info">{{ batch.status|replace('_', ' ')|title }}</span>
   </header>
   {% if request.args.get('batch_error') %}<div class="alert alert-danger">{{ request.args.get('batch_error') }}</div>{% endif %}
@@ -24,6 +24,7 @@
     <article class="integrity-record mb-3">
       <div class="quality-section__heading"><div><h3>{{ item.workflow_name }}</h3><span class="badge {{ 'text-bg-warning' if item.state == 'HUMAN_EXCEPTION' else 'text-bg-info' if item.state == 'READY_FOR_FINAL_REVIEW' else 'text-bg-danger' }}">{{ item.state|replace('_', ' ') }}</span></div>{% if item.review_url %}<a class="btn btn-sm btn-outline-primary" href="{{ item.review_url }}">{{ item.next_human_action or 'Review item' }}</a>{% endif %}</div>
       <p>{{ item.reason }}</p>
+      {% if item.progress_summary %}<p class="small mb-1"><strong>Article progression:</strong> {{ item.progress_summary }}</p>{% endif %}
       {% if item.what_completed %}<p class="small text-muted mb-0">Gnojo completed: {{ item.what_completed|join(', ') }}</p>{% endif %}
     </article>
     {% else %}<p class="text-muted mb-0">No human exception is waiting.</p>{% endfor %}

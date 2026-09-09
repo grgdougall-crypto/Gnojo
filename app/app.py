@@ -1318,6 +1318,34 @@ def knowledge_coverage_campaign_detail(campaign_id):
                            blocker_destinations=blocker_destinations)
 
 
+@app.get("/curator/growth/operations")
+def growth_operations():
+    service = BatchPropagationAutopilotService()
+    domain = request.args.get("domain", "Desktop Support")
+    try:
+        limit = int(request.args.get("limit", 5))
+        operations = service.operations(domain=domain, limit=limit)
+        preview = service.preview(domain=domain, limit=limit) if request.args.get("preview") == "1" else None
+        error = ""
+    except (BatchPropagationAutopilotError, ValueError) as exception:
+        operations, preview, error = None, None, str(exception)
+    return render_template("growth_operations.html", operations=operations,
+                           preview=preview, operations_error=error)
+
+
+@app.post("/curator/growth/operations/start")
+def growth_operations_start():
+    try:
+        result = BatchPropagationAutopilotService().run(
+            domain=request.form.get("domain", ""),
+            limit=int(request.form.get("limit", 5)),
+            actor=getattr(getattr(g, "reviewer_identity", None), "username", "Human"),
+        )
+        return redirect(url_for("batch_propagation_detail", batch_id=result["batch_id"]))
+    except (BatchPropagationAutopilotError, ValueError) as error:
+        return redirect(url_for("growth_operations", operations_error=str(error)))
+
+
 @app.get("/curator/growth/propagation-batches/<batch_id>")
 def batch_propagation_detail(batch_id):
     try:

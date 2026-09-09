@@ -76,6 +76,48 @@ class BatchPropagationAutopilotService:
             "created_at": None, "updated_at": None, "history": [],
         })
 
+    def operations(self, *, domain: str, limit: int = 5) -> dict[str, Any]:
+        """Read-only launch projection over authoritative current coverage."""
+        resolved, selected = self._selection(domain, limit)
+        candidates = self.growth.ranked_candidates(resolved["id"])
+        supported = [item for item in candidates
+                     if item.get("gap_type") in SUPPORTED_GAP_TYPES]
+        counts = {name: 0 for name in sorted(SUPPORTED_GAP_TYPES)}
+        for item in supported:
+            counts[item["gap_type"]] += 1
+        capability_summary = {}
+        if hasattr(self.growth.planner, "assess_domain"):
+            assessment = self.growth.planner.assess_domain(resolved["id"])
+            capability_summary = deepcopy(assessment.get("capability_summary") or {})
+        if capability_summary.get("total"):
+            catalog_counts = capability_summary.get("gap_counts") or {}
+            stage2_counts = {name: 0 for name in counts}
+            for item in supported:
+                if not item.get("capability_id"):
+                    stage2_counts[item["gap_type"]] += 1
+            counts = {
+                name: int(catalog_counts.get(name, 0)) + stage2_counts[name]
+                for name in counts
+            }
+        batches = []
+        if self.batch_root.exists():
+            batches = [self._validated_record(self._read(path), path.stem)
+                       for path in self.batch_root.glob("KPB-*.json")]
+            batches = [item for item in batches
+                       if item.get("domain", {}).get("id") == resolved["id"]]
+        current = (self._projection(sorted(
+            batches, key=lambda item: item.get("updated_at", "")
+        )[-1]) if batches else None)
+        return {
+            "domains": [{"id": item["id"], "title": item["title"]}
+                        for item in self.growth.planner.domains()],
+            "domain": resolved, "limit": int(limit),
+            "total_opportunities": sum(counts.values()), "counts_by_gap_type": counts,
+            "capability_coverage": capability_summary,
+            "next_candidates": [self._item_base(item) for item in selected],
+            "current_batch": current, "read_only": True,
+        }
+
     def run(self, *, domain: str | None = None, limit: int = 5,
             batch_id: str | None = None, actor: str = "Human") -> dict[str, Any]:
         with self._lock(self.campaign_root / ".batch-propagation.lock"):
@@ -85,6 +127,10 @@ class BatchPropagationAutopilotService:
                 resolved, selected = self._selection(str(domain or ""), limit)
                 record = self._find_resumable(resolved["id"], int(limit), selected)
                 if record is None:
+                    if not selected:
+                        raise BatchPropagationAutopilotError(
+                            "No supported propagation opportunity is currently available."
+                        )
                     record = self._new_record(resolved, int(limit), selected, actor)
                     self._save(record)
                 elif record.get("status") == "COMPLETE":
@@ -142,9 +188,24 @@ class BatchPropagationAutopilotService:
             "reuse", "reconciled", "completed_equivalent",
         }
         if outcome["status"] == "BLOCKED":
-            item.update(state="BLOCKED", reason=(outcome.get("preparation") or {}).get(
-                "reason", "Existing governed preparation is blocked."),
-                next_human_action="Resolve the authoritative campaign blocker.")
+            preparation = outcome.get("preparation") or {}
+            if (
+                candidate.get("gap_type") == "missing_article"
+                and preparation.get("blocker_stage") == "insufficient_evidence"
+            ):
+                item.update(
+                    state="HUMAN_EXCEPTION",
+                    reason=preparation.get(
+                        "reason", "Authoritative evidence is insufficient."
+                    ),
+                    next_human_action="Review Evidence",
+                    review_url=preparation.get("review_link") or "",
+                    progress_summary="Evidence prepared",
+                )
+            else:
+                item.update(state="BLOCKED", reason=preparation.get(
+                    "reason", "Existing governed preparation is blocked."),
+                    next_human_action="Resolve the authoritative campaign blocker.")
             return item
         if outcome["status"] == "NO-OP" and not (outcome.get("human_review") or {}).get("required"):
             item.update(state="MACHINE_COMPLETE", reason="Equivalent governed work is complete.",
@@ -156,10 +217,25 @@ class BatchPropagationAutopilotService:
         if candidate.get("gap_type") == "weak_learning_coverage" and campaign.get("campaign_id"):
             return self._process_learning(item, campaign, human)
         if human.get("required"):
-            return self._classify_human_gate(item, campaign, human)
+            item = self._classify_human_gate(item, campaign, human)
+            if candidate.get("gap_type") == "missing_article":
+                item["progress_summary"] = self._article_progress_summary(
+                    str(human.get("action") or "")
+                )
+            return item
         item.update(state="MACHINE_COMPLETE", reason="Allowlisted machine preparation completed.",
                     next_human_action="")
         return item
+
+    @staticmethod
+    def _article_progress_summary(action):
+        if action == "approve_source":
+            return "Source review required"
+        if action in {"review_evidence", "review_claims"}:
+            return "Evidence prepared"
+        if action == "review_article_draft":
+            return "Article draft ready for review"
+        return "Researching sources"
 
     def _process_learning(self, item, campaign, human):
         ids = (campaign.get("campaign_id"), campaign.get("orchestration_id"),

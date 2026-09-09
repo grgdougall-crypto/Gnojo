@@ -264,10 +264,13 @@ class KnowledgeSourceResearchService:
     def create(self, campaign_id: str, gap_id: str, work_item_id: str,
                requested_evidence_type: str = "authoritative_source") -> dict[str, Any]:
         campaign, gap, work_item = self._context(campaign_id, gap_id, work_item_id)
+        article_context = self._capability_article_context(campaign, gap, work_item)
         package_id = self._stable_id("KRP", campaign_id, gap_id, work_item_id)
         path = self._path(package_id)
         if path.exists():
-            return self._read(path)
+            package = self._read(path)
+            self._validate_article_package_context(package, article_context)
+            return package
         platform = str((campaign.get("platforms") or [""])[0])
         vendor = "Microsoft" if platform.casefold() == "windows" else None
         now = self._now()
@@ -283,6 +286,8 @@ class KnowledgeSourceResearchService:
             "remaining_gaps": [], "research_notes": "",
             "history": [{"event": "created", "at": now, "actor": "Human"}],
         }
+        if article_context is not None:
+            package["capability_article_context"] = article_context
         self._save(package)
         self._attach_reference(campaign, package)
         return deepcopy(package)
@@ -295,9 +300,12 @@ class KnowledgeSourceResearchService:
 
     def run(self, package_id: str, *, force_external: bool = False) -> dict[str, Any]:
         package = self.get(package_id)
+        campaign, gap, work_item = self._context(package["campaign_id"], package["gap_id"], package["work_item_id"])
+        self._validate_article_package_context(
+            package, self._capability_article_context(campaign, gap, work_item)
+        )
         if package.get("last_checked_at") and not force_external and package.get("status") == "ready_for_review":
             return package
-        campaign, gap, work_item = self._context(package["campaign_id"], package["gap_id"], package["work_item_id"])
         package["status"] = "researching"
         existing = self._existing_sources(package, gap, campaign)
         package["existing_sources"] = existing
@@ -574,11 +582,94 @@ class KnowledgeSourceResearchService:
                           "escalation_path", "safety_review"}
         source_gap = gap.get("gap_type") == "missing_source" and work.get("work_type") == "source_research"
         workflow_gap = work.get("work_type") in workflow_types
-        if not (source_gap or workflow_gap):
+        article_gap = self._capability_article_context(campaign, gap, work) is not None
+        if not (source_gap or workflow_gap or article_gap):
             raise KnowledgeSourceResearchError(
-                "Phase 2 research requires an authoritative-source gap or a workflow-oriented work item."
+                "Phase 2 research requires an authoritative-source gap, a workflow-oriented "
+                "work item, or an exact capability-derived missing-article work item."
             )
         return campaign, gap, work
+
+    def _capability_article_context(
+        self, campaign: dict[str, Any], gap: dict[str, Any], work: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        is_article_candidate = (
+            gap.get("gap_type") == "missing_article"
+            or work.get("work_type") == "knowledge_article"
+        )
+        if not is_article_candidate:
+            return None
+        if (
+            gap.get("gap_type") != "missing_article"
+            or work.get("work_type") != "knowledge_article"
+        ):
+            raise KnowledgeSourceResearchError(
+                "Missing-article research gap and work-item types are inconsistent."
+            )
+
+        metadata = campaign.get("creation_metadata")
+        selected = metadata.get("selected_gap") if isinstance(metadata, dict) else None
+        area = self._area(campaign, str(gap.get("area_id") or ""))
+        capability_id = str(area.get("id") or "").strip()
+        platform = str(area.get("platform") or "").strip()
+        platform_identity = re.sub(r"[^a-z0-9]+", "-", platform.casefold()).strip("-")
+        gap_identity = (
+            f"capability:{campaign.get('domain')}:{platform_identity}:"
+            f"{capability_id}:missing_article"
+        )
+        records = (selected, gap, work)
+        if (
+            not isinstance(selected, dict)
+            or metadata.get("initiated_by") not in {
+                "autonomous_growth_stage1", "autonomous_growth_stage2"
+            }
+            or not capability_id
+            or not platform_identity
+            or "article" not in (area.get("expected_artifacts") or [])
+            or any(record.get("gap_identity") != gap_identity for record in records)
+            or any(record.get("capability_id") != capability_id for record in records)
+            or any(record.get("area_id") != area.get("id") for record in records)
+            or any("article" not in (record.get("expected_artifacts") or []) for record in records)
+            or selected.get("gap_type") != "missing_article"
+            or selected.get("domain_id") != campaign.get("domain")
+            or str(gap.get("platform") or "") != platform
+            or str(work.get("platform") or "") != platform
+        ):
+            raise KnowledgeSourceResearchError(
+                "Capability-derived missing-article identity is missing, stale, or ambiguous."
+            )
+        terms = list(area.get("terms") or [])
+        if not terms or any(not isinstance(term, str) or not term.strip() for term in terms):
+            raise KnowledgeSourceResearchError(
+                "Capability-derived missing-article research terms are unavailable."
+            )
+        context = {
+            "domain_id": campaign["domain"],
+            "capability_id": capability_id,
+            "gap_identity": gap_identity,
+            "expected_artifact": "article",
+            "platform": platform,
+            "category": area.get("category"),
+            "terms": terms,
+        }
+        context["fingerprint"] = self._fingerprint(context)
+        return context
+
+    @staticmethod
+    def _validate_article_package_context(
+        package: dict[str, Any], expected: dict[str, Any] | None
+    ) -> None:
+        persisted = package.get("capability_article_context")
+        if expected is None:
+            if persisted is not None:
+                raise KnowledgeSourceResearchError(
+                    "Research package capability context conflicts with current campaign state."
+                )
+            return
+        if persisted != expected:
+            raise KnowledgeSourceResearchError(
+                "Research package capability context is missing or stale."
+            )
 
     def _area(self, campaign: dict[str, Any], area_id: str) -> dict[str, Any]:
         domain = next((item for item in self.planner.domains() if item["id"] == campaign["domain"]), None)

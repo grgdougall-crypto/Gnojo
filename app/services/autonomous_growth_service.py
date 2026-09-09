@@ -304,13 +304,17 @@ class AutonomousGrowthService:
                 gap_type = gap.get("gap_type")
                 if gap_type == "missing_article":
                     eligible = self._eligible_missing_article(gap, area)
-                    identity = f"{domain['id']}:{gap['area_id']}:missing_article"
+                    identity = gap.get("gap_identity") or (
+                        f"{domain['id']}:{gap['area_id']}:missing_article"
+                    )
                     intended_artifact = "knowledge_article"
                     expected_gate = "Source research approval"
                     stages = ["source_research", "evidence", "claims", "article_draft"]
                 elif gap_type == "missing_workflow":
                     eligible = self._eligible_missing_workflow(gap, area)
-                    identity = f"domain:{domain['id']}:topic:{gap['area_id']}:missing_workflow"
+                    identity = gap.get("gap_identity") or (
+                        f"domain:{domain['id']}:topic:{gap['area_id']}:missing_workflow"
+                    )
                     intended_artifact = "workflow_draft"
                     expected_gate = "Source or workflow claim review"
                     stages = ["source_research", "evidence", "workflow_claims", "workflow_draft"]
@@ -344,6 +348,12 @@ class AutonomousGrowthService:
                     "relevant_node_count": area.get("relevant_node_count", 0),
                     "article_count": area.get("article_count", 0),
                     "command_count": area.get("command_count", 0),
+                    "capability_id": gap.get("capability_id"),
+                    "capability_level": gap.get("capability_level"),
+                    "capability_category": gap.get("capability_category"),
+                    "platform": gap.get("platform"),
+                    "expected_artifacts": list(gap.get("expected_artifacts") or []),
+                    "likely_relationships": list(gap.get("likely_relationships") or []),
                     "ranking": {
                         "type_priority": GAP_TYPE_PRIORITY[gap_type],
                         "evidence_strength": (
@@ -389,15 +399,24 @@ class AutonomousGrowthService:
 
     @staticmethod
     def _eligible_missing_workflow(gap: dict[str, Any], area: dict[str, Any]) -> bool:
+        supported_by_existing_assets = bool(
+            area.get("article_count", 0) >= 1
+            and area.get("command_count", 0) >= 1
+            and len(area.get("asset_ids") or []) >= 2
+            and area.get("safety_ambiguous_command_count", 0) == 0
+        )
+        supported_by_governed_catalog = bool(
+            gap.get("capability_id")
+            and "workflow" in (gap.get("expected_artifacts") or [])
+            and gap.get("platform")
+            and gap.get("likely_relationships")
+        )
         return bool(
             gap.get("gap_type") == "missing_workflow"
             and gap.get("confidence") == "high"
             and gap.get("evidence")
             and area.get("workflow_count", 0) == 0
-            and area.get("article_count", 0) >= 1
-            and area.get("command_count", 0) >= 1
-            and len(area.get("asset_ids") or []) >= 2
-            and area.get("safety_ambiguous_command_count", 0) == 0
+            and (supported_by_existing_assets or supported_by_governed_catalog)
         )
 
     @staticmethod
@@ -753,7 +772,9 @@ class AutonomousGrowthService:
                 reason = (state.get("blocker") or {}).get("explanation") or (
                     "No safe autonomous preparation action is available."
                 )
-                return self._blocked_preparation(candidate, campaign, disposition, outcomes, reason)
+                return self._blocked_preparation(
+                    candidate, campaign, disposition, outcomes, reason, state=state
+                )
             action = state.get("next_action")
             policy = ACTION_POLICY.get(action)
             if not policy or policy.get("authority") != "machine_safe":
@@ -825,11 +846,19 @@ class AutonomousGrowthService:
             human_review=self._human_review(record, state),
         )
 
-    def _blocked_preparation(self, candidate, campaign, disposition, outcomes, reason):
+    def _blocked_preparation(
+        self, candidate, campaign, disposition, outcomes, reason, *, state=None
+    ):
+        preparation = {"outcome": "blocked", "reason": reason, "artifacts": outcomes}
+        if state:
+            preparation.update({
+                "blocker_stage": state.get("stage"),
+                "review_link": state.get("review_link"),
+            })
         return self._result(
             "BLOCKED", False, candidate, candidate["selection_explanation"],
             campaign=self._campaign_summary(campaign, disposition),
-            preparation={"outcome": "blocked", "reason": reason, "artifacts": outcomes},
+            preparation=preparation,
             validation={"status": "blocked", "reason": reason},
         )
 

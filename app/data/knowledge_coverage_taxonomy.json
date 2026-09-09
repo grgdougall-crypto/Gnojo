@@ -22,6 +22,7 @@
       "category": "Desktop Support",
       "platforms": ["Windows"],
       "batch_only": true,
+      "capability_catalog": "desktop_support_capabilities.json",
       "areas": [
         {"id": "application-crashes", "title": "Application Crashes", "terms": ["application", "crash", "freezes", "failure"]},
         {"id": "storage", "title": "Storage", "terms": ["disk", "storage", "space", "drive"]},

@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 from app.app import app as flask_app
 from app.data_root import APPLICATION_ROOT
+from app.services.authentication_service import AuthenticationService
 from app.services.batch_propagation_autopilot_service import (
     BatchPropagationAutopilotError,
     BatchPropagationAutopilotService,
@@ -179,8 +180,34 @@ class BatchPropagationAutopilotTests(unittest.TestCase):
                                   research=research, source=source)
         result = service.run(domain="Desktop Support", limit=1)
         self.assertEqual(result["items"][0]["state"], "HUMAN_EXCEPTION")
+        self.assertEqual(result["items"][0]["progress_summary"],
+                         "Source review required")
         self.assertEqual(result["items"][0]["review_url"],
                          "/curator/growth/source-research/KRP-1/autopilot")
+
+    def test_missing_article_insufficient_evidence_is_a_human_exception(self):
+        value = candidate(0, "missing_article")
+        outcome = {
+            "status": "BLOCKED", "campaign": {"campaign_id": "KCP-1"},
+            "preparation": {
+                "reason": "No Candidate Evidence was approved.",
+                "blocker_stage": "insufficient_evidence",
+                "review_link": "/curator/growth/evidence-extraction/KEX-1",
+                "artifacts": [],
+            },
+            "human_review": {},
+        }
+        service, _ = self.service(
+            [value], outcomes={value["gap_identity"]: outcome}
+        )
+
+        item = service.run(domain="Desktop Support", limit=1)["items"][0]
+
+        self.assertEqual(item["state"], "HUMAN_EXCEPTION")
+        self.assertEqual(item["progress_summary"], "Evidence prepared")
+        self.assertEqual(
+            item["review_url"], "/curator/growth/evidence-extraction/KEX-1"
+        )
 
     def test_resume_reuses_batch_without_duplicate_batch_or_approval(self):
         service, growth = self.service([candidate(0)])
@@ -203,6 +230,107 @@ class BatchPropagationAutopilotTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Batch Propagation", response.data)
         self.assertEqual(before, {path: path.read_bytes() for path in self.root.rglob("*.json")})
+
+    def test_growth_operations_get_is_read_only_and_counts_all_supported_types(self):
+        types = ["missing_workflow", "missing_article", "weak_learning_coverage",
+                 "missing_command_reference"]
+        service, growth = self.service(
+            [candidate(index, gap_type) for index, gap_type in enumerate(types)]
+        )
+        before = list(self.root.rglob("*"))
+        flask_app.config.update(TESTING=True)
+        with patch("app.app.BatchPropagationAutopilotService", return_value=service):
+            response = flask_app.test_client().get(
+                "/curator/growth/operations?domain=desktop-support&limit=4"
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Coverage opportunities", response.data)
+        self.assertIn(b"Missing workflows", response.data)
+        self.assertEqual(growth.calls.count(("rank", "desktop-support")), 2)
+        self.assertEqual(before, list(self.root.rglob("*")))
+
+    def test_launcher_preview_creates_no_batch_and_start_redirects_idempotently(self):
+        service, _ = self.service([candidate(0)])
+        flask_app.config.update(TESTING=True)
+        with patch("app.app.BatchPropagationAutopilotService", return_value=service):
+            client = flask_app.test_client()
+            preview = client.get(
+                "/curator/growth/operations?domain=desktop-support&limit=1&preview=1"
+            )
+            self.assertFalse(service.batch_root.exists())
+            first = client.post("/curator/growth/operations/start", data={
+                "domain": "desktop-support", "limit": "1",
+            })
+            second = client.post("/curator/growth/operations/start", data={
+                "domain": "desktop-support", "limit": "1",
+            })
+        self.assertEqual(preview.status_code, 200)
+        self.assertIn(b"Start Supervised Propagation", preview.data)
+        self.assertEqual(first.status_code, 302)
+        self.assertIn("/curator/growth/propagation-batches/KPB-", first.headers["Location"])
+        self.assertEqual(first.headers["Location"], second.headers["Location"])
+        self.assertEqual(len(list(service.batch_root.glob("KPB-*.json"))), 1)
+
+    def test_launcher_start_requires_reviewer_and_valid_csrf(self):
+        service, _ = self.service([candidate(0)])
+        configured = {
+            "TESTING": True,
+            "AUTH_TEST_BYPASS": False,
+            "GNOJO_STABLE_SESSION_SECRET_CONFIGURED": True,
+            "GNOJO_REVIEWER_USERNAME": "Reviewer",
+            "GNOJO_REVIEWER_PASSWORD_HASH": "configured-for-session-check",
+        }
+        with patch.dict(flask_app.config, configured), patch(
+            "app.app.BatchPropagationAutopilotService", return_value=service
+        ):
+            client = flask_app.test_client()
+            unauthenticated = client.post(
+                "/curator/growth/operations/start",
+                data={"domain": "desktop-support", "limit": "1"},
+            )
+            with client.session_transaction() as reviewer_session:
+                reviewer_session[AuthenticationService.AUTHENTICATED_KEY] = True
+                reviewer_session[AuthenticationService.USERNAME_KEY] = "Reviewer"
+                reviewer_session[AuthenticationService.ROLE_KEY] = "reviewer_admin"
+                reviewer_session[AuthenticationService.CSRF_KEY] = "valid-token"
+            missing_csrf = client.post(
+                "/curator/growth/operations/start",
+                data={"domain": "desktop-support", "limit": "1"},
+            )
+            accepted = client.post(
+                "/curator/growth/operations/start",
+                data={"domain": "desktop-support", "limit": "1",
+                      "authenticity_token": "valid-token"},
+            )
+        self.assertEqual(unauthenticated.status_code, 403)
+        self.assertEqual(missing_csrf.status_code, 400)
+        self.assertEqual(accepted.status_code, 302)
+        self.assertIn("/curator/growth/propagation-batches/KPB-",
+                      accepted.headers["Location"])
+
+    def test_next_batch_projection_rescans_authoritative_coverage(self):
+        service, growth = self.service([candidate(0), candidate(1)])
+        service.operations(domain="Desktop Support", limit=1)
+        growth.candidates = [candidate(2)]
+        projection = service.operations(domain="Desktop Support", limit=1)
+        self.assertEqual(projection["next_candidates"][0]["workflow_id"], "workflow-2")
+        self.assertGreaterEqual(growth.calls.count(("rank", "desktop-support")), 4)
+
+    def test_missing_workflow_stops_at_draft_review_without_publication_or_commands(self):
+        value = candidate(0, "missing_workflow")
+        outcome = {"status": "SELECTED", "campaign": {"campaign_id": "KCP-1",
+            "orchestration_id": "KORCH-1", "work_item_id": "KCW-1", "disposition": "created"},
+            "preparation": {"outcome": "prepared_for_human_review",
+                            "artifacts": [{"action": "prepare_workflow_draft", "status": "completed"}]},
+            "human_review": {"required": True, "action": "accept_workflow_content_studio",
+                             "specialized_review_link": "/workflow-studio"}}
+        service, growth = self.service([value], outcomes={value["gap_identity"]: outcome})
+        result = service.run(domain="Desktop Support", limit=1)
+        self.assertEqual(result["items"][0]["state"], "READY_FOR_FINAL_REVIEW")
+        self.assertIn("prepare_workflow_draft", result["items"][0]["what_completed"])
+        self.assertFalse(result["authority"]["publication"])
+        self.assertFalse(result["authority"]["command_execution"])
+        self.assertFalse(any("publish" in str(call).casefold() for call in growth.calls))
 
     def test_resume_fails_closed_for_persisted_selection_outside_bounds(self):
         service, _ = self.service([candidate(0)])

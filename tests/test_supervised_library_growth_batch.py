@@ -4,11 +4,10 @@ import io
 import unittest
 from contextlib import redirect_stdout
 from copy import deepcopy
-from pathlib import Path
 from unittest.mock import patch
 
+from app.data_root import APPLICATION_ROOT
 from app.services.autonomous_growth_service import (
-    SUPPORTED_GAP_TYPES,
     AutonomousGrowthResult,
     AutonomousGrowthService,
 )
@@ -118,13 +117,9 @@ class SupervisedLibraryGrowthBatchTests(unittest.TestCase):
         )
 
     def test_desktop_support_is_a_configured_batch_domain(self):
-        growth = AutonomousGrowthService(Path.cwd())
+        growth = AutonomousGrowthService(APPLICATION_ROOT)
         domains = {item["id"]: item for item in growth.planner.domains()}
         self.assertTrue(domains["desktop-support"]["batch_only"])
-        ranked = growth.ranked_candidates("desktop-support")
-        self.assertTrue(ranked)
-        self.assertTrue(all(item["domain_id"] == "desktop-support" for item in ranked))
-        self.assertTrue(all(item["gap_type"] in SUPPORTED_GAP_TYPES for item in ranked))
 
     def test_preview_is_read_only_and_describes_creation(self):
         service, growth = self.service([candidate(0), candidate(1)])

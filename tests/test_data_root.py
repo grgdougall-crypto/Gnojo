@@ -128,6 +128,32 @@ class DataRootTests(unittest.TestCase):
                     explicit_root / "knowledge",
                 )
 
+    def test_campaign_taxonomy_remains_source_relative_with_configured_data_root(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            data_root = Path(temporary).resolve()
+            taxonomy = (
+                APPLICATION_ROOT / "app" / "data"
+                / "knowledge_coverage_taxonomy.json"
+            )
+            with patch.dict(os.environ, {"GNOJO_DATA_ROOT": str(data_root)}):
+                orchestration = KnowledgeCampaignOrchestrationService()
+
+            taxonomy_readers = (
+                orchestration.planner,
+                orchestration.research.planner,
+                orchestration.evidence.research.planner,
+                orchestration.generation.planner,
+                orchestration.generation.research.planner,
+                orchestration.generation.extraction.research.planner,
+            )
+            for reader in taxonomy_readers:
+                self.assertEqual(reader.taxonomy_path.resolve(), taxonomy.resolve())
+                self.assertNotEqual(
+                    reader.taxonomy_path.resolve(),
+                    (data_root / "app" / "data"
+                     / "knowledge_coverage_taxonomy.json").resolve(),
+                )
+
     def test_configured_data_path_rejects_traversal(self):
         with tempfile.TemporaryDirectory() as temporary:
             with patch.dict(os.environ, {"GNOJO_DATA_ROOT": temporary}):

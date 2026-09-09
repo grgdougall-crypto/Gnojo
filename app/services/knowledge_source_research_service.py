@@ -251,7 +251,7 @@ class KnowledgeSourceResearchService:
         self.http_validator = http_validator or SourceHTTPValidator()
         self.planner = KnowledgeCoveragePlannerService(
             self.repository_root, self.campaign_root,
-            taxonomy_path or self.repository_root / "app" / "data" / "knowledge_coverage_taxonomy.json",
+            taxonomy_path or application_root / "app" / "data" / "knowledge_coverage_taxonomy.json",
         )
 
     def list_for_campaign(self, campaign_id: str) -> list[dict[str, Any]]:

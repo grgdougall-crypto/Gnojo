@@ -40,6 +40,7 @@ class Research(Store):
         self.items.append(value); return value
     def run(self, package_id):
         self.calls.append(("run", package_id)); self.items[0]["status"] = "ready_for_review"
+        return deepcopy(self.items[0])
 
 
 class Evidence(Store):
@@ -391,6 +392,158 @@ class KnowledgeCampaignOrchestrationTests(unittest.TestCase):
         )
         self.assertEqual(after, before)
 
+    def test_source_approval_review_decision_uses_exact_autopilot_package(self):
+        campaign = campaign_fixture()
+        campaign["title"] = "Application Crashes"
+        projection = {
+            "orchestration_id": "KORCH-TEST", "campaign_id": "KCAMP-TEST",
+            "campaign_objective": "Improve application crash coverage.",
+            "status": "awaiting_human_review", "mode": "supervised",
+            "readiness_summary": {"completion_percent": 0, "machine_ready": 0,
+                                  "human_review": 1, "blocked": 0},
+            "pipeline_summary": {}, "next_recommended_action": None,
+            "work_item_states": [{
+                "work_item_id": "KCW-1", "gap_id": "KCG-1",
+                "work_type": "knowledge_article", "title": "Application Crashes",
+                "stage": "source_approval_required",
+                "state": "awaiting_human_review", "next_action": "approve_source",
+                "action_authority": "human_gate", "package_id": "KRP-APPCRASH",
+                "review_link": "/knowledge/windows-storage-performance",
+                "review_destination": {
+                    "resolved": True, "endpoint": "view_published",
+                    "route_values": {"article_id": "windows-storage-performance"},
+                },
+                "blocker": None,
+            }, {
+                "work_item_id": "KCW-REUSE", "gap_id": "KCG-REUSE",
+                "work_type": "knowledge_article", "title": "Application Crashes",
+                "stage": "reuse_available", "state": "complete",
+                "next_action": None, "action_authority": None,
+                "package_id": "windows-storage-performance", "review_link": None,
+                "review_destination": {
+                    "resolved": True, "endpoint": "view_published",
+                    "resource_type": "published_article",
+                    "route_values": {"article_id": "windows-storage-performance"},
+                },
+                "blocker": None,
+            }],
+            "human_review_queue": [{
+                "work_item_id": "KCW-1", "title": "Application Crashes",
+                "action": "approve_source",
+                "review_link": "/knowledge/windows-storage-performance",
+            }],
+            "blockers": [], "stale_dependencies": [],
+            "dependency_graph": {"edges": []}, "history": [],
+        }
+        planner = Mock()
+        planner.get.return_value = campaign
+        research = Mock()
+        research.get.return_value = {
+            "package_id": "KRP-APPCRASH", "campaign_id": "KCAMP-TEST",
+            "work_item_id": "KCW-1", "gap_id": "KCG-1",
+            "status": "ready_for_review",
+        }
+        before = sorted(
+            (path.relative_to(self.root).as_posix(), path.read_bytes())
+            for path in self.root.rglob("*") if path.is_file()
+        )
+        flask_app.config.update(TESTING=True)
+        with (
+            patch("app.app._structural_repository_root", return_value=self.root),
+            patch.object(
+                KnowledgeCampaignOrchestrationService, "read_persisted",
+                return_value=[deepcopy(projection)],
+            ),
+            patch("app.app.KnowledgeCoveragePlannerService", return_value=planner),
+            patch("app.app.KnowledgeSourceResearchService", return_value=research),
+        ):
+            response = flask_app.test_client().get(
+                "/curator/growth/coverage-campaigns/KCAMP-TEST/orchestration"
+            )
+        rendered = response.get_data(as_text=True)
+        after = sorted(
+            (path.relative_to(self.root).as_posix(), path.read_bytes())
+            for path in self.root.rglob("*") if path.is_file()
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(
+            '/curator/growth/source-research/KRP-APPCRASH/autopilot', rendered
+        )
+        self.assertIn(
+            'href="/curator/growth/source-research/KRP-APPCRASH/autopilot">'
+            'Review Source Package',
+            rendered,
+        )
+        self.assertNotIn(
+            'href="/knowledge/published/windows-storage-performance">Review Decision',
+            rendered,
+        )
+        self.assertIn(
+            'href="/knowledge/published/windows-storage-performance">'
+            'Inspect Published Article',
+            rendered,
+        )
+        self.assertEqual(after, before)
+
+    def test_source_approval_review_decision_fails_closed_on_package_mismatch(self):
+        campaign = campaign_fixture()
+        projection = {
+            "orchestration_id": "KORCH-TEST", "campaign_id": "KCAMP-TEST",
+            "status": "awaiting_human_review", "mode": "supervised",
+            "readiness_summary": {"completion_percent": 0, "machine_ready": 0,
+                                  "human_review": 1, "blocked": 0},
+            "pipeline_summary": {}, "next_recommended_action": None,
+            "work_item_states": [{
+                "work_item_id": "KCW-1", "gap_id": "KCG-1",
+                "title": "Application Crashes", "stage": "source_approval_required",
+                "state": "awaiting_human_review", "next_action": "approve_source",
+                "action_authority": "human_gate", "package_id": "KRP-APPCRASH",
+                "review_link": "/knowledge/windows-storage-performance",
+                "review_destination": {
+                    "resolved": True, "endpoint": "view_published",
+                    "route_values": {"article_id": "windows-storage-performance"},
+                },
+                "blocker": None,
+            }],
+            "human_review_queue": [{
+                "work_item_id": "KCW-1", "title": "Application Crashes",
+                "action": "approve_source",
+                "review_link": "/knowledge/windows-storage-performance",
+            }],
+            "blockers": [], "stale_dependencies": [],
+            "dependency_graph": {"edges": []}, "history": [],
+        }
+        planner = Mock()
+        planner.get.return_value = campaign
+        research = Mock()
+        research.get.return_value = {
+            "package_id": "KRP-APPCRASH", "campaign_id": "KCAMP-OTHER",
+            "work_item_id": "KCW-1", "gap_id": "KCG-1",
+            "status": "ready_for_review",
+        }
+        flask_app.config.update(TESTING=True)
+        with (
+            patch("app.app._structural_repository_root", return_value=self.root),
+            patch.object(
+                KnowledgeCampaignOrchestrationService, "read_persisted",
+                return_value=[deepcopy(projection)],
+            ),
+            patch("app.app.KnowledgeCoveragePlannerService", return_value=planner),
+            patch("app.app.KnowledgeSourceResearchService", return_value=research),
+        ):
+            response = flask_app.test_client().get(
+                "/curator/growth/coverage-campaigns/KCAMP-TEST/orchestration"
+            )
+        rendered = response.get_data(as_text=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("/source-research/KRP-APPCRASH/autopilot", rendered)
+        self.assertNotIn("/knowledge/windows-storage-performance", rendered)
+        self.assertIn("Review Source Package Unavailable", rendered)
+        self.assertIn(
+            "The exact campaign-owned source package could not be resolved.",
+            rendered,
+        )
+
     def test_workflow_studio_learning_context_fails_closed_on_identity_mismatch(self):
         campaign = campaign_fixture()
         planner = Mock()
@@ -476,6 +629,62 @@ class KnowledgeCampaignOrchestrationTests(unittest.TestCase):
         result = service.continue_campaign(record["orchestration_id"])
         self.assertEqual(claims.calls, [("prepare", "KDG-1"), ("plan", "KCPM-1")])
         self.assertEqual(result["work_item_states"][0]["next_action"], "review_claims")
+
+    def test_source_approval_projection_targets_autopilot_review(self):
+        service, _, research, *_ = self.factory
+        research.items = [{
+            "package_id": "KRP-1", "work_item_id": "KCW-1",
+            "status": "ready_for_review", "selected_sources": [],
+        }]
+
+        state = service.get_or_create("KCAMP-TEST")["work_item_states"][0]
+
+        self.assertEqual(state["next_action"], "approve_source")
+        self.assertEqual(
+            state["review_link"],
+            "/curator/growth/source-research/KRP-1/autopilot",
+        )
+
+    def test_research_completion_prepares_one_frozen_autopilot_snapshot(self):
+        service, *_ = self.factory
+        source_autopilot = Mock()
+        service.source_autopilot = source_autopilot
+        record = service.get_or_create("KCAMP-TEST")
+        service.continue_campaign(record["orchestration_id"])
+
+        result = service.continue_campaign(record["orchestration_id"])
+
+        self.assertEqual(result["work_item_states"][0]["next_action"],
+                         "approve_source")
+        source_autopilot.prepare_snapshot.assert_called_once_with("KRP-1")
+
+    def test_supervised_autopilot_is_bounded_and_stops_at_next_human_gate(self):
+        service, _, research, evidence, generation, claims, assembly, workflows = self.factory
+        research.items = [{
+            "package_id": "KRP-1", "work_item_id": "KCW-1",
+            "status": "approved", "selected_sources": ["SRC-1"],
+        }]
+        record = service.get_or_create("KCAMP-TEST")
+
+        result = service.continue_after_human_gate(
+            record["orchestration_id"], max_transitions=3
+        )
+
+        self.assertEqual(result["execution"]["transitions"], 2)
+        self.assertEqual(
+            [item["action"] for item in result["execution"]["outcomes"]],
+            ["prepare_evidence", "extract_evidence"],
+        )
+        self.assertEqual(
+            result["work_item_states"][0]["next_action"], "review_evidence"
+        )
+        self.assertEqual(
+            result["work_item_states"][0]["action_authority"], "human_gate"
+        )
+        self.assertEqual(generation.items, [])
+        self.assertEqual(claims.items, [])
+        self.assertEqual(assembly.items, [])
+        self.assertEqual(workflows.items, [])
 
     def test_empty_confirmed_candidate_set_blocks_claim_planning_as_insufficient_evidence(self):
         service, _, research, evidence, generation, claims, *_ = self.factory

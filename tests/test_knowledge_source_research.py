@@ -168,6 +168,28 @@ class KnowledgeSourceResearchTests(unittest.TestCase):
         self.assertEqual(source["http_status"], 200); self.assertEqual(source["final_resolved_url"], self.validator.redirects[old])
         self.assertTrue(source["redirect_chain"]); self.assertEqual(source["freshness"]["etag"], "stable")
 
+    def test_duplicate_final_url_preserves_reuse_provenance_as_one_candidate(self):
+        first = {
+            "source_candidate_id": "KSC-SAME", "canonical_url": "https://support.example/final",
+            "topic_relevant": True, "existing_gnojo_source_match": {
+                "content_type": "article", "identifier": "article-one",
+                "source_path": "knowledge_base/published/article-one.json",
+            },
+        }
+        second = deepcopy(first)
+        second["existing_gnojo_source_match"] = {
+            "content_type": "article", "identifier": "article-two",
+            "source_path": "knowledge_base/published/article-two.json",
+        }
+
+        result = KnowledgeSourceResearchService._deduplicate([first, second])
+
+        self.assertEqual(len(result), 1)
+        self.assertEqual(
+            {item["identifier"] for item in result[0]["existing_gnojo_source_matches"]},
+            {"article-one", "article-two"},
+        )
+
     def test_http_validation_preserves_server_significant_trailing_slash(self):
         session = RedirectingSession()
         validator = SourceHTTPValidator(
@@ -194,6 +216,21 @@ class KnowledgeSourceResearchTests(unittest.TestCase):
         package = self.service.set_candidate_state(package["package_id"], candidate["source_candidate_id"], "selected")
         self.assertEqual(package["selected_sources"], [candidate["source_candidate_id"]])
         self.assertEqual(self.service.review(package["package_id"], "approved", "Reviewed")["status"], "approved")
+
+    def test_duplicate_package_approval_is_write_and_history_free(self):
+        package = self.service.run(self.create()["package_id"], force_external=True)
+        candidate = package["candidate_sources"][0]
+        self.service.set_candidate_state(
+            package["package_id"], candidate["source_candidate_id"], "selected"
+        )
+        approved = self.service.review(package["package_id"], "approved", "Reviewed")
+        path = self.service._path(package["package_id"])
+        before = path.read_bytes()
+
+        duplicate = self.service.review(package["package_id"], "approved", "Reviewed")
+
+        self.assertEqual(path.read_bytes(), before)
+        self.assertEqual(len(duplicate["history"]), len(approved["history"]))
 
     def test_rejection_state_and_notes_persist(self):
         package = self.service.run(self.create()["package_id"], force_external=True)

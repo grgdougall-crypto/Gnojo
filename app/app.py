@@ -182,6 +182,10 @@ from app.services.knowledge_campaign_orchestration_service import (
     KnowledgeCampaignOrchestrationError,
     KnowledgeCampaignOrchestrationService,
 )
+from app.services.supervised_campaign_autopilot_service import (
+    SupervisedCampaignAutopilotError,
+    SupervisedCampaignAutopilotService,
+)
 from app.services.campaign_blocker_destination_service import CampaignBlockerDestinationService
 from app.services.campaign_review_destination_service import CampaignReviewDestinationService
 from app.services.campaign_learning_draft_preparation_service import (
@@ -1348,18 +1352,51 @@ def knowledge_campaign_orchestration_detail(campaign_id):
             item["work_item_id"]: item for item in campaign.get("work_items", [])
         }
         review_service = ReviewWorkspaceService(repository_root)
+        source_research_service = None
         campaign_return = url_for(
             "knowledge_campaign_orchestration_detail", campaign_id=campaign_id
         )
         for item in orchestration.get("work_item_states", []):
             destination = item.get("review_destination") or {}
-            if item.get("next_action") == "author_learning_content":
+            if item.get("next_action") == "approve_source":
+                # Source approval belongs to the exact campaign-owned research
+                # package.  A generic reuse destination is not valid authority
+                # for this human gate and must never substitute another article.
+                item["review_link"] = None
+                item["review_unavailable_reason"] = (
+                    "The exact campaign-owned source package could not be resolved."
+                )
+                destination = {}
+                package_id = str(item.get("package_id") or "").strip()
+                try:
+                    if source_research_service is None:
+                        source_research_service = KnowledgeSourceResearchService(
+                            repository_root, campaign_root
+                        )
+                    package = source_research_service.get(package_id)
+                except KnowledgeSourceResearchError:
+                    package = None
+                if package and (
+                    package.get("package_id") == package_id
+                    and package.get("campaign_id") == campaign_id
+                    and package.get("work_item_id") == item.get("work_item_id")
+                    and package.get("gap_id") == item.get("gap_id")
+                    and package.get("status") == "ready_for_review"
+                ):
+                    item["review_link"] = url_for(
+                        "knowledge_source_autopilot_review", package_id=package_id
+                    )
+                    item["review_unavailable_reason"] = None
+            elif item.get("next_action") == "author_learning_content":
                 destination = CampaignReviewDestinationService.project_learning_authoring(
                     repository_root, work_by_id.get(item.get("work_item_id"), {})
                 )
                 item["review_destination"] = destination
                 item["review_link"] = None
-            if destination.get("resolved"):
+            if (
+                item.get("next_action") != "approve_source"
+                and destination.get("resolved")
+            ):
                 route_values = dict(destination.get("route_values", {}))
                 if item.get("next_action") == "author_learning_content":
                     route_values.update(
@@ -1368,7 +1405,14 @@ def knowledge_campaign_orchestration_detail(campaign_id):
                         work_item_id=item.get("work_item_id"),
                         return_to=campaign_return,
                     )
-                item["review_link"] = url_for(destination["endpoint"], **route_values)
+                resolved_link = url_for(destination["endpoint"], **route_values)
+                if item.get("action_authority") == "human_gate":
+                    item["review_link"] = resolved_link
+                else:
+                    # Reused published artifacts remain inspectable, but they
+                    # are not the governed decision for another work item.
+                    item["review_link"] = None
+                    item["inspection_link"] = resolved_link
                 if item.get("next_action") == "author_learning_content":
                     item["learning_preparation_link"] = url_for(
                         "knowledge_campaign_learning_draft",
@@ -1408,6 +1452,9 @@ def knowledge_campaign_orchestration_detail(campaign_id):
             state = state_by_id.get(item.get("work_item_id"))
             if state and state.get("action_authority") == "human_gate":
                 item["review_link"] = state.get("review_link")
+                item["review_unavailable_reason"] = state.get(
+                    "review_unavailable_reason"
+                )
     return render_template(
         "knowledge_campaign_orchestration_detail.html",
         orchestration=orchestration,
@@ -1672,18 +1719,163 @@ def knowledge_source_research_detail(package_id):
         abort(404)
     extraction_packages = KnowledgeEvidenceExtractionService().list_for_research(package_id)
     extraction_by_source = {item["source_candidate_id"]: item for item in extraction_packages}
+    campaign_return = url_for(
+        "knowledge_campaign_orchestration_detail", campaign_id=package["campaign_id"]
+    )
     return render_template("knowledge_source_research_detail.html", package=package,
                            extraction_by_source=extraction_by_source,
+                           campaign_return=campaign_return,
                            research_error=request.args.get("research_error", ""))
+
+
+@app.get("/curator/growth/source-research/<package_id>/autopilot")
+def knowledge_source_autopilot_review(package_id):
+    service = SupervisedCampaignAutopilotService()
+    try:
+        package = service.research.get(package_id)
+    except KnowledgeSourceResearchError as error:
+        return redirect(url_for(
+            "knowledge_source_research_detail", package_id=package_id,
+            research_error=str(error),
+        ))
+    try:
+        preview = service.current_snapshot(package_id)
+        snapshot_notice = ""
+    except SupervisedCampaignAutopilotError as error:
+        preview = None
+        snapshot_notice = str(error)
+    recommendations = {
+        item["candidate_identity"]: item
+        for item in (preview or {}).get("recommendations", [])
+    }
+    return render_template(
+        "knowledge_source_autopilot_review.html",
+        package=package,
+        preview=preview,
+        recommendations=recommendations,
+        snapshot_notice=snapshot_notice,
+        campaign_return=url_for(
+            "knowledge_campaign_orchestration_detail",
+            campaign_id=package["campaign_id"],
+        ),
+        autopilot_error=request.args.get("autopilot_error", ""),
+    )
+
+
+@app.post("/curator/growth/source-research/<package_id>/autopilot/reanalyze")
+def knowledge_source_autopilot_reanalyze(package_id):
+    service = SupervisedCampaignAutopilotService()
+    identity = getattr(g, "reviewer_identity", None)
+    try:
+        package = service.research.get(package_id)
+        service.prepare_snapshot(
+            package_id,
+            force=True,
+            reviewer=getattr(identity, "username", ""),
+        )
+        return redirect(url_for(
+            "knowledge_source_autopilot_review", package_id=package_id,
+        ))
+    except (KnowledgeSourceResearchError, SupervisedCampaignAutopilotError) as error:
+        campaign_id = locals().get("package", {}).get("campaign_id")
+        if campaign_id:
+            return redirect(url_for(
+                "knowledge_campaign_orchestration_detail",
+                campaign_id=campaign_id, orchestration_error=str(error),
+            ))
+        return redirect(url_for(
+            "knowledge_source_research_detail", package_id=package_id,
+            research_error=str(error),
+        ))
+
+
+@app.post("/curator/growth/source-research/<package_id>/autopilot/approve")
+def knowledge_source_autopilot_approve(package_id):
+    service = SupervisedCampaignAutopilotService()
+    try:
+        package = service.research.get(package_id)
+        orchestrations = [
+            item for item in KnowledgeCampaignOrchestrationService.read_persisted(
+                service.research.campaign_root
+            )
+            if item.get("campaign_id") == package.get("campaign_id")
+        ]
+        if len(orchestrations) != 1:
+            raise SupervisedCampaignAutopilotError(
+                "The campaign orchestration is missing or ambiguous."
+            )
+        orchestration_id = orchestrations[0]["orchestration_id"]
+        existing_review = package.get("supervised_autopilot_review") or {}
+        duplicate_review = (
+            package.get("status") == "approved"
+            and existing_review.get("snapshot_id")
+            == request.form.get("snapshot_id", "")
+            and existing_review.get("review_fingerprint")
+            == request.form.get("preview_fingerprint", "")
+        )
+        gate_states = [
+            item for item in orchestrations[0].get("work_item_states", [])
+            if item.get("work_item_id") == package.get("work_item_id")
+            and item.get("package_id") == package_id
+            and item.get("state") == "awaiting_human_review"
+            and item.get("action_authority") == "human_gate"
+            and item.get("next_action") == "approve_source"
+        ]
+        if not duplicate_review and len(gate_states) != 1:
+            raise SupervisedCampaignAutopilotError(
+                "The source package is no longer at its governed human gate."
+            )
+        decisions = {
+            key.removeprefix("decision_"): str(value)
+            for key, value in request.form.items()
+            if key.startswith("decision_")
+        }
+        result = service.approve(
+            package_id, decisions,
+            expected_snapshot_id=request.form.get("snapshot_id", ""),
+            expected_preview_fingerprint=request.form.get(
+                "preview_fingerprint", ""
+            ),
+            reviewer=getattr(
+                getattr(g, "reviewer_identity", None), "username", ""
+            ),
+            notes=request.form.get("notes", ""),
+        )
+        if result["status"] == "approved":
+            KnowledgeCampaignOrchestrationService().continue_after_human_gate(
+                orchestration_id, actor="Supervised Campaign Autopilot",
+                max_transitions=3,
+            )
+        notice = (
+            "Research package was already approved; no duplicate decision was recorded."
+            if result["status"] == "already_approved"
+            else "Research package approved. Safe campaign work advanced to the next governed stop."
+        )
+        return redirect(url_for(
+            "knowledge_campaign_orchestration_detail",
+            campaign_id=package["campaign_id"], orchestration_notice=notice,
+        ))
+    except (
+        KnowledgeCampaignOrchestrationError, KnowledgeSourceResearchError,
+        SupervisedCampaignAutopilotError,
+    ) as error:
+        return redirect(url_for(
+            "knowledge_source_autopilot_review", package_id=package_id,
+            autopilot_error=str(error),
+        ))
 
 
 @app.post("/curator/growth/source-research/<package_id>/run")
 def knowledge_source_research_run(package_id):
     service = KnowledgeSourceResearchService()
     try:
-        service.run(package_id, force_external=request.form.get("force_external") == "true")
+        package = service.run(
+            package_id, force_external=request.form.get("force_external") == "true"
+        )
+        if package.get("status") == "ready_for_review":
+            SupervisedCampaignAutopilotService(service).prepare_snapshot(package_id)
         error = ""
-    except KnowledgeSourceResearchError as exception:
+    except (KnowledgeSourceResearchError, SupervisedCampaignAutopilotError) as exception:
         error = str(exception)
     return redirect(url_for("knowledge_source_research_detail", package_id=package_id,
                             research_error=error))

@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Source Package Review | Gnojo{% endblock %}
+{% block content %}
+<div class="container curator-page" id="main-content" aria-labelledby="autopilotTitle">
+  {% with curator_active='growth' %}{% include 'partials/_curator_nav.html' %}{% endwith %}
+  <p><a class="btn btn-sm btn-outline-secondary" href="{{ campaign_return }}">Return to Campaign Control Center</a></p>
+  <header class="curator-heading"><div><span class="section-eyebrow">Supervised Campaign Autopilot</span><h1 id="autopilotTitle">Review Source Package</h1><p>AI curates high-confidence candidates. A human authorizes the frozen reviewed set.</p></div><span class="badge text-bg-info">Human approval required</span></header>
+  {% if autopilot_error %}<div class="alert alert-danger">{{ autopilot_error }}</div>{% endif %}
+
+  {% if not preview %}
+  <section class="quality-section" aria-labelledby="snapshotMissingTitle">
+    <span class="section-eyebrow">Frozen review snapshot</span>
+    <h2 id="snapshotMissingTitle">Analysis required</h2>
+    <p>{{ snapshot_notice }}</p>
+    <form method="post" action="{{ url_for('knowledge_source_autopilot_reanalyze', package_id=package.package_id) }}">
+      <button class="btn btn-primary" type="submit">Analyze Package</button>
+    </form>
+    <p class="text-muted mt-2 mb-0">This creates a governed review snapshot. It does not approve sources or publish content.</p>
+  </section>
+  {% else %}
+  <section class="curator-metrics" aria-label="Frozen curation summary">
+    <article><span>AI recommended keep</span><strong>{{ preview.counts.recommended_keep }}</strong></article>
+    <article><span>AI rejected</span><strong>{{ preview.counts.recommended_reject }}</strong></article>
+    <article><span>Human decisions needed</span><strong>{{ preview.human_decision_count }}</strong></article>
+    <article><span>Total</span><strong>{{ preview.recommendations|length }}</strong></article>
+  </section>
+  <section class="quality-section" aria-label="Frozen snapshot identity">
+    <div class="quality-section__heading"><div><span class="section-eyebrow">Frozen snapshot</span><strong>{{ preview.snapshot_id }}</strong><p class="text-muted mb-0">Created {{ preview.created_at }} · Review fingerprint {{ preview.review_fingerprint[:12] }}</p></div>
+      <form method="post" action="{{ url_for('knowledge_source_autopilot_reanalyze', package_id=package.package_id) }}"><button class="btn btn-sm btn-outline-warning" type="submit">Reanalyze Package</button></form>
+    </div>
+    <p class="mb-0">AI curated: {{ preview.curated_count }} · Human decisions needed: {{ preview.human_decision_count }}</p>
+  </section>
+
+  <form method="post" action="{{ url_for('knowledge_source_autopilot_approve', package_id=package.package_id) }}">
+    <input type="hidden" name="snapshot_id" value="{{ preview.snapshot_id }}">
+    <input type="hidden" name="preview_fingerprint" value="{{ preview.review_fingerprint }}">
+    <section class="quality-section" aria-labelledby="humanDecisionTitle">
+      <span class="section-eyebrow">Human exceptions</span><h2 id="humanDecisionTitle">Human Review Required</h2>
+      {% for recommendation in preview.recommendations %}{% if recommendation.recommendation == 'human_review_required' %}{% set equivalent_count = recommendation.get('equivalent_candidate_count', 1) %}
+      <article class="integrity-record mb-3">
+        <div class="quality-section__heading"><div><span class="badge text-bg-warning">Human review required</span><h3>{{ recommendation.deterministic_evidence.page_title }}</h3></div><span>{{ recommendation.confidence|title }} confidence</span></div>
+        <p>{{ recommendation.reason }}</p>
+        {% if equivalent_count > 1 %}<p class="small text-muted">{{ equivalent_count }} package entries resolve to this same canonical source and share one decision.</p>{% endif %}
+        <p class="small text-muted mb-2">{{ recommendation.provider or 'Fail-closed curation' }}{% if recommendation.model %} · {{ recommendation.model }}{% endif %}</p>
+        <label class="form-label" for="decision{{ loop.index }}">Required source decision</label>
+        <select class="form-select" id="decision{{ loop.index }}" name="decision_{{ recommendation.candidate_identity }}" required><option value="" selected>Choose after review</option><option value="selected">Keep source</option><option value="rejected">Reject source</option></select>
+      </article>
+      {% endif %}{% else %}<p class="text-muted">No candidates are available.</p>{% endfor %}
+      {% if not preview.human_decision_count %}<p class="mb-0">No candidate requires an individual human decision.</p>{% endif %}
+    </section>
+
+    <details class="quality-section">
+      <summary><span><span class="section-eyebrow">AI-curated candidates</span><strong class="d-block h2 mb-0">Inspect or override {{ preview.curated_count }} decisions</strong><small>High-confidence decisions are pre-applied to this reviewed set.</small></span></summary>
+      <div class="mt-3">
+      {% for recommendation in preview.recommendations %}{% if recommendation.recommendation != 'human_review_required' %}{% set equivalent_count = recommendation.get('equivalent_candidate_count', 1) %}
+      <article class="integrity-record mb-3">
+        <div class="quality-section__heading"><div><span class="badge {{ 'text-bg-success' if recommendation.recommendation == 'recommended_keep' else 'text-bg-danger' }}">{{ recommendation.recommendation|replace('_',' ')|title }}</span><h3>{{ recommendation.deterministic_evidence.page_title }}</h3></div><span>High confidence</span></div>
+        <p>{{ recommendation.reason }}</p><p class="small text-muted">{{ recommendation.provider or 'Deterministic rule' }}{% if recommendation.model %} · {{ recommendation.model }}{% endif %}</p>
+        {% if equivalent_count > 1 %}<p class="small text-muted">{{ equivalent_count }} package entries resolve to this same canonical source and share one decision.</p>{% endif %}
+        <label class="form-label" for="decision{{ loop.index }}">Override AI curation</label>
+        <select class="form-select" id="decision{{ loop.index }}" name="decision_{{ recommendation.candidate_identity }}"><option value="selected" {% if recommendation.proposed_decision == 'selected' %}selected{% endif %}>Keep source</option><option value="rejected" {% if recommendation.proposed_decision == 'rejected' %}selected{% endif %}>Reject source</option></select>
+      </article>
+      {% endif %}{% endfor %}
+      </div>
+    </details>
+
+    <section class="quality-section"><label class="form-label" for="packageNotes">Package review notes</label><textarea class="form-control mb-3" id="packageNotes" name="notes" rows="3">{{ package.research_notes }}</textarea>{% if preview.approval_blockers %}<div class="alert alert-warning">{{ preview.approval_blockers|join(' ') }}</div>{% endif %}<button class="btn btn-success" type="submit" {% if preview.approval_blockers %}disabled{% endif %}>Approve AI-Reviewed Package</button><p class="text-muted mt-2 mb-0">This records one human package decision, then advances at most three allowlisted machine-safe stages. It never publishes.</p></section>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}

@@ -23,6 +23,9 @@ from app.services.knowledge_evidence_extraction_service import KnowledgeEvidence
 from app.services.knowledge_source_research_service import KnowledgeSourceResearchService
 from app.services.knowledge_workflow_generation_service import KnowledgeWorkflowGenerationService
 from app.services.campaign_review_destination_service import CampaignReviewDestinationService
+from app.services.supervised_campaign_autopilot_service import (
+    SupervisedCampaignAutopilotService,
+)
 
 
 class KnowledgeCampaignOrchestrationError(ValueError):
@@ -67,7 +70,8 @@ class KnowledgeCampaignOrchestrationService:
     def __init__(self, repository_root: Path | None = None, campaign_root: Path | None = None,
                  *, planner=None, research=None, evidence=None, generation=None,
                  claims=None, assembly=None, workflows=None, review_destinations=None, max_transitions: int = 24,
-                 max_work_items: int = 12, max_external_operations: int = 1):
+                 max_work_items: int = 12, max_external_operations: int = 1,
+                 source_autopilot=None):
         self.repository_root = resolve_data_root(repository_root, legacy_root=Path(__file__).resolve().parents[2])
         self.campaign_root = (campaign_root or self.repository_root / "knowledge_campaigns").resolve()
         self.package_root = self.campaign_root / "orchestration"
@@ -79,6 +83,11 @@ class KnowledgeCampaignOrchestrationService:
         self.assembly = assembly or KnowledgeDraftAssemblyService(self.generation, self.campaign_root)
         self.workflows = workflows or KnowledgeWorkflowGenerationService(self.repository_root, self.campaign_root)
         self.review_destinations = review_destinations or CampaignReviewDestinationService(self.repository_root)
+        self.source_autopilot = source_autopilot
+        if source_autopilot is None and isinstance(
+            self.research, KnowledgeSourceResearchService
+        ):
+            self.source_autopilot = SupervisedCampaignAutopilotService(self.research)
         self.limits = {
             "max_transitions": max(1, int(max_transitions)),
             "max_work_items": max(1, int(max_work_items)),
@@ -209,6 +218,51 @@ class KnowledgeCampaignOrchestrationService:
         result = self.refresh(orchestration_id)
         result["execution"] = {"outcomes": outcomes, "transitions": transitions,
                                "external_operations": external, "limits": deepcopy(self.limits)}
+        return result
+
+    def continue_after_human_gate(self, orchestration_id: str, *,
+                                  actor: str = "Human decision",
+                                  max_transitions: int = 3) -> dict[str, Any]:
+        """Advance only the next bounded sequence of allowlisted machine-safe work."""
+        record = self.refresh(orchestration_id)
+        if record.get("mode") != "supervised":
+            raise KnowledgeCampaignOrchestrationError(
+                "Campaign autopilot is available only in supervised mode."
+            )
+        limit = max(1, min(int(max_transitions), 3))
+        outcomes, external = [], 0
+        for _ in range(limit):
+            candidate = record.get("next_recommended_action")
+            if not candidate or candidate.get("action_authority") != "machine_safe":
+                break
+            policy = ACTION_POLICY.get(candidate.get("next_action"), {})
+            if policy.get("authority") != "machine_safe":
+                break
+            if policy.get("external") and external >= self.limits["max_external_operations"]:
+                break
+            outcome = self._execute(
+                record["campaign_id"], candidate["work_item_id"],
+                candidate["next_action"],
+            )
+            outcomes.append(outcome)
+            external += int(bool(policy.get("external")))
+            record = self.refresh(orchestration_id)
+            if outcome.get("status") not in {"completed", "package_reused"}:
+                break
+        if outcomes:
+            record["last_execution_at"] = self._now()
+            self._event(
+                record, "supervised_autopilot_continued", actor,
+                transitions=len(outcomes), external_operations=external,
+                transition_limit=limit, outcomes=outcomes,
+            )
+            self._save(record)
+        result = self.refresh(orchestration_id)
+        result["execution"] = {
+            "outcomes": outcomes, "transitions": len(outcomes),
+            "external_operations": external,
+            "limits": {**deepcopy(self.limits), "autopilot_transitions": limit},
+        }
         return result
 
     def advance_item(self, orchestration_id: str, work_item_id: str,
@@ -870,6 +924,9 @@ class KnowledgeCampaignOrchestrationService:
         if rp.get("status") in {"pending", "researching"}:
             return self._action(base, "research_needed", "run_source_research")
         if rp.get("status") == "ready_for_review":
+            base["review_link"] = (
+                f"/curator/growth/source-research/{rp['package_id']}/autopilot"
+            )
             return self._gate(base, "source_approval_required", "approve_source")
         if rp.get("status") != "approved":
             return self._blocked(base, "source_state", "Source research",
@@ -939,6 +996,9 @@ class KnowledgeCampaignOrchestrationService:
         if rp.get("status") in {"pending", "researching"}:
             return self._action(base, "research_needed", "run_source_research")
         if rp.get("status") == "ready_for_review":
+            base["review_link"] = (
+                f"/curator/growth/source-research/{rp['package_id']}/autopilot"
+            )
             return self._gate(base, "source_approval_required", "approve_source")
         if rp.get("status") in {"needs_refresh", "rejected", "archived"}:
             return self._blocked(base, "source_state", "Source research", f"Research is {rp.get('status') }.", "Review or refresh the research package.", stale=rp.get("status") == "needs_refresh")
@@ -1022,7 +1082,12 @@ class KnowledgeCampaignOrchestrationService:
             if action == "prepare_research": self.research.create(campaign_id, work["gap_id"], work_item_id)
             elif action == "run_source_research":
                 package = next(item for item in self.research.list_for_campaign(campaign_id) if item["work_item_id"] == work_item_id)
-                self.research.run(package["package_id"])
+                completed = self.research.run(package["package_id"])
+                if (
+                    self.source_autopilot is not None
+                    and completed.get("status") == "ready_for_review"
+                ):
+                    self.source_autopilot.prepare_snapshot(completed["package_id"])
             elif action == "prepare_evidence":
                 package = next(item for item in self.research.list_for_campaign(campaign_id) if item["work_item_id"] == work_item_id)
                 existing = self.evidence.list_for_research(package["package_id"])

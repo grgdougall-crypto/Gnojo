@@ -371,10 +371,16 @@ class KnowledgeSourceResearchService:
         if status not in {"approved", "rejected", "needs_refresh", "archived"}:
             raise KnowledgeSourceResearchError("Unknown research review decision.")
         package = self.get(package_id)
+        normalized_notes = str(notes or "").strip()
+        if (
+            package.get("status") == status
+            and str(package.get("research_notes") or "") == normalized_notes
+        ):
+            return package
         if status == "approved" and not package.get("selected_sources"):
             raise KnowledgeSourceResearchError("Select at least one source before approving the research package.")
         package["status"] = status
-        package["research_notes"] = str(notes or "").strip()
+        package["research_notes"] = normalized_notes
         package["history"].append({"event": status, "at": self._now(), "actor": "Human"})
         self._save(package)
         self._sync_reference(package)
@@ -435,7 +441,10 @@ class KnowledgeSourceResearchService:
                     continue
                 if candidate["topic_relevant"]:
                     found.append(candidate)
-        return self._rank(found)
+        # Different source records can enter with different URL spellings and
+        # redirect to the same authoritative page.  Candidate identity is based
+        # on the final canonical URL, so deduplicate again after validation.
+        return self._rank(self._deduplicate(found))
 
     def _external_candidates(self, package: dict[str, Any], gap: dict[str, Any],
                              campaign: dict[str, Any]) -> tuple[str, list[dict[str, Any]]]:
@@ -634,9 +643,30 @@ class KnowledgeSourceResearchService:
         result = {}
         for candidate in candidates:
             key = candidate.get("canonical_url") or candidate["source_candidate_id"]
-            current = result.get(key)
-            if current is None or (current.get("topic_relevant") is False and candidate.get("topic_relevant") is True):
-                result[key] = candidate
+            existing = result.get(key)
+            if existing is None:
+                current = candidate
+            elif existing.get("topic_relevant") is False and candidate.get("topic_relevant") is True:
+                current = candidate
+            else:
+                current = existing
+            matches = []
+            if existing is not None:
+                for item in (existing, candidate):
+                    matches.extend(item.get("existing_gnojo_source_matches") or [])
+                    if item.get("existing_gnojo_source_match"):
+                        matches.append(item["existing_gnojo_source_match"])
+            if matches:
+                unique = {}
+                for match in matches:
+                    identity = (
+                        str(match.get("content_type") or ""),
+                        str(match.get("identifier") or ""),
+                        str(match.get("source_path") or ""),
+                    )
+                    unique.setdefault(identity, match)
+                current["existing_gnojo_source_matches"] = list(unique.values())
+            result[key] = current
         return list(result.values())
 
     @staticmethod

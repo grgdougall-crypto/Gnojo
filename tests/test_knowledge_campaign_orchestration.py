@@ -346,15 +346,31 @@ class KnowledgeCampaignOrchestrationTests(unittest.TestCase):
             (path.relative_to(self.root).as_posix(), path.read_bytes())
             for path in self.root.rglob("*") if path.is_file()
         )
+        flask_app.config.update(TESTING=True)
         with (
             patch("app.app._structural_repository_root", return_value=self.root),
             patch("app.app.KnowledgeCoveragePlannerService", return_value=planner),
             patch("app.app.WorkflowDraftService", return_value=drafts),
+            patch.object(
+                KnowledgeCampaignOrchestrationService,
+                "read_persisted",
+                return_value=[{
+                    "campaign_id": "KCAMP-TEST",
+                    "orchestration_id": "KORCH-TEST",
+                    "work_item_states": [{
+                        "work_item_id": "KCW-1",
+                        "work_type": "learning_content",
+                        "next_action": "author_learning_content",
+                        "action_authority": "human_gate",
+                    }],
+                }],
+            ),
         ):
             response = flask_app.test_client().get(
                 "/workflow-studio",
                 query_string={
                     "workflow": "low_storage", "campaign_id": "KCAMP-TEST",
+                    "orchestration_id": "KORCH-TEST",
                     "work_item_id": "KCW-1", "return_to": return_to,
                 },
             )
@@ -368,6 +384,11 @@ class KnowledgeCampaignOrchestrationTests(unittest.TestCase):
         self.assertIn("Learning coverage is 32%", rendered)
         self.assertIn("Campaign target", rendered)
         self.assertIn(f'href="{return_to}"', rendered)
+        self.assertIn(
+            'value="/curator/growth/orchestration/KORCH-TEST/items/'
+            'KCW-1/learning-draft?campaign_id=KCAMP-TEST"',
+            rendered,
+        )
         self.assertEqual(after, before)
 
     def test_workflow_studio_learning_context_fails_closed_on_identity_mismatch(self):

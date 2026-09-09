@@ -69,6 +69,7 @@ class CampaignLearningDraftPreparationService:
     def _preview_from_context(self, context: dict[str, Any]) -> dict[str, Any]:
         workflow = context["workflow"]
         nodes = workflow["nodes"]
+        validation = WorkflowValidationService().validate(workflow)
         candidates = KnowledgeCoveragePlannerService.learning_help_text_candidate_ids(
             workflow
         )
@@ -110,6 +111,8 @@ class CampaignLearningDraftPreparationService:
             "eligible_count": len(candidates),
             "skipped_nodes": skipped,
             "draft_fingerprint": context["draft_fingerprint"],
+            "workflow_validation_clean": bool(validation.get("is_valid")),
+            "completion_ready": not candidates and bool(validation.get("is_valid")),
             "publication_unchanged": True,
             "human_gate_unchanged": True,
         }
@@ -227,6 +230,10 @@ class CampaignLearningDraftPreparationService:
             ],
         }
         self._commit(context, proposed, result, actor)
+        current = self.preview(campaign_id, orchestration_id, work_item_id)
+        result["completion_ready"] = current["completion_ready"]
+        result["completion_draft_fingerprint"] = current["draft_fingerprint"]
+        result["workflow_validation_clean"] = current["workflow_validation_clean"]
         return result
 
     def _context(

@@ -13,7 +13,10 @@ from app.data_root import resolve_data_root
 from typing import Any
 
 from app.services.knowledge_claim_planning_service import KnowledgeClaimPlanningService
-from app.services.knowledge_coverage_planner_service import KnowledgeCoveragePlannerService
+from app.services.knowledge_coverage_planner_service import (
+    KnowledgeCoveragePlannerError,
+    KnowledgeCoveragePlannerService,
+)
 from app.services.knowledge_draft_assembly_service import KnowledgeDraftAssemblyService
 from app.services.knowledge_draft_generation_service import KnowledgeDraftGenerationService
 from app.services.knowledge_evidence_extraction_service import KnowledgeEvidenceExtractionService
@@ -102,6 +105,13 @@ class KnowledgeCampaignOrchestrationService:
             value.repository_root, value.campaign_root
         )
         return value
+
+    @classmethod
+    def for_learning_authoring_decision(
+        cls, repository_root: Path, campaign_root: Path | None = None
+    ) -> "KnowledgeCampaignOrchestrationService":
+        """Construct only the authorities needed by learning completion."""
+        return cls.for_command_relationship_decision(repository_root, campaign_root)
 
     def get_or_create(self, campaign_id: str, mode: str = "supervised",
                       actor: str = "Human") -> dict[str, Any]:
@@ -449,6 +459,295 @@ class KnowledgeCampaignOrchestrationService:
                 "command_identity": command_id,
             }
 
+    def complete_learning_authoring(
+        self,
+        campaign_id: str,
+        orchestration_id: str,
+        work_item_id: str,
+        *,
+        reviewer: str,
+        expected_draft_fingerprint: str,
+    ) -> dict[str, Any]:
+        """Complete one exact learning-authoring gate after current-draft review."""
+        from app.services.curator_workflow_lifecycle_service import (
+            CuratorWorkflowLifecycleService,
+        )
+        from app.services.workflow_validation_service import WorkflowValidationService
+
+        reviewer = str(reviewer or "").strip()
+        expected_draft_fingerprint = str(expected_draft_fingerprint or "").strip()
+        if not reviewer:
+            raise KnowledgeCampaignOrchestrationError(
+                "An authenticated reviewer is required."
+            )
+        if not expected_draft_fingerprint:
+            raise KnowledgeCampaignOrchestrationError(
+                "The reviewed draft fingerprint is required."
+            )
+
+        lock_path = self.campaign_root / ".learning-authoring-decision.lock"
+        with self._decision_lock(lock_path, operation="learning authoring decision"):
+            try:
+                campaign_path = self.planner._path(campaign_id)
+                orchestration_path = self._path(orchestration_id)
+            except (KnowledgeCoveragePlannerError, KnowledgeCampaignOrchestrationError) as error:
+                raise KnowledgeCampaignOrchestrationError(
+                    "The learning-authoring campaign identity is invalid."
+                ) from error
+            try:
+                campaign_raw = campaign_path.read_bytes()
+                orchestration_raw = orchestration_path.read_bytes()
+                campaign = json.loads(campaign_raw.decode("utf-8"))
+                orchestration = json.loads(orchestration_raw.decode("utf-8"))
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+                raise KnowledgeCampaignOrchestrationError(
+                    "The learning-authoring decision state could not be read safely."
+                ) from error
+
+            works = [
+                value for value in campaign.get("work_items", [])
+                if isinstance(value, dict)
+                and value.get("work_item_id") == work_item_id
+                and value.get("work_type") == "learning_content"
+            ]
+            if len(works) != 1:
+                raise KnowledgeCampaignOrchestrationError(
+                    "The weak-learning campaign work item is missing or ambiguous."
+                )
+            work = works[0]
+            gaps = [
+                value for value in campaign.get("gaps", [])
+                if isinstance(value, dict)
+                and value.get("gap_id") == work.get("gap_id")
+                and value.get("gap_type") == "weak_learning_coverage"
+            ]
+            if len(gaps) != 1:
+                raise KnowledgeCampaignOrchestrationError(
+                    "The work item lacks unambiguous weak-learning campaign provenance."
+                )
+            states = [
+                value for value in orchestration.get("work_item_states", [])
+                if isinstance(value, dict) and value.get("work_item_id") == work_item_id
+            ]
+            existing = work.get("learning_authoring_completion")
+            if isinstance(existing, dict) and existing.get("draft_fingerprint"):
+                if not (
+                    campaign.get("campaign_id") == campaign_id
+                    and orchestration.get("campaign_id") == campaign_id
+                    and orchestration.get("orchestration_id") == orchestration_id
+                    and len(states) == 1
+                    and states[0].get("state") == "complete"
+                    and states[0].get("next_action") is None
+                    and states[0].get("action_authority") is None
+                    and existing.get("campaign_id") == campaign_id
+                    and existing.get("work_item_id") == work_item_id
+                ):
+                    raise KnowledgeCampaignOrchestrationError(
+                        "The existing learning-authoring completion is inconsistent."
+                    )
+                return {
+                    "status": "already_completed",
+                    "campaign_id": campaign_id,
+                    "orchestration_id": orchestration_id,
+                    "work_item_id": work_item_id,
+                    "workflow_id": str(work.get("workflow_id") or ""),
+                    "draft_fingerprint": str(existing.get("draft_fingerprint")),
+                }
+            if (
+                campaign.get("campaign_id") != campaign_id
+                or orchestration.get("campaign_id") != campaign_id
+                or orchestration.get("orchestration_id") != orchestration_id
+                or len(states) != 1
+                or states[0].get("state") != "awaiting_human_review"
+                or states[0].get("action_authority") != "human_gate"
+                or states[0].get("next_action") != "author_learning_content"
+            ):
+                raise KnowledgeCampaignOrchestrationError(
+                    "The work item is no longer at its governed learning-authoring gate."
+                )
+
+            workflow_id = str(work.get("workflow_id") or "").strip()
+            if not workflow_id:
+                raise KnowledgeCampaignOrchestrationError(
+                    "The campaign does not identify one authoritative workflow."
+                )
+            drafts = CuratorWorkflowLifecycleService(self.repository_root).drafts(
+                workflow_id
+            )
+            if len(drafts) != 1:
+                raise KnowledgeCampaignOrchestrationError(
+                    "Exactly one editable workflow draft is required."
+                )
+            target = drafts[0]
+            draft_path = (self.repository_root / target.source_path).resolve()
+            expected_directory = (
+                self.repository_root / "app" / "workflow_drafts"
+            ).resolve()
+            if draft_path.parent != expected_directory or target.workflow_id != workflow_id:
+                raise KnowledgeCampaignOrchestrationError(
+                    "The editable workflow identity could not be resolved safely."
+                )
+            try:
+                draft_raw = draft_path.read_bytes()
+            except OSError as error:
+                raise KnowledgeCampaignOrchestrationError(
+                    "The editable workflow draft could not be read safely."
+                ) from error
+            draft_fingerprint = hashlib.sha256(draft_raw).hexdigest()
+            if draft_fingerprint != expected_draft_fingerprint:
+                raise KnowledgeCampaignOrchestrationError(
+                    "The editable workflow changed after review. Reload before completing authoring."
+                )
+            workflow = deepcopy(target.workflow)
+            remaining = KnowledgeCoveragePlannerService.learning_help_text_candidate_ids(
+                workflow
+            )
+            if remaining:
+                raise KnowledgeCampaignOrchestrationError(
+                    "Eligible blank Help Text fields remain in the current draft."
+                )
+            validation = WorkflowValidationService().validate(workflow)
+            if not validation.get("is_valid"):
+                raise KnowledgeCampaignOrchestrationError(
+                    "The current workflow draft must pass validation before learning authoring can be completed."
+                )
+
+            supported_nodes = [
+                node for node in (workflow.get("nodes") or {}).values()
+                if isinstance(node, dict)
+                and node.get("type") in {"question", "instruction"}
+            ]
+            completed_at = self._now()
+            completion = {
+                "decision": "complete",
+                "reviewer": reviewer,
+                "completed_at": completed_at,
+                "campaign_id": campaign_id,
+                "work_item_id": work_item_id,
+                "workflow_id": workflow_id,
+                "workflow_filename": target.filename,
+                "draft_fingerprint": draft_fingerprint,
+                "evidence": {
+                    "nodes_scanned": len(workflow.get("nodes") or {}),
+                    "eligible_blank_help_text": 0,
+                    "existing_help_text": sum(
+                        bool(str(node.get("help_text") or "").strip())
+                        for node in supported_nodes
+                    ),
+                    "workflow_validation_clean": True,
+                },
+            }
+            work["status"] = "completed"
+            work["learning_authoring_completion"] = completion
+            campaign.setdefault("history", []).append({
+                "event": "learning_authoring_completed",
+                "at": completed_at,
+                "actor": reviewer,
+                **completion,
+            })
+
+            projected_states = deepcopy(orchestration.get("work_item_states") or [])
+            target_states = [
+                value for value in projected_states
+                if isinstance(value, dict) and value.get("work_item_id") == work_item_id
+            ]
+            if len(target_states) != 1:
+                raise KnowledgeCampaignOrchestrationError(
+                    "The learning-authoring orchestration state is ambiguous."
+                )
+            target_states[0].update(
+                stage="learning_authoring_completed",
+                state="complete",
+                next_action=None,
+                action_authority=None,
+                review_link=None,
+            )
+            orchestration.update(self._projection(campaign, projected_states))
+            self._event(
+                orchestration,
+                "learning_authoring_completed",
+                reviewer,
+                work_item_id=work_item_id,
+                workflow_id=workflow_id,
+                draft_fingerprint=draft_fingerprint,
+                evidence=deepcopy(completion["evidence"]),
+            )
+            orchestration.setdefault("fingerprints", {})["projection"] = self._fingerprint(
+                self._projection(campaign, projected_states)
+            )
+
+            replacements = {
+                campaign_path: self._json_bytes(campaign),
+                orchestration_path: self._json_bytes(orchestration),
+            }
+            before = {
+                campaign_path: campaign_raw,
+                orchestration_path: orchestration_raw,
+            }
+            written: list[Path] = []
+            try:
+                if draft_path.read_bytes() != draft_raw:
+                    raise KnowledgeCampaignOrchestrationError(
+                        "The editable workflow changed during completion. Reload and try again."
+                    )
+                for path in (campaign_path, orchestration_path):
+                    if path.read_bytes() != before[path]:
+                        raise KnowledgeCampaignOrchestrationError(
+                            "The campaign changed during learning-authoring completion."
+                        )
+                    self._atomic_write_bytes(path, replacements[path])
+                    written.append(path)
+                saved_campaign = json.loads(campaign_path.read_text(encoding="utf-8"))
+                saved_orchestration = json.loads(
+                    orchestration_path.read_text(encoding="utf-8")
+                )
+                saved_work = [
+                    value for value in saved_campaign.get("work_items", [])
+                    if value.get("work_item_id") == work_item_id
+                    and isinstance(value.get("learning_authoring_completion"), dict)
+                ]
+                saved_state = [
+                    value for value in saved_orchestration.get("work_item_states", [])
+                    if value.get("work_item_id") == work_item_id
+                    and value.get("state") == "complete"
+                    and value.get("next_action") is None
+                    and value.get("action_authority") is None
+                ]
+                if len(saved_work) != 1 or len(saved_state) != 1:
+                    raise KnowledgeCampaignOrchestrationError(
+                        "The learning-authoring completion could not be verified."
+                    )
+            except Exception as error:
+                rollback_errors = []
+                for path in reversed(written):
+                    try:
+                        if path.read_bytes() != replacements[path]:
+                            rollback_errors.append(f"{path.name} changed concurrently")
+                            continue
+                        self._atomic_write_bytes(path, before[path])
+                    except OSError as rollback_error:
+                        rollback_errors.append(f"{path.name}: {rollback_error}")
+                if rollback_errors:
+                    raise KnowledgeCampaignOrchestrationError(
+                        "Learning-authoring completion failed and guarded rollback was incomplete: "
+                        + "; ".join(rollback_errors)
+                    ) from error
+                if isinstance(error, KnowledgeCampaignOrchestrationError):
+                    raise
+                raise KnowledgeCampaignOrchestrationError(
+                    f"Learning-authoring completion failed; all writes were restored: {error}"
+                ) from error
+
+            return {
+                "status": "completed",
+                "campaign_id": campaign_id,
+                "orchestration_id": orchestration_id,
+                "work_item_id": work_item_id,
+                "workflow_id": workflow_id,
+                "draft_fingerprint": draft_fingerprint,
+                "completion": completion,
+            }
+
     def _resolve_item(self, campaign, work):
         base = {"work_item_id": work["work_item_id"], "gap_id": work["gap_id"],
                 "title": work.get("area_id", "").replace("-", " ").title(),
@@ -465,6 +764,14 @@ class KnowledgeCampaignOrchestrationService:
                 stage="command_reference_review_completed", state="complete",
                 next_action=None, action_authority=None,
                 review_link=None,
+            )
+            return base
+        if work.get("work_type") == "learning_content" and isinstance(
+            work.get("learning_authoring_completion"), dict
+        ) and work["learning_authoring_completion"].get("decision") == "complete":
+            base.update(
+                stage="learning_authoring_completed", state="complete",
+                next_action=None, action_authority=None, review_link=None,
             )
             return base
         reuse = self._reuse_for_work(campaign, work)

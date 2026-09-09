@@ -5,7 +5,7 @@ import secrets
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from urllib.parse import quote, urlsplit
+from urllib.parse import parse_qs, quote, urlsplit
 from uuid import uuid4
 
 from flask import (
@@ -1364,6 +1364,7 @@ def knowledge_campaign_orchestration_detail(campaign_id):
                 if item.get("next_action") == "author_learning_content":
                     route_values.update(
                         campaign_id=campaign_id,
+                        orchestration_id=orchestration["orchestration_id"],
                         work_item_id=item.get("work_item_id"),
                         return_to=campaign_return,
                     )
@@ -1452,11 +1453,16 @@ def knowledge_campaign_learning_draft(orchestration_id, work_item_id):
     campaign_return = url_for(
         "knowledge_campaign_orchestration_detail", campaign_id=campaign_id
     )
-    workflow_return = campaign_return
+    learning_review_url = url_for(
+        "knowledge_campaign_learning_draft",
+        orchestration_id=orchestration_id,
+        work_item_id=work_item_id,
+        campaign_id=campaign_id,
+    )
     workflow_url = url_for(
         "workflow_editor",
         filename=context["workflow_filename"],
-        return_to=workflow_return,
+        return_to=learning_review_url,
     )
     return render_template(
         "campaign_learning_draft_preparation.html",
@@ -1464,7 +1470,45 @@ def knowledge_campaign_learning_draft(orchestration_id, work_item_id):
         result=result,
         campaign_return=campaign_return,
         workflow_url=workflow_url,
+        completion_error=request.args.get("completion_error", ""),
     )
+
+
+@app.post(
+    "/curator/growth/orchestration/<orchestration_id>/items/"
+    "<work_item_id>/learning-draft/complete"
+)
+def knowledge_campaign_learning_draft_complete(orchestration_id, work_item_id):
+    campaign_id = str(request.form.get("campaign_id") or "").strip()
+    identity = getattr(g, "reviewer_identity", None)
+    try:
+        result = KnowledgeCampaignOrchestrationService.for_learning_authoring_decision(
+            _structural_repository_root()
+        ).complete_learning_authoring(
+            campaign_id,
+            orchestration_id,
+            work_item_id,
+            reviewer=getattr(identity, "username", ""),
+            expected_draft_fingerprint=request.form.get("draft_fingerprint", ""),
+        )
+    except KnowledgeCampaignOrchestrationError as error:
+        return redirect(url_for(
+            "knowledge_campaign_learning_draft",
+            orchestration_id=orchestration_id,
+            work_item_id=work_item_id,
+            campaign_id=campaign_id,
+            completion_error=str(error),
+        ))
+    notice = (
+        "Learning authoring was already complete; no additional decision was recorded."
+        if result.get("status") == "already_completed"
+        else "Learning authoring completed. The workflow remains unpublished."
+    )
+    return redirect(url_for(
+        "knowledge_campaign_orchestration_detail",
+        campaign_id=campaign_id,
+        orchestration_notice=notice,
+    ))
 
 
 @app.post("/curator/growth/orchestration/<orchestration_id>/mode")
@@ -3006,10 +3050,11 @@ def knowledge_lifecycle_action(article_id, action):
 def workflow_studio():
     selected_workflow = str(request.args.get("workflow") or "").strip()
     campaign_id = str(request.args.get("campaign_id") or "").strip()
+    orchestration_id = str(request.args.get("orchestration_id") or "").strip()
     work_item_id = str(request.args.get("work_item_id") or "").strip()
     requested_return = str(request.args.get("return_to") or "").strip()
     learning_context = None
-    if any((campaign_id, work_item_id, requested_return)):
+    if any((campaign_id, orchestration_id, work_item_id, requested_return)):
         expected_return = url_for(
             "knowledge_campaign_orchestration_detail", campaign_id=campaign_id
         ) if campaign_id else ""
@@ -3017,15 +3062,34 @@ def workflow_studio():
             requested_return,
             ("/curator/growth/coverage-campaigns",),
         )
-        if not all((selected_workflow, campaign_id, work_item_id, return_to)) or (
-            return_to != expected_return
-        ):
+        if not all((
+            selected_workflow, campaign_id, orchestration_id, work_item_id,
+            return_to,
+        )) or return_to != expected_return:
             abort(404)
         try:
             campaign = KnowledgeCoveragePlannerService(
                 _structural_repository_root()
             ).get(campaign_id)
-        except KnowledgeCoveragePlannerError:
+            orchestrations = [
+                item for item in KnowledgeCampaignOrchestrationService.read_persisted(
+                    _structural_repository_root() / "knowledge_campaigns"
+                )
+                if item.get("campaign_id") == campaign_id
+                and item.get("orchestration_id") == orchestration_id
+            ]
+        except (KnowledgeCampaignOrchestrationError, KnowledgeCoveragePlannerError):
+            abort(404)
+        if len(orchestrations) != 1:
+            abort(404)
+        work_states = [
+            item for item in orchestrations[0].get("work_item_states", [])
+            if item.get("work_item_id") == work_item_id
+            and item.get("work_type") == "learning_content"
+            and item.get("next_action") == "author_learning_content"
+            and item.get("action_authority") == "human_gate"
+        ]
+        if len(work_states) != 1:
             abort(404)
         matches = [
             item for item in campaign.get("work_items", [])
@@ -3036,14 +3100,22 @@ def workflow_studio():
         if len(matches) != 1:
             abort(404)
         work_item = matches[0]
+        learning_review_url = url_for(
+            "knowledge_campaign_learning_draft",
+            orchestration_id=orchestration_id,
+            work_item_id=work_item_id,
+            campaign_id=campaign_id,
+        )
         learning_context = {
             "campaign_id": campaign_id,
+            "orchestration_id": orchestration_id,
             "work_item_id": work_item_id,
             "workflow_id": selected_workflow,
             "title": work_item.get("area_title") or work_item.get("area_id")
             or selected_workflow.replace("_", " ").title(),
             "coverage_percent": work_item.get("coverage_percent"),
             "return_url": return_to,
+            "learning_review_url": learning_review_url,
         }
 
     draft_path = _workflow_repository_root() / "app" / "workflow_drafts"
@@ -3114,9 +3186,17 @@ def copy_builtin_workflow(workflow_id):
             "This workflow cannot be copied yet",
             "The built-in workflow must pass validation before an editable copy can be created.",
         )
-    return_to = safe_internal_return(
-        request.form.get("return_to", ""),
-        ("/curator/growth/coverage-campaigns",),
+    requested_return = request.form.get("return_to", "")
+    learning_review_context = _learning_draft_review_return_context(
+        requested_return, filename
+    )
+    return_to = (
+        learning_review_context["return_url"]
+        if learning_review_context
+        else safe_internal_return(
+            requested_return,
+            ("/curator/growth/coverage-campaigns",),
+        )
     )
     return redirect(url_for(
         "workflow_editor", filename=filename, return_to=return_to or None
@@ -3182,13 +3262,20 @@ def workflow_editor(filename):
                 "affected": affected_label,
                 "return_url": review_return,
             }
-    return_to = safe_internal_return(
-        request.args.get("return_to", ""),
-        (
-            "/workflow-studio",
-            "/content-quality",
-            "/curator/growth/coverage-campaigns",
-        ),
+    learning_review_context = _learning_draft_review_return_context(
+        request.args.get("return_to", ""), filename
+    )
+    return_to = (
+        learning_review_context["return_url"]
+        if learning_review_context
+        else safe_internal_return(
+            request.args.get("return_to", ""),
+            (
+                "/workflow-studio",
+                "/content-quality",
+                "/curator/growth/coverage-campaigns",
+            ),
+        )
     )
     return render_template(
         "workflow_editor.html",
@@ -3203,6 +3290,7 @@ def workflow_editor(filename):
         curator_task=curator_task,
         curator_return=curator_return,
         review_context=review_context,
+        learning_review_context=learning_review_context,
         selected_node=request.args.get("node", ""),
         curator_category=request.args.get("category", "all"),
         lifecycle_projection=lifecycle_projection,
@@ -3211,13 +3299,67 @@ def workflow_editor(filename):
         publication_review_status=request.args.get("publication_review_status", ""),
         return_to=return_to,
         return_label=(
-            "Back to Content Quality"
+            "Return to Learning Draft Review"
+            if learning_review_context
+            else "Back to Content Quality"
             if return_to.startswith("/content-quality")
             else "Return to Campaign Control Center"
             if return_to.startswith("/curator/growth/coverage-campaigns/")
             else "Back to Workflow Studio"
         ),
     )
+
+
+def _learning_draft_review_return_context(
+    requested_return: object, workflow_filename: str
+) -> dict[str, str] | None:
+    """Validate one exact campaign learning-review return destination."""
+    candidate = safe_internal_return(
+        requested_return, ("/curator/growth/orchestration",)
+    )
+    if not candidate:
+        return None
+    parsed = urlsplit(candidate)
+    match = re.fullmatch(
+        r"/curator/growth/orchestration/([^/]+)/items/([^/]+)/learning-draft",
+        parsed.path,
+    )
+    query = parse_qs(parsed.query, keep_blank_values=True)
+    campaign_values = query.get("campaign_id", [])
+    if (
+        not match
+        or parsed.fragment
+        or set(query) != {"campaign_id"}
+        or len(campaign_values) != 1
+    ):
+        return None
+    orchestration_id, work_item_id = match.groups()
+    campaign_id = str(campaign_values[0] or "").strip()
+    expected = url_for(
+        "knowledge_campaign_learning_draft",
+        orchestration_id=orchestration_id,
+        work_item_id=work_item_id,
+        campaign_id=campaign_id,
+    )
+    if not campaign_id or candidate != expected:
+        return None
+    try:
+        preview = CampaignLearningDraftPreparationService(
+            _structural_repository_root()
+        ).preview(campaign_id, orchestration_id, work_item_id)
+    except CampaignLearningDraftPreparationError:
+        return None
+    if preview.get("workflow_filename") != workflow_filename:
+        return None
+    return {
+        "return_url": expected,
+        "campaign_url": url_for(
+            "knowledge_campaign_orchestration_detail", campaign_id=campaign_id
+        ),
+        "campaign_id": campaign_id,
+        "work_item_id": work_item_id,
+        "workflow_name": str(preview.get("workflow_name") or "Workflow draft"),
+    }
 
 
 def _workflow_repository_root() -> Path:

@@ -24,7 +24,12 @@
     data-curator-return="{{ curator_return|default('') }}"
     {% if review_context %}data-review-context="true"{% endif %}
 >
-    {% if review_context %}
+    {% if learning_review_context %}
+    <aside class="workflow-review-context alert alert-info d-flex flex-wrap align-items-center justify-content-between gap-2" role="region" aria-label="Learning draft review context">
+        <span class="workflow-review-context__copy"><strong>Learning draft review:</strong> {{ learning_review_context.workflow_name }}<small class="d-block">Campaign work item: {{ learning_review_context.work_item_id }}</small></span>
+        <span class="d-flex flex-wrap gap-2"><a class="btn btn-sm btn-outline-info" href="{{ learning_review_context.return_url }}">Return to Learning Draft Review</a><a class="btn btn-sm btn-outline-secondary" href="{{ learning_review_context.campaign_url }}">Return to Campaign Control Center</a></span>
+    </aside>
+    {% elif review_context %}
     <aside class="workflow-review-context alert alert-info d-flex flex-wrap align-items-center justify-content-between gap-2" role="region" aria-label="Review context">
         <span class="workflow-review-context__copy"><strong>Review context:</strong> {{ review_context.title }}<small class="d-block">Selected node: {{ review_context.affected }}</small></span>
         <a class="btn btn-sm btn-outline-info" href="{{ review_context.return_url }}">Return to Review</a>

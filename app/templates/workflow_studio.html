@@ -78,7 +78,7 @@
                         <p class="text-muted mb-4">{% if draft.is_damaged %}Gnojo could not read this file safely. Restore it from a backup or inspect the JSON before reopening it.{% elif draft.progress_mode == 'branch_aware' %}Branch-aware progress · Path length adapts to the selected route.{% elif draft.estimated_steps %}{{ draft.estimated_steps }} planned steps{% else %}Static progress · Step estimate not set{% endif %}</p>
 
                         {% if not draft.is_damaged %}<a
-    href="{{ url_for('workflow_editor', filename=draft.filename, return_to=learning_context.return_url) if learning_context and draft.workflow_id == selected_workflow else url_for('workflow_editor', filename=draft.filename) }}"
+    href="{{ url_for('workflow_editor', filename=draft.filename, return_to=learning_context.learning_review_url) if learning_context and draft.workflow_id == selected_workflow else url_for('workflow_editor', filename=draft.filename) }}"
     class="btn btn-outline-primary btn-sm"
     aria-label="Open {{ draft.name }} in Workflow Designer"
 >
@@ -150,12 +150,12 @@
                         <p class="text-muted">{{ workflow.description }}</p>
                         <p class="small text-muted mt-auto mb-3">{% if workflow.progress_mode == 'branch_aware' %}Branch-aware progress · Path length adapts to the selected route.{% elif workflow.estimated_steps %}{{ workflow.estimated_steps }} planned steps{% else %}Static progress · Step estimate not set{% endif %}</p>
                         {% if workflow.draft_filename %}
-                            <a class="btn btn-outline-primary btn-sm align-self-start" href="{{ url_for('workflow_editor', filename=workflow.draft_filename, return_to=learning_context.return_url) if learning_context and workflow.workflow_id == selected_workflow else url_for('workflow_editor', filename=workflow.draft_filename) }}" aria-label="Open editable copy of {{ workflow.name }}">
+                            <a class="btn btn-outline-primary btn-sm align-self-start" href="{{ url_for('workflow_editor', filename=workflow.draft_filename, return_to=learning_context.learning_review_url) if learning_context and workflow.workflow_id == selected_workflow else url_for('workflow_editor', filename=workflow.draft_filename) }}" aria-label="Open editable copy of {{ workflow.name }}">
                                 <i class="bi bi-pencil-square me-2" aria-hidden="true"></i>Open in Designer
                             </a>
                         {% else %}
                             <form method="post" action="{{ url_for('copy_builtin_workflow', workflow_id=workflow.workflow_id) }}">
-                                {% if learning_context and workflow.workflow_id == selected_workflow %}<input type="hidden" name="return_to" value="{{ learning_context.return_url }}">{% endif %}
+                                {% if learning_context and workflow.workflow_id == selected_workflow %}<input type="hidden" name="return_to" value="{{ learning_context.learning_review_url }}">{% endif %}
                                 <button class="btn btn-outline-primary btn-sm" type="submit" aria-label="Create editable copy of {{ workflow.name }}">
                                     <i class="bi bi-copy me-2" aria-hidden="true"></i>Create Editable Copy
                                 </button>

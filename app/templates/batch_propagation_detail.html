@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Batch Propagation | Gnojo{% endblock %}
+{% block content %}
+<main class="container curator-page" id="main-content" aria-labelledby="batchTitle">
+  {% with curator_active='growth' %}{% include 'partials/_curator_nav.html' %}{% endwith %}
+  <header class="curator-heading">
+    <div><span class="section-eyebrow">Supervised Campaign Autopilot</span><h1 id="batchTitle">Batch Propagation</h1><p>{{ batch.domain.title }} · {{ batch.selected_count }} workflow{{ '' if batch.selected_count == 1 else 's' }}</p></div>
+    <span class="badge text-bg-info">{{ batch.status|replace('_', ' ')|title }}</span>
+  </header>
+  {% if request.args.get('batch_error') %}<div class="alert alert-danger">{{ request.args.get('batch_error') }}</div>{% endif %}
+  <section class="curator-metrics" aria-label="Batch status summary">
+    <article><span>Processed</span><strong>{{ batch.counts.PROCESSED }}</strong></article>
+    <article><span>Ready for review</span><strong>{{ batch.counts.READY_FOR_FINAL_REVIEW }}</strong></article>
+    <article><span>Exceptions</span><strong>{{ batch.counts.HUMAN_EXCEPTION }}</strong></article>
+    <article><span>Blocked / failed-safe</span><strong>{{ batch.counts.BLOCKED + batch.counts.FAILED_SAFE }}</strong></article>
+    <article><span>Completed</span><strong>{{ batch.counts.MACHINE_COMPLETE }}</strong></article>
+  </section>
+
+  <section class="quality-section" aria-labelledby="reviewQueueTitle">
+    <div class="quality-section__heading"><div><span class="section-eyebrow">Exception-only queue</span><h2 id="reviewQueueTitle">Human review</h2></div>
+      <form method="post" action="{{ url_for('batch_propagation_resume', batch_id=batch.batch_id) }}"><input type="hidden" name="authenticity_token" value="{{ authenticity_token() }}"><button class="btn btn-sm btn-primary" type="submit">Resume safe processing</button></form>
+    </div>
+    {% for item in batch.review_queue %}
+    <article class="integrity-record mb-3">
+      <div class="quality-section__heading"><div><h3>{{ item.workflow_name }}</h3><span class="badge {{ 'text-bg-warning' if item.state == 'HUMAN_EXCEPTION' else 'text-bg-info' if item.state == 'READY_FOR_FINAL_REVIEW' else 'text-bg-danger' }}">{{ item.state|replace('_', ' ') }}</span></div>{% if item.review_url %}<a class="btn btn-sm btn-outline-primary" href="{{ item.review_url }}">{{ item.next_human_action or 'Review item' }}</a>{% endif %}</div>
+      <p>{{ item.reason }}</p>
+      {% if item.what_completed %}<p class="small text-muted mb-0">Gnojo completed: {{ item.what_completed|join(', ') }}</p>{% endif %}
+    </article>
+    {% else %}<p class="text-muted mb-0">No human exception is waiting.</p>{% endfor %}
+  </section>
+
+  <section class="quality-section" aria-labelledby="workflowStatusTitle">
+    <h2 id="workflowStatusTitle">Workflow status</h2>
+    {% for item in batch['items'] %}
+    <details class="integrity-record mb-2"><summary><strong>{{ item.workflow_name }}</strong> <span class="badge text-bg-secondary">{{ item.state|replace('_', ' ') }}</span>{% if item.next_human_action %}<small>{{ item.next_human_action }}</small>{% endif %}</summary>
+      <div class="mt-3"><p>{{ item.reason }}</p><p class="small text-muted">Gap: {{ item.gap_type|replace('_', ' ') }} · {{ item.gap_identity }}</p><p class="small text-muted mb-0">Attempts: {{ item.attempts|length }} · Existing work reused: {{ 'Yes' if item.reused else 'No' }}</p></div>
+    </details>
+    {% endfor %}
+  </section>
+  <p class="text-muted">No publication, command execution, or human approval occurs in a batch pass. Each workflow advances through at most three allowlisted machine-safe transitions.</p>
+</main>
+{% endblock %}

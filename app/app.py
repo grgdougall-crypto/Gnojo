@@ -192,6 +192,10 @@ from app.services.campaign_learning_draft_preparation_service import (
     CampaignLearningDraftPreparationError,
     CampaignLearningDraftPreparationService,
 )
+from app.services.batch_propagation_autopilot_service import (
+    BatchPropagationAutopilotError,
+    BatchPropagationAutopilotService,
+)
 from curator.locking import AuditAlreadyRunningError
 from curator.governance import CuratorGovernanceError
 from curator.growth import CuratorGrowthError
@@ -1312,6 +1316,30 @@ def knowledge_coverage_campaign_detail(campaign_id):
                            research_packages=research_packages, draft_packages=draft_packages,
                            workflow_packages=workflow_packages,
                            blocker_destinations=blocker_destinations)
+
+
+@app.get("/curator/growth/propagation-batches/<batch_id>")
+def batch_propagation_detail(batch_id):
+    try:
+        batch = BatchPropagationAutopilotService().get(batch_id)
+    except BatchPropagationAutopilotError:
+        abort(404)
+    return render_template("batch_propagation_detail.html", batch=batch)
+
+
+@app.post("/curator/growth/propagation-batches/<batch_id>/resume")
+def batch_propagation_resume(batch_id):
+    try:
+        result = BatchPropagationAutopilotService().run(
+            batch_id=batch_id,
+            actor=getattr(getattr(g, "reviewer_identity", None), "username", "Human"),
+        )
+        return redirect(url_for("batch_propagation_detail", batch_id=result["batch_id"]))
+    except BatchPropagationAutopilotError as error:
+        return redirect(url_for(
+            "batch_propagation_detail", batch_id=batch_id,
+            batch_error=str(error),
+        ))
 
 
 @app.get("/curator/growth/coverage-campaigns/<campaign_id>/orchestration")

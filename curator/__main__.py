@@ -135,6 +135,15 @@ def parser() -> argparse.ArgumentParser:
     library_growth.add_argument("--domain", required=True)
     library_growth.add_argument("--limit", type=int, choices=(1, 2, 3), default=3)
     library_growth.add_argument("--preview", action="store_true")
+    propagation = commands.add_parser(
+        "propagate-library",
+        help="Run or preview one supervised batch propagation pass",
+    )
+    propagation.add_argument("--repository")
+    propagation.add_argument("--domain", default="Desktop Support")
+    propagation.add_argument("--limit", type=int, choices=tuple(range(1, 11)), default=5)
+    propagation.add_argument("--batch-id")
+    propagation.add_argument("--preview", action="store_true")
     commands.add_parser(
         "init-data-root",
         help="Initialize an empty GNOJO_DATA_ROOT with deployment baseline content",
@@ -178,6 +187,24 @@ def main(argv: list[str] | None = None) -> int:
         )
         print(json.dumps(result.as_dict(), sort_keys=True))
         return 2 if result.status in {"BLOCKED", "PARTIAL"} else 0
+    if args.command == "propagate-library":
+        from app.services.batch_propagation_autopilot_service import (
+            BatchPropagationAutopilotError,
+            BatchPropagationAutopilotService,
+        )
+        try:
+            service = BatchPropagationAutopilotService(repository)
+            result = (
+                service.preview(domain=args.domain, limit=args.limit)
+                if args.preview
+                else service.run(domain=args.domain, limit=args.limit,
+                                 batch_id=args.batch_id)
+            )
+        except BatchPropagationAutopilotError as error:
+            print(json.dumps({"status": "BLOCKED", "error": str(error)}), file=sys.stderr)
+            return 2
+        print(json.dumps(result, sort_keys=True))
+        return 2 if result.get("status") in {"PARTIAL_FAILED", "BLOCKED"} else 0
     if args.command == "stage-b-scheduled":
         from curator.stage_b_scheduled_runner import (
             CuratorStageBScheduledRunner,

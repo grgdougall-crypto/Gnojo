@@ -10,9 +10,11 @@ from pathlib import Path
 from app.data_root import resolve_data_root
 from typing import Any
 
-from app.services.workflow_draft_service import WorkflowDraftService
+from app.services.workflow_draft_service import WorkflowDraftError, WorkflowDraftService
 from app.services.workflow_validation_service import WorkflowValidationService
+from app.services.knowledge_coverage_planner_service import KnowledgeCoveragePlannerService
 from curator.workflow_reasoning import WorkflowReasoningAuditor
+from curator.action_semantics import intentional_action_signals
 
 
 class KnowledgeWorkflowGenerationError(Exception):
@@ -30,18 +32,27 @@ class KnowledgeWorkflowGenerationService:
     STATE_CHANGE_WORDS = {
         "restart", "reset", "install", "uninstall", "disable", "enable", "remove",
         "repair", "clear", "flush", "renew", "rollback", "update", "configure",
+        "change", "delete",
     }
     SAFETY_WORDS = {
         "save work", "backup", "administrator", "approval", "authorized", "warning",
         "recovery", "restart", "disrupt", "disconnect",
     }
+    PROPORTIONAL_SAFETY_GUIDANCE = (
+        "Before continuing, confirm that you are authorized to perform this action "
+        "and have selected the intended option. If you are unsure, stop and contact "
+        "your administrator."
+    )
 
-    def __init__(self, repository_root=None, campaign_root=None, drafts_path=None):
+    def __init__(self, repository_root=None, campaign_root=None, drafts_path=None, planner=None):
         self.repository_root = resolve_data_root(repository_root, legacy_root=Path(__file__).resolve().parents[2])
         self.campaign_root = Path(campaign_root) if campaign_root else self.repository_root / "knowledge_campaigns"
         self.package_root = self.campaign_root / "workflow_generation"
         self.package_root.mkdir(parents=True, exist_ok=True)
         self.drafts = WorkflowDraftService(drafts_path or self.repository_root / "app" / "workflow_drafts")
+        self.planner = planner or KnowledgeCoveragePlannerService(
+            self.repository_root, self.campaign_root
+        )
         self.validator = WorkflowValidationService()
         self.reasoning = WorkflowReasoningAuditor()
 
@@ -199,6 +210,281 @@ class KnowledgeWorkflowGenerationService:
         self._save(package)
         return self._live(package)
 
+    def proposal(self, generation_id: str) -> dict[str, Any]:
+        """Project one evidence-backed workflow proposal without writing state."""
+        package = self.get(generation_id)
+        if not package.get("workflow_plan"):
+            raise KnowledgeWorkflowGenerationError("The workflow proposal has not been prepared.")
+        context = self._capability_missing_workflow_context(package)
+        if context is None:
+            return {"supported": False, "eligible": False, "blockers": [
+                "Governed proposal approval is limited to capability-derived missing workflows."
+            ]}
+        gate = self.eligibility(package["campaign_id"], package["work_item_id"])
+        current_fingerprint = self._input_fingerprint(
+            gate["campaign"], gate["work_item"], gate["approved_claims"],
+            self._canonical_by_id(package.get("target_workflow_id")),
+        )
+        plan = package["workflow_plan"]
+        proposal_fingerprint = self._fingerprint({
+            "generation_id": generation_id,
+            "input_fingerprint": package.get("fingerprint"),
+            "capability": context,
+            "plan": plan,
+        })
+        evidence = {
+            "claim_ids": list(package.get("approved_claim_ids") or []),
+            "evidence_ids": list(package.get("approved_evidence_ids") or []),
+            "source_urls": sorted({
+                url for node in plan.get("nodes") or []
+                for url in node.get("source_urls") or []
+            }),
+        }
+        evidence_fingerprint = self._fingerprint(evidence)
+        blockers = []
+        if package.get("status") not in {"plan_ready", "handed_off"}:
+            blockers.append("The workflow proposal is not awaiting draft-creation review.")
+        if package.get("stale") or current_fingerprint != package.get("fingerprint"):
+            blockers.append("The campaign, claims, evidence, or workflow state changed after planning.")
+        try:
+            workflow = self._assemble(package)
+            validation = self._validate(workflow, package)
+        except KnowledgeWorkflowGenerationError as error:
+            workflow = {}
+            validation = {"valid": False, "validation": [], "reasoning": [], "relationships": []}
+            blockers.append(str(error))
+        if workflow and not validation["valid"]:
+            blockers.append("The proposed workflow does not pass deterministic validation.")
+        blockers.extend(self._proposal_uncertainties(plan))
+        if package.get("status") != "handed_off":
+            blockers.extend(self._creation_collision_reasons(package, gate["work_item"]))
+        node_types = {name: 0 for name in sorted(self.NODE_TYPES)}
+        for node in plan.get("nodes") or []:
+            node_types[node.get("type")] = node_types.get(node.get("type"), 0) + 1
+        questions = [self._proposal_node(item) for item in plan.get("nodes") or []
+                     if item.get("type") == "question"]
+        instructions = [self._proposal_node(item) for item in plan.get("nodes") or []
+                        if item.get("type") == "instruction"]
+        outcomes = [self._proposal_node(item) for item in plan.get("nodes") or []
+                    if item.get("type") in {"resolution", "transition"}]
+        return {
+            "supported": True,
+            "eligible": not blockers and package.get("status") == "plan_ready",
+            "already_created": package.get("status") == "handed_off",
+            "capability": context,
+            "workflow": {
+                "id": plan.get("workflow_id"), "name": plan.get("name"),
+                "category": plan.get("category"), "platform": plan.get("platform"),
+                "start_node": plan.get("start_node"),
+                "node_count": len(plan.get("nodes") or []), "node_types": node_types,
+            },
+            "questions": questions, "instructions": instructions,
+            "outcomes": outcomes,
+            "safety_classifications": self._safety_classifications(plan),
+            "unresolved_uncertainties": blockers,
+            "evidence": evidence,
+            "validation": validation,
+            "input_fingerprint": package.get("fingerprint"),
+            "current_input_fingerprint": current_fingerprint,
+            "proposal_fingerprint": proposal_fingerprint,
+            "evidence_fingerprint": evidence_fingerprint,
+            "blockers": blockers,
+        }
+
+    def safety_exception_review(
+        self, generation_id: str, node_id: str | None = None
+    ) -> dict[str, Any]:
+        """Project unresolved proposal safety exceptions without mutating state."""
+        package = self.get(generation_id)
+        proposal = self.proposal(generation_id)
+        plan = package.get("workflow_plan") or {}
+        gate = self.eligibility(package["campaign_id"], package["work_item_id"])
+        claims = {item.get("claim_id"): item for item in gate["approved_claims"]}
+        classifications = {
+            item["node_id"]: item for item in self._safety_classifications(plan)
+            if item["state_changing"] and not item["safety_supported"]
+        }
+        exceptions = []
+        for node in plan.get("nodes") or []:
+            classification = classifications.get(node.get("node_id"))
+            if not classification:
+                continue
+            supporting_claims = [
+                deepcopy(claims[claim_id]) for claim_id in node.get("claim_ids") or []
+                if claim_id in claims
+            ]
+            evidence_ids = list(dict.fromkeys(
+                evidence_id for claim in supporting_claims
+                for evidence_id in claim.get("evidence_ids") or []
+            ))
+            fingerprint = self._fingerprint({
+                "generation_id": generation_id,
+                "proposal_fingerprint": proposal.get("proposal_fingerprint"),
+                "node": node,
+                "classification": classification,
+                "claim_ids": node.get("claim_ids") or [],
+                "evidence_ids": evidence_ids,
+                "recommended_guidance": self.PROPORTIONAL_SAFETY_GUIDANCE,
+            })
+            exceptions.append({
+                "node_id": node["node_id"],
+                "instruction": str((node.get("fields") or {}).get("instruction") or "").strip(),
+                "title": str((node.get("fields") or {}).get("title") or "Instruction").strip(),
+                "classification": "state_changing",
+                "state_change_signals": classification["state_change_signals"],
+                "reason": (
+                    "This instruction changes or selects device state, but it does not "
+                    "yet tell the user how to proceed safely if authorization or the "
+                    "intended option is uncertain."
+                ),
+                "recommended_guidance": self.PROPORTIONAL_SAFETY_GUIDANCE,
+                "claims": supporting_claims,
+                "claim_ids": list(node.get("claim_ids") or []),
+                "evidence_ids": evidence_ids,
+                "source_urls": list(node.get("source_urls") or []),
+                "exception_fingerprint": fingerprint,
+            })
+        if node_id is not None:
+            exceptions = [item for item in exceptions if item["node_id"] == node_id]
+            if len(exceptions) != 1:
+                raise KnowledgeWorkflowGenerationError(
+                    "The requested safety exception is no longer current."
+                )
+        return {
+            "generation_id": generation_id,
+            "campaign_id": package["campaign_id"],
+            "work_item_id": package["work_item_id"],
+            "workflow": proposal.get("workflow") or {},
+            "proposal_fingerprint": proposal.get("proposal_fingerprint"),
+            "exceptions": exceptions,
+            "current": exceptions[0] if node_id is not None else None,
+            "read_only": True,
+        }
+
+    def review_safety_exception(
+        self, generation_id: str, node_id: str, decision: str, *,
+        reviewer: str, expected_proposal_fingerprint: str,
+        expected_exception_fingerprint: str, notes: str = "",
+    ) -> dict[str, Any]:
+        """Persist one governed safety decision within the workflow package."""
+        if decision not in {"accept_recommended", "needs_revision", "keep_exception"}:
+            raise KnowledgeWorkflowGenerationError("Unknown safety review decision.")
+        reviewer = str(reviewer or "").strip()
+        if not reviewer:
+            raise KnowledgeWorkflowGenerationError("Reviewer identity is required.")
+        review = self.safety_exception_review(generation_id, node_id)
+        current = review["current"]
+        if (
+            expected_proposal_fingerprint != review["proposal_fingerprint"]
+            or expected_exception_fingerprint != current["exception_fingerprint"]
+        ):
+            raise KnowledgeWorkflowGenerationError(
+                "The workflow safety review changed. Review it again."
+            )
+        package = self.get(generation_id)
+        prior = next((item for item in package.get("safety_reviews") or [] if (
+            item.get("node_id") == node_id
+            and item.get("decision") == decision
+            and item.get("proposal_fingerprint") == expected_proposal_fingerprint
+            and item.get("exception_fingerprint") == expected_exception_fingerprint
+        )), None)
+        if prior:
+            return package
+        nodes = [item for item in (package.get("workflow_plan") or {}).get("nodes") or []
+                 if item.get("node_id") == node_id]
+        if len(nodes) != 1:
+            raise KnowledgeWorkflowGenerationError(
+                "The workflow safety instruction is missing or ambiguous."
+            )
+        reviewed_at = self._now()
+        if decision == "accept_recommended":
+            fields = nodes[0].setdefault("fields", {})
+            existing = str(fields.get("help_text") or "").strip()
+            guidance = current["recommended_guidance"]
+            fields["help_text"] = (
+                f"{existing}\n\n{guidance}" if existing else guidance
+            )
+            package["status"] = "plan_ready"
+        elif decision == "needs_revision":
+            package["status"] = "needs_revision"
+        record = {
+            "node_id": node_id, "decision": decision,
+            "reviewer": reviewer, "reviewed_at": reviewed_at,
+            "notes": str(notes or "").strip(),
+            "proposal_fingerprint": expected_proposal_fingerprint,
+            "exception_fingerprint": expected_exception_fingerprint,
+            "recommended_guidance": current["recommended_guidance"],
+            "claim_ids": current["claim_ids"],
+            "evidence_ids": current["evidence_ids"],
+        }
+        package.setdefault("safety_reviews", []).append(record)
+        package["updated_at"] = reviewed_at
+        self._event(
+            package, "workflow_safety_reviewed", actor=reviewer,
+            node_id=node_id, decision=decision,
+            exception_fingerprint=expected_exception_fingerprint,
+        )
+        self._save(package)
+        return self.get(generation_id)
+
+    def approve_draft_creation(
+        self, generation_id: str, *, reviewer: str,
+        expected_proposal_fingerprint: str, notes: str = ""
+    ) -> dict[str, Any]:
+        """Approve exactly one reviewed proposal and create its editable draft."""
+        package = self.get(generation_id)
+        reviewer = str(reviewer or "").strip()
+        expected = str(expected_proposal_fingerprint or "").strip()
+        prior = package.get("draft_creation_review") or {}
+        if package.get("status") == "handed_off":
+            if (
+                prior.get("decision") == "approved"
+                and prior.get("proposal_fingerprint") == expected
+                and package.get("content_studio_filename")
+            ):
+                return package
+            raise KnowledgeWorkflowGenerationError(
+                "The workflow draft was already created from a different review state."
+            )
+        if not reviewer:
+            raise KnowledgeWorkflowGenerationError("Reviewer identity is required.")
+        proposal = self.proposal(generation_id)
+        if not expected or expected != proposal.get("proposal_fingerprint"):
+            raise KnowledgeWorkflowGenerationError(
+                "The workflow proposal changed before draft creation approval."
+            )
+        if not proposal.get("eligible"):
+            raise KnowledgeWorkflowGenerationError(
+                "Draft creation is blocked: " + " ".join(proposal.get("blockers") or [])
+            )
+        package = self.prepare_draft(generation_id)
+        if package.get("status") != "draft_ready":
+            raise KnowledgeWorkflowGenerationError(
+                "The approved proposal did not produce a valid workflow draft."
+            )
+        package["status"] = "approved_for_handoff"
+        package["review"] = {
+            "decision": "approved", "notes": str(notes or "").strip(),
+            "reviewed_at": self._now(), "reviewed_by": reviewer,
+        }
+        package["draft_creation_review"] = {
+            "decision": "approved", "reviewer": reviewer,
+            "reviewed_at": package["review"]["reviewed_at"],
+            "proposal_fingerprint": expected,
+            "evidence_fingerprint": proposal["evidence_fingerprint"],
+            "input_fingerprint": proposal["input_fingerprint"],
+            "campaign_id": package["campaign_id"],
+            "work_item_id": package["work_item_id"],
+            "capability": deepcopy(proposal["capability"]),
+        }
+        package["updated_at"] = self._now()
+        self._event(
+            package, "draft_creation_approved", actor=reviewer,
+            proposal_fingerprint=expected,
+        )
+        self._save(package)
+        return self.handoff(generation_id, actor=reviewer, create_only=True)
+
     def review(self, generation_id: str, decision: str, notes: str = "") -> dict[str, Any]:
         package = self.get(generation_id)
         if decision not in {"approved", "rejected", "needs_revision"}:
@@ -214,7 +500,9 @@ class KnowledgeWorkflowGenerationService:
         self._save(package)
         return self._live(package)
 
-    def handoff(self, generation_id: str) -> dict[str, Any]:
+    def handoff(
+        self, generation_id: str, *, actor: str = "Human", create_only: bool = False
+    ) -> dict[str, Any]:
         package = self.get(generation_id)
         if package.get("status") == "handed_off" and package.get("content_studio_filename"):
             return package
@@ -227,13 +515,204 @@ class KnowledgeWorkflowGenerationService:
             "claim_ids": package["approved_claim_ids"], "evidence_ids": package["approved_evidence_ids"],
             "intent": package["intent"], "human_reviewed": True,
         })
-        filename = self.drafts.save_draft(workflow)
+        capability = (package.get("draft_creation_review") or {}).get("capability")
+        if isinstance(capability, dict):
+            workflow["knowledge_factory"].update({
+                "capability_id": capability.get("capability_id"),
+                "gap_identity": capability.get("gap_identity"),
+                "proposal_fingerprint": (
+                    package.get("draft_creation_review") or {}
+                ).get("proposal_fingerprint"),
+            })
+        if create_only:
+            filename = self.drafts.filename_for(workflow["workflow_id"])
+            existing = self.drafts.get_draft(filename)
+            if existing is None:
+                try:
+                    filename = self.drafts.create_draft(workflow)
+                except WorkflowDraftError as error:
+                    raise KnowledgeWorkflowGenerationError(str(error)) from error
+            elif existing != workflow:
+                raise KnowledgeWorkflowGenerationError(
+                    "An editable workflow draft now occupies the proposed identity."
+                )
+        else:
+            filename = self.drafts.save_draft(workflow)
         package["content_studio_filename"] = filename
         package["status"] = "handed_off"
         package["updated_at"] = self._now()
-        self._event(package, "content_studio_handoff", actor="Human", filename=filename)
+        self._event(package, "content_studio_handoff", actor=actor, filename=filename)
         self._save(package)
         return self._live(package)
+
+    def _capability_missing_workflow_context(self, package):
+        campaign, work = self._campaign_work(
+            package["campaign_id"], package["work_item_id"]
+        )
+        marker = bool(
+            work.get("capability_id") or work.get("gap_identity")
+            or "workflow" in (work.get("expected_artifacts") or [])
+        )
+        if not marker:
+            return None
+        gaps = [item for item in campaign.get("gaps") or [] if (
+            item.get("gap_id") == package.get("gap_id")
+            and item.get("gap_type") == "missing_workflow"
+        )]
+        metadata = campaign.get("creation_metadata")
+        selected = metadata.get("selected_gap") if isinstance(metadata, dict) else None
+        if len(gaps) != 1 or not isinstance(selected, dict):
+            raise KnowledgeWorkflowGenerationError(
+                "Capability-derived missing-workflow identity is missing or ambiguous."
+            )
+        gap = gaps[0]
+        domain = next((item for item in self.planner.domains()
+                       if item.get("id") == campaign.get("domain")), None)
+        capabilities = [item for item in (domain or {}).get("areas", []) if (
+            item.get("id") == work.get("capability_id")
+        )]
+        if len(capabilities) != 1:
+            raise KnowledgeWorkflowGenerationError(
+                "The governed workflow capability is missing or ambiguous."
+            )
+        capability = capabilities[0]
+        platform = str(capability.get("platform") or "").strip()
+        platform_id = "".join(
+            character if character.isalnum() else "-"
+            for character in platform.casefold()
+        ).strip("-")
+        while "--" in platform_id:
+            platform_id = platform_id.replace("--", "-")
+        identity = (
+            f"capability:{campaign.get('domain')}:{platform_id}:"
+            f"{capability.get('id')}:missing_workflow"
+        )
+        records = (selected, gap, work)
+        if (
+            metadata.get("initiated_by") != "autonomous_growth_stage2"
+            or work.get("work_type") != "workflow"
+            or "workflow" not in (capability.get("expected_artifacts") or [])
+            or any(record.get("gap_identity") != identity for record in records)
+            or any(record.get("capability_id") != capability.get("id")
+                   for record in records)
+            or any("workflow" not in (record.get("expected_artifacts") or [])
+                   for record in records)
+            or selected.get("domain_id") != campaign.get("domain")
+            or package.get("proposed_workflow_id") != capability.get("id").replace("-", "_")
+        ):
+            raise KnowledgeWorkflowGenerationError(
+                "Capability-derived missing-workflow identity is stale or inconsistent."
+            )
+        current = self.planner.assess_domain(campaign["domain"])
+        matches = [item for item in current.get("gaps") or [] if (
+            item.get("gap_identity") == identity
+            and item.get("gap_type") == "missing_workflow"
+        )]
+        if len(matches) != 1:
+            raise KnowledgeWorkflowGenerationError(
+                "The proposed workflow is no longer an exact current coverage gap."
+            )
+        return {
+            "domain_id": campaign["domain"],
+            "capability_id": capability["id"],
+            "capability_title": capability["title"],
+            "gap_identity": identity,
+            "campaign_id": campaign["campaign_id"],
+            "work_item_id": work["work_item_id"],
+            "platform": platform,
+            "expected_artifact": "workflow",
+        }
+
+    def _creation_collision_reasons(self, package, work):
+        reasons = []
+        proposed_id = package.get("proposed_workflow_id")
+        if self._resolve_canonical(work) is not None or self._canonical_by_id(proposed_id):
+            reasons.append("A workflow already occupies the proposed identity.")
+        try:
+            filename = self.drafts.filename_for(proposed_id)
+        except WorkflowDraftError:
+            reasons.append("The proposed workflow ID cannot form a safe filename.")
+        else:
+            if (self.drafts.drafts_path / filename).exists():
+                reasons.append("An editable workflow draft already uses the proposed filename.")
+        return reasons
+
+    def _proposal_uncertainties(self, plan):
+        reasons = []
+        for item in plan.get("nodes") or []:
+            fields = item.get("fields") or {}
+            if not item.get("claim_ids") or not item.get("evidence_ids"):
+                reasons.append(
+                    f"Node {item.get('node_id')} lacks approved claim or evidence provenance."
+                )
+            if item.get("type") == "question":
+                answers = fields.get("answers")
+                if not isinstance(answers, dict) or not answers or any(
+                    not isinstance(answer, dict)
+                    or not str(answer.get("label") or "").strip()
+                    or not str(answer.get("next") or "").strip()
+                    for answer in (answers or {}).values()
+                ):
+                    reasons.append(
+                        f"Question {item.get('node_id')} has an ambiguous branch."
+                    )
+            uncertainties = fields.get("unresolved_uncertainties") or []
+            if isinstance(uncertainties, str):
+                uncertainties = [uncertainties]
+            for uncertainty in uncertainties:
+                reasons.append(str(uncertainty))
+        for classification in self._safety_classifications(plan):
+            if classification["state_changing"] and not classification["safety_supported"]:
+                reasons.append(
+                    f"Instruction {classification['node_id']} has unresolved state-changing safety guidance."
+                )
+        return list(dict.fromkeys(reason for reason in reasons if reason))
+
+    def _safety_classifications(self, plan):
+        classifications = []
+        for item in plan.get("nodes") or []:
+            if item.get("type") != "instruction":
+                continue
+            fields = item.get("fields") or {}
+            text_values = [str(fields.get(key) or "") for key in (
+                "title", "instruction", "help_text", "message", "question"
+            )]
+            text = " ".join(text_values).casefold()
+            state_words = self._state_change_signals(*text_values)
+            safety_words = sorted(word for word in self.SAFETY_WORDS if word in text)
+            classifications.append({
+                "node_id": item.get("node_id"),
+                "state_changing": bool(state_words),
+                "state_change_signals": state_words,
+                "safety_supported": not state_words or bool(safety_words),
+                "safety_signals": safety_words,
+            })
+        return classifications
+
+    @classmethod
+    def _state_change_signals(cls, *values: object) -> list[str]:
+        """Return exact action terms used in an instructional action context."""
+        return intentional_action_signals(values, cls.STATE_CHANGE_WORDS)
+
+    @staticmethod
+    def _proposal_node(item):
+        fields = item.get("fields") or {}
+        return {
+            "node_id": item.get("node_id"), "type": item.get("type"),
+            "title": fields.get("title") or fields.get("question")
+            or fields.get("message") or item.get("node_id"),
+            "instruction": fields.get("instruction"),
+            "branches": deepcopy(fields.get("answers") or {}),
+            "next": fields.get("next"), "next_workflow": fields.get("next_workflow"),
+            "claim_ids": list(item.get("claim_ids") or []),
+            "evidence_ids": list(item.get("evidence_ids") or []),
+        }
+
+    @staticmethod
+    def _fingerprint(value):
+        return hashlib.sha256(
+            json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
 
     def _assemble(self, package):
         plan = package["workflow_plan"]
@@ -272,8 +751,11 @@ class KnowledgeWorkflowGenerationService:
                            "messages": provenance_errors})
         safety_errors = []
         for node_id, node in workflow.get("nodes", {}).items():
-            text = " ".join(str(node.get(key, "")) for key in ("title", "instruction", "help_text")).lower()
-            if node.get("type") == "instruction" and any(word in text for word in self.STATE_CHANGE_WORDS):
+            values = [str(node.get(key, "")) for key in (
+                "title", "instruction", "help_text"
+            )]
+            text = " ".join(values).lower()
+            if node.get("type") == "instruction" and self._state_change_signals(*values):
                 if not any(word in text for word in self.SAFETY_WORDS):
                     safety_errors.append(node_id)
         validation.append({"check": "proportional_safety", "level": "error" if safety_errors else "pass",

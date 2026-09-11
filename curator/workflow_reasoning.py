@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from typing import Any, Iterable
 
 from .action_verification import action_verification_profile
+from .action_semantics import intentional_action_signals
 
 
 @dataclass(frozen=True)
@@ -481,8 +482,10 @@ class WorkflowReasoningAuditor:
 
     @classmethod
     def _is_action(cls, node: dict[str, Any]) -> bool:
-        text = cls._node_text(node)
-        return any(word in text for word in cls.ACTION_WORDS)
+        values = [node.get(key) for key in (
+            "title", "instruction", "help_text", "message", "question"
+        )]
+        return bool(intentional_action_signals(values, cls.ACTION_WORDS))
 
     @classmethod
     def _is_verification(cls, node: dict[str, Any]) -> bool:

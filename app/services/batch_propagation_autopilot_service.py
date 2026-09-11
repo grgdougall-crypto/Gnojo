@@ -315,11 +315,18 @@ class BatchPropagationAutopilotService:
                 f"/curator/growth/source-research/{packages[0]['package_id']}/autopilot"
             )
             return item
-        final_actions = {"review_evidence", "review_article_draft", "accept_workflow_content_studio"}
+        final_actions = {
+            "review_evidence", "review_article_draft", "accept_workflow_content_studio",
+            "approve_workflow_draft_creation",
+        }
+        action_labels = {
+            "approve_workflow_draft_creation": "Approve Draft Creation",
+        }
         item.update(
             state="READY_FOR_FINAL_REVIEW" if action in final_actions else "HUMAN_EXCEPTION",
             reason="The existing campaign reached a governed human decision.",
-            next_human_action=action.replace("_", " ").title() if action else "Review campaign decision",
+            next_human_action=(action_labels.get(action) or action.replace("_", " ").title())
+            if action else "Review campaign decision",
         )
         return item
 

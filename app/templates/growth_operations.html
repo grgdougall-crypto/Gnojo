@@ -4,7 +4,7 @@
 <main class="container curator-page" id="main-content" aria-labelledby="operationsTitle">
   {% with curator_active='growth' %}{% include 'partials/_curator_nav.html' %}{% endwith %}
   <nav aria-label="Breadcrumb"><a href="{{ url_for('curator_growth_dashboard') }}">Curator Growth</a> / Growth Operations</nav>
-  <header class="curator-heading"><div><span class="section-eyebrow">Supervised propagation</span><h1 id="operationsTitle">Growth Operations</h1><p>Scan, preview, and explicitly start one bounded propagation batch.</p></div></header>
+  <header class="curator-heading"><div><span class="section-eyebrow">Supervised propagation</span><h1 id="operationsTitle">Growth Operations</h1><p>Scan, preview, and explicitly start one bounded propagation batch.</p></div><a class="btn btn-primary" href="{{ url_for('knowledge_builder_index') }}">Open Knowledge Builder</a></header>
   {% if operations_error or request.args.get('operations_error') %}<div class="alert alert-danger">{{ operations_error or request.args.get('operations_error') }}</div>{% endif %}
   {% if operations %}
   <form class="quality-section row g-3" method="get" action="{{ url_for('growth_operations') }}" aria-label="Propagation scope">

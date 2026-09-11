@@ -2,7 +2,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from app.app import app as flask_app
 from app.knowledge.article_schema import create_article_template
@@ -166,6 +166,47 @@ class KnowledgeClaimPlanningTests(unittest.TestCase):
         ]
         self._write_evidence(units, evidence_status)
         plan = self.service.prepare_workflow(self.work["campaign_id"], work["work_item_id"])
+        return self.service.plan(plan["claim_plan_id"]), work
+
+    def _compressed_missing_workflow_plan(self):
+        plan, work = self._workflow_plan()
+        campaign_path = self.campaign_root / f"{self.work['campaign_id']}.json"
+        campaign = json.loads(campaign_path.read_text(encoding="utf-8"))
+        next(gap for gap in campaign["gaps"] if gap["gap_id"] == work["gap_id"])[
+            "gap_type"
+        ] = "missing_workflow"
+        next(item for item in campaign["work_items"]
+             if item["work_item_id"] == work["work_item_id"])["work_type"] = "workflow"
+        campaign_path.write_text(json.dumps(campaign), encoding="utf-8")
+        evidence_path = self.campaign_root / "evidence_extraction" / "KEX-AAAAAAAAAAAA.json"
+        evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+        evidence["retrieval"] = {
+            "source_fingerprint": evidence["source_fingerprint"],
+            "workflow_evidence_compression_policy":
+                "deterministic-workflow-evidence-compression-v1",
+        }
+        for unit in evidence["evidence_units"]:
+            roles = []
+            if unit["evidence_type"] == "procedure":
+                roles = ["entry_setup", "primary_action"]
+            elif unit["evidence_type"] == "verification":
+                roles = ["success_verification"]
+            unit["workflow_coverage_roles"] = roles
+            unit["fingerprint"] = self.generation.extraction._fingerprint({
+                "text": unit["normalized_claim"], "type": unit["evidence_type"],
+            })
+            unit["workflow_evidence_compression"] = {
+                "policy_id": "deterministic-workflow-evidence-compression-v1",
+                "decision": "auto_approved",
+                "evidence_fingerprint": unit["fingerprint"],
+            }
+        evidence["candidacy"]["workflow_evidence_compression_policy"] = (
+            "deterministic-workflow-evidence-compression-v1"
+        )
+        evidence["candidacy"]["confirmation_fingerprint"] = (
+            self.generation.extraction._candidate_set_fingerprint(evidence)
+        )
+        evidence_path.write_text(json.dumps(evidence), encoding="utf-8")
         return self.service.plan(plan["claim_plan_id"]), work
 
     def test_human_initiation_and_approved_evidence_are_required(self):
@@ -414,6 +455,411 @@ class KnowledgeClaimPlanningTests(unittest.TestCase):
             self.work["campaign_id"], work["work_item_id"])["eligible"])
         self.assertEqual(list((self.campaign_root / "workflow_generation").glob("KWG-*.json")), [])
 
+    def test_compressed_missing_workflow_requires_real_procedure_coverage(self):
+        plan, work = self._workflow_plan()
+        campaign_path = self.campaign_root / f"{self.work['campaign_id']}.json"
+        campaign = json.loads(campaign_path.read_text(encoding="utf-8"))
+        next(gap for gap in campaign["gaps"] if gap["gap_id"] == work["gap_id"])[
+            "gap_type"
+        ] = "missing_workflow"
+        next(item for item in campaign["work_items"]
+             if item["work_item_id"] == work["work_item_id"])["work_type"] = "workflow"
+        campaign_path.write_text(json.dumps(campaign), encoding="utf-8")
+        evidence_path = self.campaign_root / "evidence_extraction" / "KEX-AAAAAAAAAAAA.json"
+        evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+        evidence["retrieval"] = {
+            "source_fingerprint": evidence["source_fingerprint"],
+            "workflow_evidence_compression_policy":
+                "deterministic-workflow-evidence-compression-v1"
+        }
+        for unit in evidence["evidence_units"]:
+            unit["fingerprint"] = self.generation.extraction._fingerprint({
+                "text": unit["normalized_claim"], "type": unit["evidence_type"],
+            })
+            unit["workflow_evidence_compression"] = {
+                "policy_id": "deterministic-workflow-evidence-compression-v1",
+                "evidence_fingerprint": unit["fingerprint"],
+            }
+            if unit["evidence_type"] == "procedure":
+                unit["workflow_coverage_roles"] = ["entry_setup"]
+            elif unit["evidence_type"] == "verification":
+                unit["workflow_coverage_roles"] = ["success_verification"]
+        evidence["candidacy"]["workflow_evidence_compression_policy"] = (
+            "deterministic-workflow-evidence-compression-v1"
+        )
+        evidence["candidacy"]["confirmation_fingerprint"] = (
+            self.generation.extraction._candidate_set_fingerprint(evidence)
+        )
+        evidence_path.write_text(json.dumps(evidence), encoding="utf-8")
+
+        incomplete = self.service.plan(plan["claim_plan_id"])
+
+        self.assertEqual(incomplete["status"], "needs_evidence")
+        self.assertIn(
+            "primary_action",
+            incomplete["validation"]["workflow_procedure_coverage"]["missing"],
+        )
+        self.assertLess(incomplete["validation"]["substantive_completeness_percent"], 100)
+        self.assertTrue(any(
+            gap.get("coverage_role") == "primary_action"
+            for gap in incomplete["evidence_gaps"]
+        ))
+
+        evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+        procedure = next(unit for unit in evidence["evidence_units"]
+                         if unit["evidence_type"] == "procedure")
+        procedure["workflow_coverage_roles"].append("primary_action")
+        evidence["candidacy"]["confirmation_fingerprint"] = (
+            self.generation.extraction._candidate_set_fingerprint(evidence)
+        )
+        evidence_path.write_text(json.dumps(evidence), encoding="utf-8")
+        complete = self.service.plan(plan["claim_plan_id"])
+        self.assertEqual(
+            complete["validation"]["workflow_procedure_coverage"]["missing"], []
+        )
+        self.assertEqual(complete["validation"]["substantive_completeness_percent"], 100)
+
+    def test_settled_compressed_evidence_rebuilds_a_stale_workflow_plan_coherently(self):
+        old_plan, work = self._workflow_plan()
+        campaign_path = self.campaign_root / f"{self.work['campaign_id']}.json"
+        campaign = json.loads(campaign_path.read_text(encoding="utf-8"))
+        next(gap for gap in campaign["gaps"] if gap["gap_id"] == work["gap_id"])[
+            "gap_type"
+        ] = "missing_workflow"
+        next(item for item in campaign["work_items"]
+             if item["work_item_id"] == work["work_item_id"])["work_type"] = "workflow"
+        campaign_path.write_text(json.dumps(campaign), encoding="utf-8")
+
+        units = []
+        for index in range(12):
+            if index == 0:
+                evidence_type, roles, text = (
+                    "procedure", ["entry_setup", "primary_action"],
+                    "Open VPN settings and select the intended VPN connection.",
+                )
+            elif index == 1:
+                evidence_type, roles, text = (
+                    "procedure", ["primary_action"], "Select Connect for the VPN connection.",
+                )
+            elif index == 2:
+                evidence_type, roles, text = (
+                    "procedure", ["primary_action", "conditional_input"],
+                    "If prompted, enter the required VPN sign-in information.",
+                )
+            elif index == 3:
+                evidence_type, roles, text = (
+                    "verification", ["success_verification"],
+                    "Verify that the VPN connection displays Connected.",
+                )
+            else:
+                evidence_type, roles, text = (
+                    "diagnostic_observations", ["primary_action"],
+                    f"Supported VPN connection instruction {index}.",
+                )
+            units.append(self._unit(
+                f"EVD-CURRENT{index:02d}", evidence_type, text,
+                workflow_coverage_roles=roles,
+            ))
+        evidence_path = self._write_evidence(units, "approved")
+        evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+        evidence["retrieval"] = {
+            "source_fingerprint": evidence["source_fingerprint"],
+            "workflow_evidence_compression_policy":
+                "deterministic-workflow-evidence-compression-v1",
+        }
+        for unit in evidence["evidence_units"]:
+            unit["fingerprint"] = self.generation.extraction._fingerprint({
+                "text": unit["normalized_claim"], "type": unit["evidence_type"],
+            })
+            unit["workflow_evidence_compression"] = {
+                "policy_id": "deterministic-workflow-evidence-compression-v1",
+                "decision": "auto_approved",
+                "evidence_fingerprint": unit["fingerprint"],
+            }
+        evidence["candidacy"]["workflow_evidence_compression_policy"] = (
+            "deterministic-workflow-evidence-compression-v1"
+        )
+        evidence["candidacy"]["confirmation_fingerprint"] = (
+            self.generation.extraction._candidate_set_fingerprint(evidence)
+        )
+        evidence_path.write_text(json.dumps(evidence), encoding="utf-8")
+
+        self.assertFalse(self.service.input_is_current(old_plan["claim_plan_id"]))
+        stale = self.service.get(old_plan["claim_plan_id"])
+        self.assertEqual(stale["status"], "needs_evidence")
+        self.assertIsInstance(
+            stale["validation"]["substantive_completeness_percent"], (int, float)
+        )
+        self.assertTrue(stale["evidence_gaps"])
+        plan_path = self.campaign_root / "claim_planning" / f"{old_plan['claim_plan_id']}.json"
+        before_get = plan_path.read_bytes()
+        flask_app.config.update(TESTING=True, AUTH_TEST_BYPASS=True)
+        with patch("app.app.KnowledgeClaimPlanningService", return_value=self.service):
+            page = flask_app.test_client().get(
+                f"/curator/growth/claim-planning/{old_plan['claim_plan_id']}"
+            )
+        self.assertEqual(page.status_code, 200)
+        self.assertIn(b"0%", page.data)
+        self.assertIn(b"The plan references superseded evidence", page.data)
+        self.assertEqual(plan_path.read_bytes(), before_get)
+
+        rebuilt = self.service.plan(old_plan["claim_plan_id"])
+        self.assertTrue(self.service.input_is_current(rebuilt["claim_plan_id"]))
+        self.assertEqual(len(rebuilt["approved_evidence_ids"]), 12)
+        self.assertEqual(len(rebuilt["claims"]), 12)
+        procedure_claims = [
+            claim for claim in rebuilt["claims"] if claim["section"] == "procedure"
+        ]
+        self.assertGreaterEqual(len(procedure_claims), 3)
+        self.assertTrue({
+            "entry_setup", "primary_action", "conditional_input"
+        }.issubset({
+            role for claim in procedure_claims
+            for role in claim.get("workflow_coverage_roles") or []
+        }))
+        self.assertEqual(rebuilt["evidence_gaps"], [])
+        self.assertEqual(rebuilt["status"], "needs_review")
+        self.assertEqual(
+            rebuilt["validation"]["substantive_completeness_percent"], 100
+        )
+        history_count = len(rebuilt["history"])
+        repeated = self.service.plan(rebuilt["claim_plan_id"])
+        self.assertEqual(repeated, rebuilt)
+        self.assertEqual(len(repeated["history"]), history_count)
+
+    def test_missing_workflow_claim_review_compression_approves_one_exact_set(self):
+        plan, _ = self._compressed_missing_workflow_plan()
+
+        workspace = self.service.review_workspace(plan["claim_plan_id"])
+        compression = workspace["compression"]
+        self.assertTrue(compression["enabled"])
+        self.assertEqual(compression["total_claims"], len(plan["claims"]))
+        self.assertGreaterEqual(compression["attention_count"], 2)
+        self.assertFalse(compression["ready_for_package_approval"])
+        for claim in compression["exception_claims"]:
+            plan = self.service.review_claim(
+                plan["claim_plan_id"], claim["claim_id"], "approved",
+                "Reviewed exception.",
+            )
+        compression = self.service.review_workspace(plan["claim_plan_id"])["compression"]
+        self.assertTrue(compression["ready_for_package_approval"])
+
+        # Reproduce the real VPN plan: a pre-compression deterministic section
+        # label survived even though current coverage has no evidence gap.
+        plan_path = self.campaign_root / "claim_planning" / f"{plan['claim_plan_id']}.json"
+        persisted = json.loads(plan_path.read_text(encoding="utf-8"))
+        procedure = next(section for section in persisted["sections"]
+                         if section["section"] == "procedure")
+        procedure.update(review_state="needs_evidence", missing_evidence=False,
+                         conflict_ids=[], reviewed_at=None, reviewer_notes="")
+        plan_path.write_text(json.dumps(persisted), encoding="utf-8")
+        compression = self.service.review_workspace(plan["claim_plan_id"])["compression"]
+        self.assertTrue(compression["ready_for_package_approval"])
+
+        before_stale_attempt = plan_path.read_bytes()
+        with self.assertRaisesRegex(KnowledgeClaimPlanningError, "claim-set fingerprint is stale"):
+            self.service.approve_reviewed_claim_set(
+                plan["claim_plan_id"],
+                expected_plan_fingerprint="stale-plan-fingerprint",
+                expected_evidence_fingerprint=compression["evidence_input_fingerprint"],
+                reviewer="Test Reviewer",
+            )
+        with self.assertRaisesRegex(KnowledgeClaimPlanningError, "evidence fingerprint is stale"):
+            self.service.approve_reviewed_claim_set(
+                plan["claim_plan_id"],
+                expected_plan_fingerprint=compression["plan_fingerprint"],
+                expected_evidence_fingerprint="stale-evidence-fingerprint",
+                reviewer="Test Reviewer",
+            )
+        self.assertEqual(plan_path.read_bytes(), before_stale_attempt)
+
+        approved = self.service.approve_reviewed_claim_set(
+            plan["claim_plan_id"],
+            expected_plan_fingerprint=compression["plan_fingerprint"],
+            expected_evidence_fingerprint=compression["evidence_input_fingerprint"],
+            reviewer="Test Reviewer",
+        )
+        self.assertEqual(approved["status"], "ready_for_drafting")
+        self.assertTrue(all(
+            claim["review_state"] == "approved" for claim in approved["claims"]
+        ))
+        self.assertTrue(all(
+            section["review_state"] == "approved"
+            for section in approved["sections"] if section["claim_ids"]
+        ))
+        self.assertEqual(approved["claim_set_approval"]["reviewer"], "Test Reviewer")
+        approval_events = [
+            event for event in approved["history"]
+            if event["event"] == "reviewed_claim_set_approved"
+        ]
+        self.assertEqual(len(approval_events), 1)
+        repeated = self.service.approve_reviewed_claim_set(
+            plan["claim_plan_id"],
+            expected_plan_fingerprint=compression["plan_fingerprint"],
+            expected_evidence_fingerprint=compression["evidence_input_fingerprint"],
+            reviewer="Test Reviewer",
+        )
+        self.assertEqual(repeated["claim_set_approval_result"], "already_approved")
+        self.assertEqual(len([
+            event for event in repeated["history"]
+            if event["event"] == "reviewed_claim_set_approved"
+        ]), 1)
+
+    def test_claim_review_compression_get_is_compact_and_read_only(self):
+        plan, work = self._workflow_plan()
+        campaign_path = self.campaign_root / f"{self.work['campaign_id']}.json"
+        campaign = json.loads(campaign_path.read_text(encoding="utf-8"))
+        next(gap for gap in campaign["gaps"] if gap["gap_id"] == work["gap_id"])[
+            "gap_type"
+        ] = "missing_workflow"
+        campaign_path.write_text(json.dumps(campaign), encoding="utf-8")
+        plan_path = self.campaign_root / "claim_planning" / f"{plan['claim_plan_id']}.json"
+        before = plan_path.read_bytes()
+        flask_app.config.update(TESTING=True, AUTH_TEST_BYPASS=True)
+        with patch("app.app.KnowledgeClaimPlanningService", return_value=self.service):
+            response = flask_app.test_client().get(
+                f"/curator/growth/claim-planning/{plan['claim_plan_id']}"
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Governed claim review", response.data)
+        self.assertIn(b"View all proposed claims", response.data)
+        self.assertEqual(plan_path.read_bytes(), before)
+
+    def test_claim_set_approval_route_advances_only_the_exact_campaign_gate(self):
+        plan_id = "KCPM-AAAAAAAAAAAA"
+        plan = {
+            "claim_plan_id": plan_id, "campaign_id": "KCP-AAAAAAAAAAAA",
+            "work_item_id": "KCW-AAAAAAAAAAAA",
+        }
+        claims = Mock()
+        claims.review_workspace.return_value = {"plan": plan, "compression": {}}
+        claims.approve_reviewed_claim_set.return_value = {
+            **plan, "status": "ready_for_drafting",
+            "claim_set_approval_result": "approved",
+        }
+        persisted = {
+            "orchestration_id": "KORCH-AAAAAAAAAAAA",
+            "campaign_id": plan["campaign_id"],
+            "work_item_states": [{
+                "work_item_id": plan["work_item_id"], "package_id": plan_id,
+                "next_action": "review_claims", "action_authority": "human_gate",
+            }],
+        }
+        orchestration = Mock()
+        flask_app.config.update(TESTING=True, AUTH_TEST_BYPASS=True)
+        with patch("app.app.KnowledgeClaimPlanningService", return_value=claims), \
+             patch("app.app.KnowledgeCampaignOrchestrationService") as factory:
+            factory.read_persisted.return_value = [persisted]
+            factory.return_value = orchestration
+            response = flask_app.test_client().post(
+                f"/curator/growth/claim-planning/{plan_id}/reviewed-claim-set",
+                data={
+                    "plan_fingerprint": "plan-fingerprint",
+                    "evidence_input_fingerprint": "evidence-fingerprint",
+                },
+            )
+        claims.approve_reviewed_claim_set.assert_called_once_with(
+            plan_id,
+            expected_plan_fingerprint="plan-fingerprint",
+            expected_evidence_fingerprint="evidence-fingerprint",
+            reviewer="Test Reviewer",
+        )
+        orchestration.continue_after_human_gate.assert_called_once_with(
+            "KORCH-AAAAAAAAAAAA", actor="Claim-set approval", max_transitions=3,
+        )
+        self.assertIn(
+            "/curator/growth/coverage-campaigns/KCP-AAAAAAAAAAAA/orchestration",
+            response.headers["Location"],
+        )
+
+    def test_claim_set_approval_route_crosses_boundary_with_legacy_section_state(self):
+        plan, work = self._compressed_missing_workflow_plan()
+        compression = self.service.review_workspace(plan["claim_plan_id"])["compression"]
+        for claim in compression["exception_claims"]:
+            self.service.review_claim(
+                plan["claim_plan_id"], claim["claim_id"], "approved",
+                "Reviewed exception.",
+            )
+        plan_path = self.campaign_root / "claim_planning" / f"{plan['claim_plan_id']}.json"
+        persisted_plan = json.loads(plan_path.read_text(encoding="utf-8"))
+        procedure = next(section for section in persisted_plan["sections"]
+                         if section["section"] == "procedure")
+        procedure.update(review_state="needs_evidence", missing_evidence=False,
+                         conflict_ids=[], reviewed_at=None, reviewer_notes="")
+        plan_path.write_text(json.dumps(persisted_plan), encoding="utf-8")
+        compression = self.service.review_workspace(plan["claim_plan_id"])["compression"]
+        persisted_orchestration = {
+            "orchestration_id": "KORCH-AAAAAAAAAAAA",
+            "campaign_id": plan["campaign_id"],
+            "work_item_states": [{
+                "work_item_id": work["work_item_id"],
+                "package_id": plan["claim_plan_id"],
+                "next_action": "review_claims",
+                "action_authority": "human_gate",
+            }],
+        }
+        orchestration = Mock()
+        flask_app.config.update(TESTING=True, AUTH_TEST_BYPASS=True)
+        with patch("app.app.KnowledgeClaimPlanningService", return_value=self.service), \
+             patch("app.app.KnowledgeCampaignOrchestrationService") as factory:
+            factory.read_persisted.return_value = [persisted_orchestration]
+            factory.return_value = orchestration
+            response = flask_app.test_client().post(
+                f"/curator/growth/claim-planning/{plan['claim_plan_id']}/reviewed-claim-set",
+                data={
+                    "plan_fingerprint": compression["plan_fingerprint"],
+                    "evidence_input_fingerprint": compression["evidence_input_fingerprint"],
+                },
+            )
+
+        self.assertIn(
+            f"/curator/growth/coverage-campaigns/{plan['campaign_id']}/orchestration",
+            response.headers["Location"],
+        )
+        approved = self.service.get(plan["claim_plan_id"])
+        self.assertEqual(approved["status"], "ready_for_drafting")
+        self.assertTrue(all(claim["review_state"] == "approved"
+                            for claim in approved["claims"]))
+        self.assertTrue(all(section["review_state"] == "approved"
+                            for section in approved["sections"] if section["claim_ids"]))
+        self.assertEqual(len([event for event in approved["history"]
+                              if event["event"] == "reviewed_claim_set_approved"]), 1)
+        orchestration.continue_after_human_gate.assert_called_once_with(
+            "KORCH-AAAAAAAAAAAA", actor="Claim-set approval", max_transitions=3,
+        )
+
+    def test_claim_set_approval_fails_before_write_for_human_section_blocker(self):
+        plan, _ = self._compressed_missing_workflow_plan()
+        compression = self.service.review_workspace(plan["claim_plan_id"])["compression"]
+        for claim in compression["exception_claims"]:
+            self.service.review_claim(
+                plan["claim_plan_id"], claim["claim_id"], "approved",
+                "Reviewed exception.",
+            )
+        plan_path = self.campaign_root / "claim_planning" / f"{plan['claim_plan_id']}.json"
+        persisted = json.loads(plan_path.read_text(encoding="utf-8"))
+        procedure = next(section for section in persisted["sections"]
+                         if section["section"] == "procedure")
+        procedure.update(review_state="needs_revision", reviewed_at="now",
+                         reviewer_notes="Human revision is required.")
+        plan_path.write_text(json.dumps(persisted), encoding="utf-8")
+        compression = self.service.review_workspace(plan["claim_plan_id"])["compression"]
+        self.assertFalse(compression["ready_for_package_approval"])
+        self.assertIn("Procedure section mapping remains needs revision",
+                      " ".join(compression["blocking_reasons"]))
+        before = plan_path.read_bytes()
+        with self.assertRaisesRegex(
+            KnowledgeClaimPlanningError,
+            "Procedure section mapping remains needs revision",
+        ):
+            self.service.approve_reviewed_claim_set(
+                plan["claim_plan_id"],
+                expected_plan_fingerprint=compression["plan_fingerprint"],
+                expected_evidence_fingerprint=compression["evidence_input_fingerprint"],
+                reviewer="Test Reviewer",
+            )
+        self.assertEqual(plan_path.read_bytes(), before)
+
     def test_stale_workflow_evidence_revokes_phase_eight_eligibility(self):
         plan, work = self._workflow_plan()
         self._approve_all(plan)
@@ -440,6 +886,25 @@ class KnowledgeClaimPlanningTests(unittest.TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertIn(f"/curator/growth/claim-planning/{plan['claim_plan_id']}",
                       response.headers["Location"])
+
+    def test_workflow_safe_processing_prepares_and_builds_claim_plan(self):
+        service = Mock()
+        service.prepare_workflow.return_value = {"claim_plan_id": "KCPM-AAAAAAAAAAAA"}
+        service.plan.return_value = {
+            "claim_plan_id": "KCPM-AAAAAAAAAAAA", "status": "needs_evidence"
+        }
+        flask_app.config.update(TESTING=True, AUTH_TEST_BYPASS=True)
+        with patch("app.app.KnowledgeClaimPlanningService", return_value=service):
+            with flask_app.test_client() as client:
+                response = client.post(
+                    "/curator/growth/coverage-campaigns/KCP-AAAAAAAAAAAA/"
+                    "work-items/KCW-AAAAAAAAAAAA/workflow-claim-planning"
+                )
+        self.assertEqual(response.status_code, 302)
+        service.prepare_workflow.assert_called_once_with(
+            "KCP-AAAAAAAAAAAA", "KCW-AAAAAAAAAAAA"
+        )
+        service.plan.assert_called_once_with("KCPM-AAAAAAAAAAAA")
 
 
 if __name__ == "__main__":

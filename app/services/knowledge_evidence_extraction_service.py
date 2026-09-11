@@ -17,6 +17,7 @@ from app.services.knowledge_source_research_service import (
     KnowledgeSourceResearchService,
     SourceHTTPValidator,
     canonicalize_url,
+    sanitize_source_title,
 )
 from app.services.knowledge_coverage_planner_service import (
     KnowledgeCoveragePlannerError,
@@ -36,7 +37,10 @@ CANDIDACY_ROLES = ("candidate", "context")
 CANDIDACY_RECOMMENDATIONS = ("candidate", "context", "undetermined")
 CANDIDACY_RULE_VERSION = "deterministic-evidence-candidacy-v2"
 LEGACY_CANDIDACY_RULE_VERSIONS = {"deterministic-evidence-candidacy-v1"}
-CONTENT_DISPOSITION_RULE_VERSION = "deterministic-non-substantive-v1"
+CONTENT_DISPOSITION_RULE_VERSION = "deterministic-non-substantive-v2"
+SOURCE_CONTENT_POLICY = "bounded-full-response-v1"
+WORKFLOW_PROPOSITION_POLICY = "deterministic-workflow-propositions-v1"
+WORKFLOW_EVIDENCE_COMPRESSION_POLICY = "deterministic-workflow-evidence-compression-v1"
 REVIEWABLE_DISPOSITION = "reviewable"
 SUPPRESSED_DISPOSITION = "suppressed_non_substantive"
 
@@ -44,7 +48,14 @@ _ASSISTANCE_STOP_WORDS = {
     "and", "are", "campaign", "content", "coverage", "current", "evidence", "for",
     "gap", "governed", "improve", "missing", "review", "safety", "source", "the",
     "this", "work", "workflow", "item", "required", "production", "windows",
+    "authoring", "desktop", "prepare", "support",
 }
+
+_WORKFLOW_SOURCE_INTENT_ROOTS = (
+    "connect", "configur", "creat", "diagnos", "enabl", "install", "recover",
+    "repair", "reset", "resolv", "restor", "setup", "troubleshoot", "updat",
+    "verif",
+)
 
 
 class KnowledgeEvidenceExtractionError(ValueError):
@@ -58,7 +69,8 @@ class _EvidenceParser(HTMLParser):
     HEADINGS = {"h1", "h2", "h3", "h4"}
     IGNORED = {"script", "style", "nav", "footer", "header", "form", "aside", "svg"}
     NON_CONTENT_HEADINGS = {
-        "feedback", "relatedlinks", "commonparameters",
+        "feedback", "relatedlinks", "relatedtopics", "commonparameters",
+        "moresupportoptions", "seealsorecommendedcontent",
     }
     NON_CONTENT_TEXT = (
         "access to this page requires authorization",
@@ -81,21 +93,30 @@ class _EvidenceParser(HTMLParser):
         self.structural_depth = 0
         self.structural_tags: list[str] = []
         self.block_structural = False
+        self.main_depth = 0
+        self.main_seen = False
+        self.block_main = False
 
     def handle_starttag(self, tag, attrs):
         tag = tag.casefold()
         attrs = {str(key).casefold(): str(value or "").casefold() for key, value in attrs}
         structural_tokens = f"{attrs.get('id', '')} {attrs.get('class', '')} {attrs.get('role', '')}"
         if any(token in structural_tokens for token in
-               ("breadcrumb", "table-of-contents", "toc", "page-metadata", "navigation")):
+               ("breadcrumb", "table-of-contents", "toc", "page-metadata", "navigation",
+                "related", "recommend", "sidebar", "privacy", "consent", "cookie",
+                "social-share", "support-options")):
             self.structural_depth += 1
             self.structural_tags.append(tag)
+        if tag in {"main", "article"}:
+            self.main_depth += 1
+            self.main_seen = True
         if tag in self.IGNORED:
             self.ignored_depth += 1
         elif not self.ignored_depth and tag in self.BLOCKS | self.HEADINGS:
             self.active_tag, self.parts = tag, []
             self.link_characters, self.link_count = 0, 0
             self.block_structural = bool(self.structural_depth)
+            self.block_main = bool(self.main_depth)
         elif not self.ignored_depth and tag == "a" and self.active_tag:
             self.link_depth += 1
             self.link_count += 1
@@ -103,6 +124,7 @@ class _EvidenceParser(HTMLParser):
     def handle_endtag(self, tag):
         tag = tag.casefold()
         closes_structural = bool(self.structural_tags and tag == self.structural_tags[-1])
+        closes_main = tag in {"main", "article"} and self.main_depth
         if tag == "a" and self.link_depth:
             self.link_depth -= 1
             return
@@ -113,11 +135,13 @@ class _EvidenceParser(HTMLParser):
             if closes_structural:
                 self.structural_tags.pop()
                 self.structural_depth -= 1
+            if closes_main:
+                self.main_depth -= 1
             return
         text = " ".join(" ".join(self.parts).split())
         if tag in self.HEADINGS:
             self.heading = text[:180]
-        elif len(text) >= 24:
+        elif len(text) >= 24 or (self.block_main and len(text) >= 12):
             heading_key = re.sub(r"[^a-z0-9]+", " ", self.heading.casefold()).strip()
             text_key = " ".join(text.casefold().split())
             if (heading_key.replace(" ", "") not in self.NON_CONTENT_HEADINGS and
@@ -125,11 +149,14 @@ class _EvidenceParser(HTMLParser):
                 self.blocks.append({"tag": tag, "heading": self.heading, "text": text,
                                     "link_characters": self.link_characters,
                                     "link_count": self.link_count,
-                                    "structural_context": self.block_structural})
+                                    "structural_context": self.block_structural,
+                                    "main_content": self.block_main})
         self.active_tag, self.parts = None, []
         if closes_structural:
             self.structural_tags.pop()
             self.structural_depth -= 1
+        if closes_main:
+            self.main_depth -= 1
 
     def handle_data(self, data):
         if not self.ignored_depth and self.active_tag:
@@ -143,7 +170,8 @@ class KnowledgeEvidenceExtractionService:
 
     MAX_PASSAGE = 420
     MAX_UNITS = 80
-    EXTRACTION_METHOD = "deterministic-html-block-v3"
+    MAX_WORKFLOW_REVIEWABLE_PROPOSITIONS = 24
+    EXTRACTION_METHOD = "deterministic-html-block-v4"
 
     def __init__(self, repository_root: Path | None = None,
                  campaign_root: Path | None = None,
@@ -182,15 +210,52 @@ class KnowledgeEvidenceExtractionService:
         units = package.get("evidence_units") or []
         methods = sorted({str(unit.get("extraction_method") or "unknown") for unit in units})
         version_stale = bool(units and methods != [self.EXTRACTION_METHOD])
+        content_policy_stale = bool(
+            units and (package.get("retrieval") or {}).get("source_content_policy")
+            != SOURCE_CONTENT_POLICY
+        )
+        workflow_propositions_required = self._requires_exact_topic_relevance(
+            self._governed_context(package)
+        )
+        proposition_policy_stale = bool(
+            units and workflow_propositions_required and
+            (package.get("retrieval") or {}).get("workflow_proposition_policy")
+            != WORKFLOW_PROPOSITION_POLICY
+        )
+        compression_policy_stale = bool(
+            units and workflow_propositions_required and
+            (package.get("retrieval") or {}).get("workflow_evidence_compression_policy")
+            != WORKFLOW_EVIDENCE_COMPRESSION_POLICY
+        )
         source_stale = package.get("status") == "needs_refresh"
+        reasons = [
+            reason for reason, active in (
+                ("extractor_version", version_stale),
+                ("source_content_window", content_policy_stale),
+                ("workflow_proposition_policy", proposition_policy_stale),
+                ("workflow_evidence_compression_policy", compression_policy_stale),
+                ("source_refresh", source_stale),
+            ) if active
+        ]
         return {
-            "available": version_stale or source_stale,
+            "available": (
+                version_stale or content_policy_stale or proposition_policy_stale or
+                compression_policy_stale or source_stale
+            ),
             "reason": "extractor_version" if version_stale else (
-                "source_refresh" if source_stale else None
+                "source_content_window" if content_policy_stale else (
+                    "workflow_proposition_policy" if proposition_policy_stale else (
+                        "workflow_evidence_compression_policy" if compression_policy_stale else (
+                            "source_refresh" if source_stale else None
+                        )
+                    )
+                )
             ),
             "package_methods": methods,
             "package_method_label": ", ".join(methods) if methods else "not extracted",
             "current_method": self.EXTRACTION_METHOD,
+            "reasons": reasons,
+            "compression_policy_adoption_required": compression_policy_stale,
         }
 
     def reextract(self, extraction_id: str) -> dict[str, Any]:
@@ -214,7 +279,8 @@ class KnowledgeEvidenceExtractionService:
             "work_item_id": research["work_item_id"],
             "research_package_id": research_package_id,
             "source_candidate_id": source_candidate_id,
-            "source_title": candidate.get("page_title") or "Authoritative source",
+            "source_title": sanitize_source_title(candidate.get("page_title"))
+            or "Authoritative source",
             "canonical_source_url": url, "publisher": candidate.get("publisher"),
             "authority_tier": candidate.get("authority_tier"),
             "platform": candidate.get("applicable_platform") or research.get("platform"),
@@ -259,9 +325,19 @@ class KnowledgeEvidenceExtractionService:
             fingerprint = inspected.get("content_digest") or self._fingerprint(
                 inspected.get("content_preview", "")
             )
+            context = self._governed_context(package)
+            workflow_propositions_required = self._requires_exact_topic_relevance(context)
             methods = {unit.get("extraction_method") for unit in package.get("evidence_units") or []}
             if (package.get("source_fingerprint") == fingerprint and
-                    package.get("evidence_units") and methods == {self.EXTRACTION_METHOD}):
+                    package.get("evidence_units") and methods == {self.EXTRACTION_METHOD} and
+                    (package.get("retrieval") or {}).get("source_content_policy")
+                    == SOURCE_CONTENT_POLICY and
+                    (not workflow_propositions_required or
+                     (package.get("retrieval") or {}).get("workflow_proposition_policy")
+                     == WORKFLOW_PROPOSITION_POLICY) and
+                    (not workflow_propositions_required or
+                     (package.get("retrieval") or {}).get("workflow_evidence_compression_policy")
+                     == WORKFLOW_EVIDENCE_COMPRESSION_POLICY)):
                 return deepcopy(package)
             package["status"] = "retrieving"
             self._event(package, "retrieval_started", now, actor="Human")
@@ -274,6 +350,10 @@ class KnowledgeEvidenceExtractionService:
                     "package_status": prior_status,
                     "superseded_at": now,
                 })
+            source_title = sanitize_source_title(
+                inspected.get("page_title") or package.get("source_title")
+            ) or "Authoritative source"
+            package["source_title"] = source_title
             units = self._extract_units(package, inspected.get("content_preview", ""), final_url)
             context = self._governed_context(package)
             for unit in units:
@@ -282,17 +362,28 @@ class KnowledgeEvidenceExtractionService:
                 "requested_url": package["canonical_source_url"], "resolved_url": final_url,
                 "http_status": inspected.get("http_status"), "retrieved_at": now,
                 "content_type": inspected.get("content_type"),
-                "source_title": inspected.get("page_title") or package["source_title"],
+                "source_title": source_title,
                 "publisher": package.get("publisher"), "source_fingerprint": fingerprint,
                 "redirect_chain": inspected.get("redirect_chain") or [], "result": "retrieved",
                 "last_modified": inspected.get("last_modified"), "etag": inspected.get("etag"),
+                "source_content_policy": SOURCE_CONTENT_POLICY,
             }
+            if workflow_propositions_required:
+                package["retrieval"]["workflow_proposition_policy"] = (
+                    WORKFLOW_PROPOSITION_POLICY
+                )
+                package["retrieval"]["workflow_evidence_compression_policy"] = (
+                    WORKFLOW_EVIDENCE_COMPRESSION_POLICY
+                )
             package["source_fingerprint"] = fingerprint
             package["evidence_units"] = units
             package["candidacy"] = self._empty_candidacy_state()
             package["extracted_at"] = now
             package["updated_at"] = now
-            package["status"] = "needs_review"
+            if workflow_propositions_required:
+                self._compress_workflow_evidence(package, context, now)
+            else:
+                package["status"] = "needs_review"
             event = "evidence_reextracted" if is_reextraction else "evidence_extracted"
             self._event(package, event, now, actor="Deterministic Extractor",
                         evidence_count=len(units), source_fingerprint=fingerprint,
@@ -300,6 +391,15 @@ class KnowledgeEvidenceExtractionService:
                         reviewable_count=sum(self._is_reviewable(unit) for unit in units),
                         suppressed_count=sum(not self._is_reviewable(unit) for unit in units),
                         content_disposition_rule_version=CONTENT_DISPOSITION_RULE_VERSION,
+                        source_content_policy=SOURCE_CONTENT_POLICY,
+                        workflow_proposition_policy=(
+                            WORKFLOW_PROPOSITION_POLICY
+                            if workflow_propositions_required else None
+                        ),
+                        workflow_evidence_compression_policy=(
+                            WORKFLOW_EVIDENCE_COMPRESSION_POLICY
+                            if workflow_propositions_required else None
+                        ),
                         prior_extraction_methods=prior_methods if is_reextraction else [])
             self._event(
                 package, "candidacy_recommended", now, actor="Deterministic Candidacy Rule",
@@ -535,6 +635,136 @@ class KnowledgeEvidenceExtractionService:
                     candidate_count=candidate_count, context_count=context_count)
         self._save(package)
         return deepcopy(package)
+
+    def _compress_workflow_evidence(self, package: dict[str, Any],
+                                    context: dict[str, Any], now: str) -> None:
+        """Apply the one allowlisted, deterministic missing-workflow settlement policy."""
+        if not self._requires_exact_topic_relevance(context):
+            return
+        reviewable = [unit for unit in package.get("evidence_units") or []
+                      if self._is_reviewable(unit)]
+        conflicts = self._workflow_conflicting_evidence_ids(reviewable)
+        counts = {"auto_context": 0, "auto_approved": 0, "human_exceptions": 0}
+        for unit in reviewable:
+            decision = self._workflow_compression_decision(unit, context, conflicts)
+            coverage = self._workflow_coverage_roles(unit)
+            unit["workflow_coverage_roles"] = coverage
+            unit["workflow_evidence_compression"] = {
+                "policy_id": WORKFLOW_EVIDENCE_COMPRESSION_POLICY,
+                "decision": decision["decision"],
+                "reason": decision["reason"],
+                "decided_at": now,
+                "evidence_fingerprint": unit.get("fingerprint"),
+            }
+            candidacy = unit.setdefault(
+                "candidacy", self.candidacy_recommendation(unit, context)
+            )
+            if decision["decision"] == "auto_context":
+                candidacy.update(human_confirmed_role="context", role_decided_at=now,
+                                 role_decided_by="Deterministic Evidence Compression")
+                counts["auto_context"] += 1
+            elif decision["decision"] == "auto_approved":
+                candidacy.update(human_confirmed_role="candidate", role_decided_at=now,
+                                 role_decided_by="Deterministic Evidence Compression")
+                unit.update(review_state="approved", reviewer_decision="approved",
+                            reviewer_notes=("Direct, current, capability-relevant source evidence "
+                                            "approved by the bounded workflow evidence policy."),
+                            reviewed_at=now,
+                            reviewed_by="Deterministic Evidence Compression")
+                counts["auto_approved"] += 1
+            else:
+                counts["human_exceptions"] += 1
+
+        state = package.setdefault("candidacy", self._empty_candidacy_state())
+        state["workflow_evidence_compression_policy"] = WORKFLOW_EVIDENCE_COMPRESSION_POLICY
+        state["compression_counts"] = counts
+        if counts["human_exceptions"] == 0:
+            fingerprint = self._candidate_set_fingerprint(package)
+            candidate_count = counts["auto_approved"]
+            state.update({
+                "candidate_set_status": "confirmed", "confirmed_at": now,
+                "confirmed_by": "Deterministic Evidence Compression",
+                "confirmation_fingerprint": fingerprint,
+                "candidate_set_outcome": "non_empty" if candidate_count else "empty",
+            })
+        package["status"] = self._review_status(package["evidence_units"], package)
+        self._event(
+            package, "workflow_evidence_compressed", now,
+            actor="Deterministic Evidence Compression",
+            policy_id=WORKFLOW_EVIDENCE_COMPRESSION_POLICY,
+            **counts,
+        )
+
+    @classmethod
+    def _workflow_compression_decision(cls, unit: dict[str, Any],
+                                       context: dict[str, Any],
+                                       conflicts: set[str]) -> dict[str, str]:
+        evidence_id = str(unit.get("evidence_id") or "")
+        evidence_type = str(unit.get("evidence_type") or "")
+        text = str(unit.get("normalized_claim") or "")
+        folded = text.casefold()
+        assistance = cls.evidence_review_assistance(unit, context)
+        coverage = cls._workflow_coverage_roles(unit)
+        state_changing = bool(re.search(
+            r"\b(restart|reset|install|uninstall|disable|enable|remove|repair|clear|"
+            r"flush|renew|rollback|update|configure|delete|erase|format)\b", folded
+        ))
+        safety_sensitive = evidence_type in {"safety", "authorization_requirements", "commands"}
+        uncertain_platform = assistance.get("category") == "review_attention"
+        weak_relevance = not cls._topic_matches(
+            {"heading": (unit.get("source_location") or {}).get("heading")}, text, context
+        )
+        if evidence_id in conflicts:
+            return {"decision": "human_exception", "reason": "potentially_conflicting_evidence"}
+        if state_changing or safety_sensitive:
+            return {"decision": "human_exception", "reason": "unsafe_or_state_changing_content"}
+        if uncertain_platform:
+            return {"decision": "human_exception", "reason": "uncertain_platform_applicability"}
+        if weak_relevance or unit.get("confidence") not in {"medium", "high"}:
+            return {"decision": "human_exception", "reason": "weak_or_uncertain_relevance"}
+        if evidence_type in {"procedure", "diagnostic_observations", "verification",
+                             "expected_result", "alternate_outcomes", "escalation"} and coverage:
+            return {"decision": "auto_approved", "reason": "direct_current_capability_evidence"}
+        if (unit.get("candidacy") or {}).get("machine_recommended_role") == "undetermined":
+            return {"decision": "human_exception", "reason": "ambiguous_evidence_role"}
+        return {"decision": "auto_context", "reason": "high_confidence_reviewer_context"}
+
+    @staticmethod
+    def _workflow_coverage_roles(unit: dict[str, Any]) -> list[str]:
+        evidence_type = str(unit.get("evidence_type") or "")
+        text = str(unit.get("normalized_claim") or "").casefold()
+        roles: list[str] = []
+        if evidence_type in {"procedure", "diagnostic_observations"}:
+            if re.search(r"\b(open|launch|start|go to|navigate|settings|setup)\b", text):
+                roles.append("entry_setup")
+            if re.search(r"\b(select|choose|connect|enter|click|run|perform|turn on)\b", text):
+                roles.append("primary_action")
+            if (re.search(r"\b(if|when|unless)\b", text) and
+                    re.search(r"\b(prompt|sign[ -]?in|credential|password|username|enter|provide)\b", text)):
+                roles.append("conditional_input")
+        if evidence_type in {"verification", "expected_result"} or re.search(
+                r"\b(verify|confirm|connected status|shows? connected|make sure)\b", text):
+            roles.append("success_verification")
+        if evidence_type == "alternate_outcomes":
+            roles.append("branch_handling")
+        if evidence_type == "escalation":
+            roles.append("escalation")
+        return list(dict.fromkeys(roles))
+
+    @staticmethod
+    def _workflow_conflicting_evidence_ids(units: list[dict[str, Any]]) -> set[str]:
+        conflicts: set[str] = set()
+        opposites = (("must ", "must not "), ("requires ", "does not require "),
+                     ("supported", "not supported"), ("enable", "disable"))
+        for index, left in enumerate(units):
+            left_text = str(left.get("normalized_claim") or "").casefold()
+            for right in units[index + 1:]:
+                right_text = str(right.get("normalized_claim") or "").casefold()
+                if any((a in left_text and b in right_text) or
+                       (b in left_text and a in right_text) for a, b in opposites):
+                    conflicts.update((str(left.get("evidence_id") or ""),
+                                      str(right.get("evidence_id") or "")))
+        return conflicts
 
     @classmethod
     def candidacy_recommendation(cls, unit: dict[str, Any],
@@ -887,6 +1117,11 @@ class KnowledgeEvidenceExtractionService:
         scoped_group_active = any(value != "all" for value in (
             selected_type, selected_assistance, selected_recommendation, selected_human_role,
         ))
+        compression = self._workflow_compression_projection(
+            package, decorated, suppressed_units, context
+        )
+        if compression.get("enabled") and not filters_active:
+            filtered = compression["exception_units"]
         return {
             "package": package, "context": context, "units": filtered,
             "suppressed_units": suppressed_units,
@@ -917,6 +1152,68 @@ class KnowledgeEvidenceExtractionService:
             "group_remaining": group_remaining,
             "group_complete": bool(reviewable_units) and scoped_group_active and not filtered,
             "complete": self._review_complete(package),
+            "compression": compression,
+        }
+
+    def _workflow_compression_projection(self, package: dict[str, Any],
+                                         units: list[dict[str, Any]],
+                                         suppressed: list[dict[str, Any]],
+                                         context: dict[str, Any]) -> dict[str, Any]:
+        enabled = (
+            self._requires_exact_topic_relevance(context) and
+            (package.get("retrieval") or {}).get("workflow_evidence_compression_policy")
+            == WORKFLOW_EVIDENCE_COMPRESSION_POLICY
+        )
+        if not enabled:
+            return {"enabled": False}
+        exceptions = [
+            unit for unit in units
+            if (unit.get("workflow_evidence_compression") or {}).get("decision")
+            == "human_exception"
+        ]
+        unresolved = [
+            unit for unit in exceptions
+            if unit.get("candidacy_role") == "unresolved" or
+            (unit.get("candidacy_role") == "candidate" and
+             unit.get("review_state") in {"proposed", "needs_revision"})
+        ]
+        approved_roles = {
+            role for unit in units if unit.get("review_state") == "approved"
+            and unit.get("candidacy_role") == "candidate"
+            for role in unit.get("workflow_coverage_roles") or []
+        }
+        applicable_roles = {
+            role for unit in units for role in unit.get("workflow_coverage_roles") or []
+        }
+        required_roles = {"entry_setup", "primary_action", "success_verification"}
+        required_roles.update(applicable_roles & {"conditional_input", "branch_handling", "escalation"})
+        return {
+            "enabled": True,
+            "policy_id": WORKFLOW_EVIDENCE_COMPRESSION_POLICY,
+            "extracted_propositions": len(units),
+            "suppressed": len(suppressed),
+            "auto_context": sum(
+                (unit.get("workflow_evidence_compression") or {}).get("decision") == "auto_context"
+                for unit in units
+            ),
+            "auto_approved": sum(
+                (unit.get("workflow_evidence_compression") or {}).get("decision") == "auto_approved"
+                for unit in units
+            ),
+            "human_exceptions": len(exceptions),
+            "remaining_exceptions": len(unresolved),
+            "exception_units": unresolved,
+            "settled_exception_units": [unit for unit in exceptions if unit not in unresolved],
+            "settled_units": [unit for unit in units if unit not in unresolved],
+            "procedure_coverage": {
+                "required": sorted(required_roles),
+                "covered": sorted(approved_roles & required_roles),
+                "missing": sorted(required_roles - approved_roles),
+            },
+            "verification_coverage": "success_verification" in approved_roles,
+            "ready_for_safe_processing": (
+                not unresolved and package.get("status") == "approved"
+            ),
         }
 
     def refresh_status(self, extraction_id: str) -> dict[str, Any]:
@@ -948,11 +1245,19 @@ class KnowledgeEvidenceExtractionService:
                 continue
             if package.get("status") != "approved" or not self._candidate_set_current(package):
                 continue
+            context = self._governed_context(package)
             for unit in package.get("evidence_units") or []:
                 if (unit.get("review_state") != "approved" or
                         not self._is_reviewable(unit) or
                         (unit.get("candidacy") or {}).get("human_confirmed_role") != "candidate" or
                         unit["evidence_id"] in seen):
+                    continue
+                if (self._requires_exact_topic_relevance(context)
+                        and not self._topic_matches(
+                            {"heading": (unit.get("source_location") or {}).get("heading")},
+                            unit.get("supporting_passage") or unit.get("normalized_claim") or "",
+                            context,
+                        )):
                     continue
                 seen.add(unit["evidence_id"])
                 units.append(deepcopy(unit))
@@ -994,8 +1299,15 @@ class KnowledgeEvidenceExtractionService:
     def _extract_units(self, package: dict[str, Any], html: str, source_url: str) -> list[dict[str, Any]]:
         parser = _EvidenceParser()
         parser.feed(html)
+        context = self._governed_context(package)
+        context["source_title"] = package.get("source_title") or ""
+        blocks = parser.blocks
+        if parser.main_seen and any(block.get("main_content") for block in blocks):
+            blocks = [block for block in blocks if block.get("main_content")]
+        if self._requires_exact_topic_relevance(context):
+            blocks = self._consolidate_workflow_propositions(blocks, context)
         units, seen = [], set()
-        for index, block in enumerate(parser.blocks[: self.MAX_UNITS * 3]):
+        for index, block in enumerate(blocks[: self.MAX_UNITS * 3]):
             text = block["text"][: self.MAX_PASSAGE].strip()
             normalized = re.sub(r"\s+", " ", text)
             key = normalized.casefold()
@@ -1003,15 +1315,20 @@ class KnowledgeEvidenceExtractionService:
                 continue
             seen.add(key)
             evidence_type = self._classify(block["tag"], block["heading"], normalized)
-            disposition = self._content_disposition(block, normalized)
+            disposition = self._content_disposition(block, normalized, context)
             evidence_id = self._stable_id(
                 "EVD", package["extraction_id"], evidence_type, normalized.casefold()
             )
             units.append({
                 "evidence_id": evidence_id, "evidence_type": evidence_type,
                 "normalized_claim": normalized, "supporting_passage": text,
-                "source_location": {"heading": block["heading"], "block_index": index,
-                                    "html_element": block["tag"]},
+                "source_location": {
+                    "heading": block["heading"],
+                    "block_index": block.get("source_index", index),
+                    "block_indexes": [source_block["block_index"] for source_block in
+                                      block.get("source_blocks") or []],
+                    "html_element": block["tag"],
+                },
                 "source_url": source_url, "source_title": package["source_title"],
                 "publisher": package.get("publisher"),
                 "platform_applicability": package.get("platform") or "Unspecified",
@@ -1021,24 +1338,143 @@ class KnowledgeEvidenceExtractionService:
                 "fingerprint": self._fingerprint({"text": normalized, "type": evidence_type}),
                 "provenance": {"extraction_id": package["extraction_id"],
                                "research_package_id": package["research_package_id"],
-                               "source_candidate_id": package["source_candidate_id"]},
-                "content_disposition": disposition,
+                               "source_candidate_id": package["source_candidate_id"],
+                               "source_blocks": deepcopy(block.get("source_blocks") or [{
+                                   "block_index": block.get("source_index", index),
+                                   "heading": block.get("heading") or "",
+                                   "html_element": block.get("tag") or "",
+                               }])},
+                "content_disposition": block.get("content_disposition") or disposition,
             })
             if len(units) >= self.MAX_UNITS:
                 break
         if not units:
             raise KnowledgeEvidenceExtractionError("No bounded technical evidence could be extracted safely.")
+        if (self._requires_exact_topic_relevance(context) and
+                sum(self._is_reviewable(unit) for unit in units)
+                > self.MAX_WORKFLOW_REVIEWABLE_PROPOSITIONS):
+            raise KnowledgeEvidenceExtractionError(
+                "Source evidence remains too fragmented for bounded workflow review."
+            )
         return units
 
+    @classmethod
+    def _consolidate_workflow_propositions(
+            cls, blocks: list[dict[str, Any]], context: dict[str, Any]
+    ) -> list[dict[str, Any]]:
+        """Group only adjacent, equivalent-context source blocks without paraphrasing."""
+        prepared: list[dict[str, Any]] = []
+        for source_index, original in enumerate(blocks):
+            block = deepcopy(original)
+            text = " ".join(str(block.get("text") or "").split()).strip()
+            block["text"] = text
+            block["source_index"] = source_index
+            block["source_blocks"] = [{
+                "block_index": source_index,
+                "heading": block.get("heading") or "",
+                "html_element": block.get("tag") or "",
+                "text_fingerprint": cls._fingerprint(text),
+            }]
+            block["content_disposition"] = cls._content_disposition(block, text, context)
+            prepared.append(block)
+
+        consolidated: list[dict[str, Any]] = []
+        for block in cls._deduplicate_exact_blocks(prepared):
+            if not cls._block_is_reviewable(block):
+                consolidated.append(block)
+                continue
+
+            previous = consolidated[-1] if consolidated else None
+            if previous is not None and cls._blocks_form_one_proposition(previous, block):
+                previous["text"] = f"{previous['text']} {block['text']}"
+                previous["source_blocks"].extend(block["source_blocks"])
+                continue
+            consolidated.append(block)
+
+        return cls._deduplicate_exact_blocks(consolidated)
+
+    @classmethod
+    def _deduplicate_exact_blocks(cls, blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        deduplicated: list[dict[str, Any]] = []
+        exact: dict[tuple[str, str], dict[str, Any]] = {}
+        for block in blocks:
+            if not cls._block_is_reviewable(block) or cls._is_branch_statement(block["text"]):
+                deduplicated.append(block)
+                continue
+            key = (
+                cls._effective_text_key(block.get("heading") or ""),
+                cls._effective_text_key(block["text"]),
+            )
+            retained = exact.get(key)
+            if retained is None:
+                exact[key] = block
+                deduplicated.append(block)
+            else:
+                retained["source_blocks"].extend(block["source_blocks"])
+        return deduplicated
+
+    @classmethod
+    def _blocks_form_one_proposition(cls, previous: dict[str, Any], current: dict[str, Any]) -> bool:
+        if not cls._block_is_reviewable(previous):
+            return False
+        if cls._effective_text_key(previous["text"]) == cls._effective_text_key(current["text"]):
+            return False
+        if cls._effective_text_key(previous.get("heading") or "") != cls._effective_text_key(
+                current.get("heading") or ""):
+            return False
+        if cls._is_branch_statement(previous["text"]) or cls._is_branch_statement(current["text"]):
+            return False
+        if cls._classify(previous.get("tag") or "", previous.get("heading") or "",
+                         previous["text"]) != cls._classify(
+                             current.get("tag") or "", current.get("heading") or "",
+                             current["text"]):
+            return False
+        return len(previous["text"]) + 1 + len(current["text"]) <= cls.MAX_PASSAGE
+
     @staticmethod
-    def _content_disposition(block: dict[str, Any], text: str) -> dict[str, Any]:
+    def _block_is_reviewable(block: dict[str, Any]) -> bool:
+        return (block.get("content_disposition") or {}).get("status") != SUPPRESSED_DISPOSITION
+
+    @staticmethod
+    def _is_branch_statement(text: str) -> bool:
+        return bool(re.match(
+            r"^(?:if\b|otherwise\b|unless\b|either\b|depending\b|when prompted\b|"
+            r"do either\b|for .+?,\s*(?:choose|select|enter)\b)",
+            str(text or "").strip(), flags=re.IGNORECASE,
+        ))
+
+    @staticmethod
+    def _effective_text_key(value: str) -> str:
+        return re.sub(r"[^a-z0-9]+", " ", str(value or "").casefold()).strip()
+
+    @classmethod
+    def _content_disposition(cls, block: dict[str, Any], text: str,
+                             context: dict[str, Any] | None = None) -> dict[str, Any]:
         """Classify only structurally or lexically provable non-substantive material."""
         normalized = " ".join(str(text or "").split()).strip()
         folded = normalized.casefold().rstrip(". ")
         reason = None
         basis = None
+        heading_key = re.sub(
+            r"[^a-z0-9]+", "", str(block.get("heading") or "").casefold()
+        )
         if block.get("structural_context"):
             reason, basis = "source_navigation_container", "structural"
+        elif heading_key in _EvidenceParser.NON_CONTENT_HEADINGS or any(
+            marker in heading_key for marker in (
+                "relatedtopics", "relatedcontent", "recommendedcontent",
+                "moresupportoptions", "seemoretopics",
+            )
+        ):
+            reason, basis = "related_topic_collection", "section_heading"
+        elif re.search(
+            r"\b(your privacy choices|opt[- ]out icon|privacy choices|cookie preferences)\b",
+            folded,
+        ):
+            reason, basis = "privacy_control", "exact_text_pattern"
+        elif (cls._requires_exact_topic_relevance(context or {})
+              and len(normalized) <= 80 and normalized.endswith(":")):
+            reason, basis = "instruction_lead_in_fragment", "fragment_shape"
         elif re.fullmatch(r"(?:for more information,?\s*(?:see)?|see also)\s*: ?", folded):
             reason, basis = "cross_reference_lead_in", "exact_text_pattern"
         elif re.fullmatch(
@@ -1049,6 +1485,12 @@ class KnowledgeEvidenceExtractionService:
               and int(block.get("link_characters") or 0) >= len(normalized.replace(" ", "")) * .8
               and re.match(r"^(?:chapter|section)\s+\d+\b", folded)):
             reason, basis = "linked_table_of_contents_entry", "structural_link_ratio"
+        elif (cls._requires_exact_topic_relevance(context or {})
+              and not cls._topic_matches(block, normalized, context or {})):
+            reason, basis = "unrelated_to_governed_work_item", "governed_topic_terms"
+        elif (cls._requires_exact_topic_relevance(context or {})
+              and not cls._matches_source_intent(block, normalized, context or {})):
+            reason, basis = "outside_approved_source_intent", "source_title_intent"
         return {
             "status": SUPPRESSED_DISPOSITION if reason else REVIEWABLE_DISPOSITION,
             "reason": reason, "basis": basis,
@@ -1059,6 +1501,40 @@ class KnowledgeEvidenceExtractionService:
     def _is_reviewable(unit: dict[str, Any]) -> bool:
         return (unit.get("content_disposition") or {}).get(
             "status", REVIEWABLE_DISPOSITION) != SUPPRESSED_DISPOSITION
+
+    @staticmethod
+    def _requires_exact_topic_relevance(context: dict[str, Any]) -> bool:
+        return (
+            str(context.get("gap_type") or "").casefold() == "missing_workflow"
+            and str(context.get("work_type") or "").casefold() == "workflow"
+            and bool(context.get("capability_id"))
+        )
+
+    @classmethod
+    def _topic_matches(cls, block: dict[str, Any], text: str,
+                       context: dict[str, Any]) -> bool:
+        haystack = " ".join((str(block.get("heading") or ""), str(text or ""))).casefold()
+        terms = [str(term).casefold().strip() for term in context.get("topic_terms") or []]
+        if not terms:
+            terms = cls._assistance_terms(context)
+        return any(
+            term and re.search(rf"(?<![a-z0-9]){re.escape(term)}(?![a-z0-9])", haystack)
+            for term in terms
+        )
+
+    @staticmethod
+    def _matches_source_intent(block: dict[str, Any], text: str,
+                               context: dict[str, Any]) -> bool:
+        title = str(context.get("source_title") or "").casefold()
+        intent_roots = {
+            root for root in _WORKFLOW_SOURCE_INTENT_ROOTS if root in title
+        }
+        if not intent_roots:
+            return True
+        heading = str(block.get("heading") or "").casefold()
+        heading_key = re.sub(r"[^a-z0-9]+", "", heading)
+        target = text.casefold() if heading_key in {"summary", "overview"} else heading
+        return any(root in target for root in intent_roots)
 
     @staticmethod
     def _classify(tag: str, heading: str, text: str) -> str:
@@ -1091,6 +1567,10 @@ class KnowledgeEvidenceExtractionService:
         if not candidates:
             return "insufficient_evidence"
         states = [unit.get("review_state", "proposed") for unit in candidates]
+        if (package is not None and
+                (package.get("candidacy") or {}).get("workflow_evidence_compression_policy") and
+                "needs_revision" in states):
+            return "needs_review"
         if states and "proposed" not in states and "approved" in states:
             return "approved"
         if any(state == "approved" for state in states):
@@ -1118,12 +1598,25 @@ class KnowledgeEvidenceExtractionService:
                    "campaign_objective": "", "platform": package.get("platform") or "",
                    "gap_summary": "Review whether each source statement supports the governed work item."}
         try:
-            campaign = KnowledgeCoveragePlannerService(self.repository_root, self.campaign_root).get(
-                str(package.get("campaign_id") or ""))
+            planner = self.research.planner
+            campaign = planner.get(str(package.get("campaign_id") or ""))
             work = next((x for x in campaign.get("work_items", [])
                          if x.get("work_item_id") == package.get("work_item_id")), {})
             gap = next((x for x in campaign.get("gaps", [])
                         if x.get("gap_id") == package.get("gap_id")), {})
+            capability_id = str(
+                work.get("capability_id") or gap.get("capability_id") or ""
+            ).strip()
+            capabilities = [
+                capability
+                for domain in planner.domains()
+                if domain.get("id") == campaign.get("domain")
+                for capability in domain.get("areas") or []
+                if capability.get("id") == capability_id
+            ]
+            topic_terms = list(capabilities[0].get("terms") or []) if len(capabilities) == 1 else []
+            if len(capabilities) == 1:
+                topic_terms.extend((capabilities[0].get("id"), capabilities[0].get("title")))
             context.update(campaign_title=campaign.get("title") or "Campaign",
                            campaign_objective=campaign.get("objective") or "",
                            area=work.get("area_id") or gap.get("area") or campaign.get("scope") or "Not specified",
@@ -1132,7 +1625,11 @@ class KnowledgeEvidenceExtractionService:
                            gap_type=gap.get("gap_type") or "Not specified",
                            facet=(gap.get("facet") or work.get("facet") or
                                   work.get("objective_facet") or ""),
-                           gap_summary=gap.get("summary") or work.get("reason") or work.get("title") or context["gap_summary"])
+                           gap_summary=gap.get("summary") or work.get("reason") or work.get("title") or context["gap_summary"],
+                           capability_id=capability_id,
+                           topic_terms=list(dict.fromkeys(
+                               str(term).strip() for term in topic_terms if str(term).strip()
+                           )))
         except KnowledgeCoveragePlannerError:
             pass
         return context
@@ -1165,10 +1662,34 @@ class KnowledgeEvidenceExtractionService:
     def _candidate_set_current(self, package: dict[str, Any]) -> bool:
         state = package.get("candidacy") or {}
         rule_version = state.get("rule_version")
+        compression_current = True
+        if (state.get("workflow_evidence_compression_policy") or
+                (package.get("retrieval") or {}).get("workflow_evidence_compression_policy")):
+            compression_current = (
+                state.get("workflow_evidence_compression_policy")
+                == WORKFLOW_EVIDENCE_COMPRESSION_POLICY
+                and (package.get("retrieval") or {}).get("source_fingerprint")
+                == package.get("source_fingerprint")
+                and all(self._workflow_compressed_unit_current(unit)
+                        for unit in package.get("evidence_units") or []
+                        if self._is_reviewable(unit))
+            )
         return (state.get("candidate_set_status") == "confirmed" and
                 rule_version in {CANDIDACY_RULE_VERSION, *LEGACY_CANDIDACY_RULE_VERSIONS} and
                 state.get("confirmation_fingerprint") == self._candidate_set_fingerprint(
-                    package, rule_version=rule_version))
+                    package, rule_version=rule_version) and compression_current)
+
+    @classmethod
+    def _workflow_compressed_unit_current(cls, unit: dict[str, Any]) -> bool:
+        compression = unit.get("workflow_evidence_compression") or {}
+        if compression.get("policy_id") != WORKFLOW_EVIDENCE_COMPRESSION_POLICY:
+            return False
+        expected = cls._fingerprint({
+            "text": str(unit.get("normalized_claim") or "").strip(),
+            "type": unit.get("evidence_type"),
+        })
+        return (unit.get("fingerprint") == expected and
+                compression.get("evidence_fingerprint") == expected)
 
     def _path(self, extraction_id: str) -> Path:
         if not re.fullmatch(r"KEX-[A-F0-9]{12}", str(extraction_id or "")):

@@ -182,6 +182,10 @@ from app.services.knowledge_campaign_orchestration_service import (
     KnowledgeCampaignOrchestrationError,
     KnowledgeCampaignOrchestrationService,
 )
+from app.services.knowledge_builder_service import (
+    KnowledgeBuilderError,
+    KnowledgeBuilderService,
+)
 from app.services.supervised_campaign_autopilot_service import (
     SupervisedCampaignAutopilotError,
     SupervisedCampaignAutopilotService,
@@ -1333,6 +1337,260 @@ def growth_operations():
                            preview=preview, operations_error=error)
 
 
+@app.get("/curator/growth/knowledge-builder")
+def knowledge_builder_index():
+    return render_template(
+        "knowledge_builder_index.html",
+        builder_items=KnowledgeBuilderService().index(),
+    )
+
+
+@app.get("/curator/growth/knowledge-builder/<campaign_id>/<work_item_id>")
+def knowledge_builder_detail(campaign_id, work_item_id):
+    try:
+        builder = KnowledgeBuilderService().project(campaign_id, work_item_id)
+    except KnowledgeBuilderError:
+        abort(404)
+    return render_template(
+        "knowledge_builder.html", builder=builder,
+        builder_error=request.args.get("builder_error", ""),
+        builder_notice=request.args.get("builder_notice", ""),
+    )
+
+
+@app.get(
+    "/curator/growth/knowledge-builder/<campaign_id>/<work_item_id>"
+    "/exceptions/evidence"
+)
+def knowledge_builder_evidence_exceptions(campaign_id, work_item_id):
+    try:
+        workspace = KnowledgeBuilderService().evidence_exceptions(
+            campaign_id, work_item_id
+        )
+    except KnowledgeBuilderError:
+        abort(404)
+    if len(workspace["exceptions"]) == 1:
+        exception = workspace["exceptions"][0]
+        return redirect(url_for(
+            "knowledge_builder_evidence_exception",
+            campaign_id=campaign_id, work_item_id=work_item_id,
+            extraction_id=workspace["extraction_id"],
+            evidence_id=exception["evidence_id"],
+        ))
+    return render_template(
+        "knowledge_builder_evidence_exceptions.html", workspace=workspace,
+    )
+
+
+@app.get(
+    "/curator/growth/knowledge-builder/<campaign_id>/<work_item_id>"
+    "/exceptions/evidence/<extraction_id>/<evidence_id>"
+)
+def knowledge_builder_evidence_exception(
+    campaign_id, work_item_id, extraction_id, evidence_id
+):
+    try:
+        workspace = KnowledgeBuilderService().evidence_exceptions(
+            campaign_id, work_item_id, evidence_id
+        )
+        if workspace["extraction_id"] != extraction_id:
+            abort(404)
+    except KnowledgeBuilderError:
+        abort(404)
+    return render_template(
+        "knowledge_builder_evidence_exceptions.html", workspace=workspace,
+    )
+
+
+def _knowledge_builder_exception_redirect(campaign_id, work_item_id, result):
+    exceptions = result.get("exceptions") or []
+    notice = (
+        "Evidence exception resolved. Resume preparation."
+        if not exceptions else
+        f"Evidence decision recorded. {len(exceptions)} exception(s) remain."
+    )
+    return redirect(url_for(
+        "knowledge_builder_detail", campaign_id=campaign_id,
+        work_item_id=work_item_id, builder_notice=notice,
+    ))
+
+
+@app.post(
+    "/curator/growth/knowledge-builder/<campaign_id>/<work_item_id>"
+    "/exceptions/evidence/<extraction_id>/<evidence_id>/role"
+)
+def knowledge_builder_evidence_exception_role(
+    campaign_id, work_item_id, extraction_id, evidence_id
+):
+    try:
+        result = KnowledgeBuilderService().decide_evidence_role(
+            campaign_id, work_item_id, extraction_id, evidence_id,
+            request.form.get("role", ""),
+        )
+    except KnowledgeBuilderError as exception:
+        return redirect(url_for(
+            "knowledge_builder_evidence_exception",
+            campaign_id=campaign_id, work_item_id=work_item_id,
+            extraction_id=extraction_id, evidence_id=evidence_id,
+            builder_error=str(exception),
+        ))
+    return _knowledge_builder_exception_redirect(campaign_id, work_item_id, result)
+
+
+@app.post(
+    "/curator/growth/knowledge-builder/<campaign_id>/<work_item_id>"
+    "/exceptions/evidence/<extraction_id>/<evidence_id>/decision"
+)
+def knowledge_builder_evidence_exception_decision(
+    campaign_id, work_item_id, extraction_id, evidence_id
+):
+    try:
+        result = KnowledgeBuilderService().decide_evidence(
+            campaign_id, work_item_id, extraction_id, evidence_id,
+            request.form.get("decision", ""), request.form.get("notes", ""),
+        )
+    except KnowledgeBuilderError as exception:
+        return redirect(url_for(
+            "knowledge_builder_evidence_exception",
+            campaign_id=campaign_id, work_item_id=work_item_id,
+            extraction_id=extraction_id, evidence_id=evidence_id,
+            builder_error=str(exception),
+        ))
+    return _knowledge_builder_exception_redirect(campaign_id, work_item_id, result)
+
+
+@app.post("/curator/growth/knowledge-builder/<campaign_id>/<work_item_id>/prepare")
+def knowledge_builder_prepare(campaign_id, work_item_id):
+    try:
+        result = KnowledgeBuilderService().prepare(campaign_id, work_item_id)
+        notice = (
+            f"Safe preparation completed {result.get('execution', {}).get('transitions', 0)} "
+            "pipeline step(s)."
+        )
+        error = ""
+    except KnowledgeBuilderError as exception:
+        notice, error = "", str(exception)
+    return redirect(url_for(
+        "knowledge_builder_detail", campaign_id=campaign_id,
+        work_item_id=work_item_id, builder_notice=notice, builder_error=error,
+    ))
+
+
+@app.post("/curator/growth/knowledge-builder/<campaign_id>/<work_item_id>/approve")
+def knowledge_builder_approve(campaign_id, work_item_id):
+    try:
+        KnowledgeBuilderService().approve_workflow(
+            campaign_id, work_item_id,
+            reviewer=g.reviewer_identity.username,
+            proposal_fingerprint=request.form.get("proposal_fingerprint", ""),
+        )
+        notice, error = "Workflow approved. The validated draft is ready for final review.", ""
+    except KnowledgeBuilderError as exception:
+        notice, error = "", str(exception)
+    return redirect(url_for(
+        "knowledge_builder_detail", campaign_id=campaign_id,
+        work_item_id=work_item_id, builder_notice=notice, builder_error=error,
+    ))
+
+
+@app.get(
+    "/curator/growth/knowledge-builder/<campaign_id>/<work_item_id>"
+    "/exceptions/safety"
+)
+def knowledge_builder_safety_exceptions(campaign_id, work_item_id):
+    try:
+        review = KnowledgeBuilderService().safety_exceptions(
+            campaign_id, work_item_id
+        )
+    except KnowledgeBuilderError:
+        abort(404)
+    if len(review["exceptions"]) == 1:
+        return redirect(url_for(
+            "knowledge_builder_safety_exception",
+            campaign_id=campaign_id, work_item_id=work_item_id,
+            generation_id=review["generation_id"],
+            node_id=review["exceptions"][0]["node_id"],
+        ))
+    return render_template(
+        "knowledge_builder_safety_exceptions.html", review=review,
+    )
+
+
+@app.get(
+    "/curator/growth/knowledge-builder/<campaign_id>/<work_item_id>"
+    "/exceptions/safety/<generation_id>/<node_id>"
+)
+def knowledge_builder_safety_exception(
+    campaign_id, work_item_id, generation_id, node_id
+):
+    try:
+        review = KnowledgeBuilderService().safety_exceptions(
+            campaign_id, work_item_id, node_id
+        )
+        if review["generation_id"] != generation_id:
+            abort(404)
+    except KnowledgeBuilderError:
+        abort(404)
+    return render_template(
+        "knowledge_builder_safety_exceptions.html", review=review,
+        builder_error=request.args.get("builder_error", ""),
+    )
+
+
+@app.post(
+    "/curator/growth/knowledge-builder/<campaign_id>/<work_item_id>"
+    "/exceptions/safety/<generation_id>/<node_id>/decision"
+)
+def knowledge_builder_safety_exception_decision(
+    campaign_id, work_item_id, generation_id, node_id
+):
+    try:
+        result = KnowledgeBuilderService().decide_safety_exception(
+            campaign_id, work_item_id, generation_id, node_id,
+            request.form.get("decision", ""),
+            reviewer=g.reviewer_identity.username,
+            proposal_fingerprint=request.form.get("proposal_fingerprint", ""),
+            exception_fingerprint=request.form.get("exception_fingerprint", ""),
+            notes=request.form.get("notes", ""),
+        )
+        remaining = ((result.get("safety_review") or {}).get("exceptions") or [])
+        notice = (
+            "Safety guidance accepted. Deterministic validation now passes."
+            if not remaining and (result.get("proposal") or {}).get("eligible")
+            else "Safety decision recorded. Review the remaining requirements."
+        )
+        error = ""
+    except KnowledgeBuilderError as exception:
+        notice, error = "", str(exception)
+    if error:
+        return redirect(url_for(
+            "knowledge_builder_safety_exception",
+            campaign_id=campaign_id, work_item_id=work_item_id,
+            generation_id=generation_id, node_id=node_id,
+            builder_error=error,
+        ))
+    return redirect(url_for(
+        "knowledge_builder_detail", campaign_id=campaign_id,
+        work_item_id=work_item_id, builder_notice=notice,
+    ))
+
+
+@app.post("/curator/growth/knowledge-builder/<campaign_id>/<work_item_id>/publish")
+def knowledge_builder_publish(campaign_id, work_item_id):
+    try:
+        KnowledgeBuilderService().publish(
+            campaign_id, work_item_id,
+            expected_draft_fingerprint=request.form.get("draft_fingerprint", ""),
+        )
+        notice, error = "Workflow added to the published library.", ""
+    except KnowledgeBuilderError as exception:
+        notice, error = "", str(exception)
+    return redirect(url_for(
+        "knowledge_builder_detail", campaign_id=campaign_id,
+        work_item_id=work_item_id, builder_notice=notice, builder_error=error,
+    ))
+
+
 @app.post("/curator/growth/operations/start")
 def growth_operations_start():
     try:
@@ -1693,12 +1951,22 @@ def knowledge_workflow_generation_prepare(campaign_id):
 
 @app.get("/curator/growth/workflow-generation/<generation_id>")
 def knowledge_workflow_generation_detail(generation_id):
+    service = KnowledgeWorkflowGenerationService()
     try:
-        package = KnowledgeWorkflowGenerationService().get(generation_id)
+        package = service.get(generation_id)
     except KnowledgeWorkflowGenerationError:
         abort(404)
+    proposal = None
+    if package.get("workflow_plan"):
+        try:
+            proposal = service.proposal(generation_id)
+        except KnowledgeWorkflowGenerationError as exception:
+            proposal = {"supported": False, "eligible": False,
+                        "blockers": [str(exception)]}
     return render_template("knowledge_workflow_generation_detail.html", package=package,
-                           workflow_error=request.args.get("workflow_error", ""))
+                           proposal=proposal,
+                           workflow_error=request.args.get("workflow_error", ""),
+                           workflow_notice=request.args.get("workflow_notice", ""))
 
 
 @app.post("/curator/growth/workflow-generation/<generation_id>/plan")
@@ -1721,6 +1989,36 @@ def knowledge_workflow_generation_draft(generation_id):
         error = str(exception)
     return redirect(url_for("knowledge_workflow_generation_detail", generation_id=generation_id,
                             workflow_error=error))
+
+
+@app.post("/curator/growth/workflow-generation/<generation_id>/approve-draft-creation")
+def knowledge_workflow_generation_approve_draft_creation(generation_id):
+    service = KnowledgeWorkflowGenerationService()
+    try:
+        package = service.get(generation_id)
+        orchestration = KnowledgeCampaignOrchestrationService()
+        existing = [item for item in orchestration.read_persisted(orchestration.campaign_root)
+                    if item.get("campaign_id") == package.get("campaign_id")]
+        if len(existing) != 1:
+            raise KnowledgeWorkflowGenerationError(
+                "Campaign orchestration identity is missing or ambiguous."
+            )
+        package = service.approve_draft_creation(
+            generation_id,
+            reviewer=g.reviewer_identity.username,
+            expected_proposal_fingerprint=request.form.get("proposal_fingerprint", ""),
+            notes=request.form.get("notes", ""),
+        )
+        orchestration.refresh(existing[0]["orchestration_id"])
+        error = ""
+        notice = "Workflow draft created for human review. Nothing was published."
+    except (KnowledgeWorkflowGenerationError, KnowledgeCampaignOrchestrationError) as exception:
+        error = str(exception)
+        notice = ""
+    return redirect(url_for(
+        "knowledge_workflow_generation_detail", generation_id=generation_id,
+        workflow_error=error, workflow_notice=notice,
+    ))
 
 
 @app.post("/curator/growth/workflow-generation/<generation_id>/review")
@@ -2037,10 +2335,16 @@ def knowledge_evidence_reextract(extraction_id):
         before = service.reextraction_state(extraction_id)
         service.reextract(extraction_id)
         error = ""
-        notice = ("Evidence was re-extracted with the current deterministic rules. "
-                  "All active evidence requires human review."
-                  if before["available"] else
-                  "This package already uses the current extraction rules; no changes were made.")
+        if before.get("compression_policy_adoption_required"):
+            notice = ("Evidence Review Compression was adopted. The prior evidence revision "
+                      "was preserved, safe decisions were settled, and genuine exceptions "
+                      "remain human-controlled.")
+        elif before["available"]:
+            notice = ("Evidence was re-extracted with the current deterministic rules and "
+                      "governed evidence policy.")
+        else:
+            notice = ("This package already uses the current extraction rules; "
+                      "no changes were made.")
     except KnowledgeEvidenceExtractionError as exception:
         error, notice = str(exception), ""
     return redirect(url_for("knowledge_evidence_extraction_detail", extraction_id=extraction_id,
@@ -2140,11 +2444,67 @@ def knowledge_evidence_candidacy(extraction_id, evidence_id):
 
 @app.post("/curator/growth/evidence-extraction/<extraction_id>/candidacy/confirm")
 def knowledge_evidence_candidacy_confirm(extraction_id):
+    service = KnowledgeEvidenceExtractionService()
     try:
-        KnowledgeEvidenceExtractionService().confirm_candidate_set(extraction_id)
+        package = service.confirm_candidate_set(extraction_id)
         error = ""
     except KnowledgeEvidenceExtractionError as exception:
         error = str(exception)
+        package = None
+
+    # A compressed missing-workflow package has one final, explicit human
+    # boundary after all proposition-level exceptions are settled.  Once that
+    # boundary is confirmed, reuse the campaign's authoritative bounded
+    # continuation so its persisted Review Evidence gate cannot remain stale.
+    if package and package.get("status") == "approved" and (
+        (package.get("retrieval") or {}).get("workflow_evidence_compression_policy")
+    ):
+        repository_root = _structural_repository_root()
+        campaign_root = repository_root / "knowledge_campaigns"
+        try:
+            orchestrations = [
+                item
+                for item in KnowledgeCampaignOrchestrationService.read_persisted(
+                    campaign_root
+                )
+                if item.get("campaign_id") == package.get("campaign_id")
+            ]
+            if len(orchestrations) != 1:
+                raise KnowledgeCampaignOrchestrationError(
+                    "The campaign orchestration is missing or ambiguous."
+                )
+            orchestration = orchestrations[0]
+            gate = [
+                item
+                for item in orchestration.get("work_item_states", [])
+                if item.get("work_item_id") == package.get("work_item_id")
+                and item.get("package_id") == extraction_id
+                and item.get("next_action") == "review_evidence"
+                and item.get("action_authority") == "human_gate"
+            ]
+            orchestration_service = KnowledgeCampaignOrchestrationService()
+            if len(gate) == 1:
+                orchestration_service.continue_after_human_gate(
+                    orchestration["orchestration_id"],
+                    actor="Evidence review completion",
+                    max_transitions=2,
+                )
+            else:
+                # An idempotent repeat may arrive after the campaign has
+                # already advanced. Refreshing is read-authoritative and only
+                # persists a changed projection; it creates no duplicate
+                # evidence decision or machine transition.
+                orchestration_service.refresh(orchestration["orchestration_id"])
+            return redirect(url_for(
+                "knowledge_campaign_orchestration_detail",
+                campaign_id=package["campaign_id"],
+                orchestration_notice=(
+                    "Evidence review completed. Safe claim planning advanced "
+                    "to the next governed stop."
+                ),
+            ))
+        except KnowledgeCampaignOrchestrationError as exception:
+            error = str(exception)
     return redirect(url_for("knowledge_evidence_extraction_detail", extraction_id=extraction_id,
                             extraction_error=error))
 
@@ -2241,7 +2601,9 @@ def knowledge_claim_planning_prepare(package_id):
 def knowledge_workflow_claim_planning_prepare(campaign_id, work_item_id):
     """Human-initiated entry into the existing supervised Phase 6 workspace."""
     try:
-        plan = KnowledgeClaimPlanningService().prepare_workflow(campaign_id, work_item_id)
+        service = KnowledgeClaimPlanningService()
+        plan = service.prepare_workflow(campaign_id, work_item_id)
+        plan = service.plan(plan["claim_plan_id"])
     except KnowledgeClaimPlanningError as exception:
         return redirect(url_for("knowledge_coverage_campaign_detail",
                                 campaign_id=campaign_id, claim_error=str(exception)))
@@ -2251,10 +2613,12 @@ def knowledge_workflow_claim_planning_prepare(campaign_id, work_item_id):
 @app.get("/curator/growth/claim-planning/<plan_id>")
 def knowledge_claim_planning_detail(plan_id):
     try:
-        plan = KnowledgeClaimPlanningService().get(plan_id)
+        workspace = KnowledgeClaimPlanningService().review_workspace(plan_id)
+        plan = workspace["plan"]
     except KnowledgeClaimPlanningError:
         abort(404)
     return render_template("knowledge_claim_planning_detail.html", plan=plan,
+                           compression=workspace["compression"],
                            planning_error=request.args.get("planning_error", ""))
 
 
@@ -2267,6 +2631,79 @@ def knowledge_claim_planning_run(plan_id):
         error = str(exception)
     return redirect(url_for("knowledge_claim_planning_detail", plan_id=plan_id,
                             planning_error=error))
+
+
+@app.post("/curator/growth/claim-planning/<plan_id>/reviewed-claim-set")
+def knowledge_claim_set_approve(plan_id):
+    service = KnowledgeClaimPlanningService()
+    try:
+        current = service.review_workspace(plan_id)["plan"]
+        repository_root = _structural_repository_root()
+        campaign_root = repository_root / "knowledge_campaigns"
+        orchestrations = [
+            item
+            for item in KnowledgeCampaignOrchestrationService.read_persisted(
+                campaign_root
+            )
+            if item.get("campaign_id") == current.get("campaign_id")
+        ]
+        if len(orchestrations) != 1:
+            raise KnowledgeCampaignOrchestrationError(
+                "The campaign orchestration is missing or ambiguous."
+            )
+        orchestration = orchestrations[0]
+        gate = [
+            item for item in orchestration.get("work_item_states", [])
+            if item.get("work_item_id") == current.get("work_item_id")
+            and item.get("package_id") == plan_id
+            and item.get("next_action") == "review_claims"
+            and item.get("action_authority") == "human_gate"
+        ]
+        prior_approval = current.get("claim_set_approval") or {}
+        duplicate = (
+            prior_approval.get("decision") == "approved"
+            and prior_approval.get("plan_fingerprint")
+            == request.form.get("plan_fingerprint", "")
+            and prior_approval.get("evidence_input_fingerprint")
+            == request.form.get("evidence_input_fingerprint", "")
+        )
+        if len(gate) != 1 and not duplicate:
+            raise KnowledgeCampaignOrchestrationError(
+                "The claim plan is no longer at its governed human gate."
+            )
+        plan = service.approve_reviewed_claim_set(
+            plan_id,
+            expected_plan_fingerprint=request.form.get("plan_fingerprint", ""),
+            expected_evidence_fingerprint=request.form.get(
+                "evidence_input_fingerprint", ""
+            ),
+            reviewer=getattr(
+                getattr(g, "reviewer_identity", None), "username", ""
+            ),
+        )
+        orchestration_service = KnowledgeCampaignOrchestrationService()
+        if len(gate) == 1:
+            orchestration_service.continue_after_human_gate(
+                orchestration["orchestration_id"],
+                actor="Claim-set approval",
+                max_transitions=3,
+            )
+        else:
+            orchestration_service.refresh(orchestration["orchestration_id"])
+        notice = (
+            "The reviewed claim set was already approved; no duplicate decision was recorded."
+            if plan.get("claim_set_approval_result") == "already_approved"
+            else "Reviewed claim set approved. Safe campaign work advanced to the next governed stop."
+        )
+        return redirect(url_for(
+            "knowledge_campaign_orchestration_detail",
+            campaign_id=plan["campaign_id"], orchestration_notice=notice,
+        ))
+    except (KnowledgeClaimPlanningError, KnowledgeCampaignOrchestrationError) as error:
+        return redirect(url_for(
+            "knowledge_claim_planning_detail", plan_id=plan_id,
+            planning_error=str(error),
+        ))
 
 
 @app.post("/curator/growth/claim-planning/<plan_id>/claims/<claim_id>")

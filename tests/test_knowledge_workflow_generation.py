@@ -3,13 +3,17 @@ import tempfile
 import unittest
 from copy import deepcopy
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from app.app import app as flask_app
 from app.services.knowledge_workflow_generation_service import (
     KnowledgeWorkflowGenerationError,
     KnowledgeWorkflowGenerationService,
 )
+from app.services.knowledge_coverage_planner_service import (
+    KnowledgeCoveragePlannerService,
+)
+from app.services.authentication_service import AuthenticationService
 
 
 class KnowledgeWorkflowGenerationTests(unittest.TestCase):
@@ -123,6 +127,65 @@ class KnowledgeWorkflowGenerationTests(unittest.TestCase):
         package = self._planned()
         return self.service.prepare_draft(package["generation_id"])
 
+    def _capability_service(self):
+        identity = "capability:desktop-support:windows:vpn:missing_workflow"
+        taxonomy_path = self.root / "taxonomy.json"
+        taxonomy_path.write_text(json.dumps({
+            "schema_version": "1.0", "domains": [{
+                "id": "desktop-support", "title": "Desktop Support",
+                "category": "Desktop Support", "platforms": ["Windows"],
+                "capability_catalog": "capabilities.json", "areas": [],
+            }],
+        }), encoding="utf-8")
+        (self.root / "capabilities.json").write_text(json.dumps({
+            "schema_version": "1.0", "catalog_id": "test-capabilities",
+            "domain_id": "desktop-support", "title": "Test capabilities",
+            "capabilities": [{
+                "id": "vpn", "title": "VPN", "level": "core",
+                "platform": "Windows", "category": "Network access",
+                "terms": ["vpn", "virtual private network"],
+                "expected_artifacts": ["workflow", "article"],
+                "likely_relationships": ["workflow_article"],
+                "artifact_matches": {"workflow": [], "article": [], "command": []},
+            }],
+        }), encoding="utf-8")
+        self.campaign.update({
+            "domain": "desktop-support",
+            "creation_metadata": {
+                "initiated_by": "autonomous_growth_stage2",
+                "gap_identity": identity,
+                "selected_gap": {
+                    "gap_type": "missing_workflow", "gap_identity": identity,
+                    "domain_id": "desktop-support", "area_id": "vpn",
+                    "capability_id": "vpn", "platform": "Windows",
+                    "expected_artifacts": ["workflow", "article"],
+                },
+            },
+            "gaps": [{
+                "gap_id": "KCG-WORKFLOW01", "gap_type": "missing_workflow",
+                "gap_identity": identity, "area_id": "vpn", "capability_id": "vpn",
+                "platform": "Windows", "expected_artifacts": ["workflow", "article"],
+            }],
+        })
+        self.campaign["work_items"][0].update({
+            "area_id": "vpn", "target_asset": "vpn", "gap_identity": identity,
+            "capability_id": "vpn", "platform": "Windows",
+            "expected_artifacts": ["workflow", "article"],
+        })
+        self._write(self.campaign_root / f"{self.campaign_id}.json", self.campaign)
+        claims = self._claims()
+        claims[0]["workflow_spec"]["workflow_name"] = "VPN"
+        self._write_claim_plan(claims)
+        planner = KnowledgeCoveragePlannerService(
+            self.root, self.campaign_root, taxonomy_path
+        )
+        service = KnowledgeWorkflowGenerationService(
+            self.root, self.campaign_root, self.root / "app/workflow_drafts",
+            planner=planner,
+        )
+        package = service.plan(service.prepare(self.campaign_id, self.work_id)["generation_id"])
+        return service, package
+
     def test_explicit_human_initiation_is_required(self):
         self.assertEqual(self.service.list_for_campaign(self.campaign_id), [])
         self.assertFalse((self.campaign_root / "workflow_generation").glob("KWG-*.json").__iter__().__next__()
@@ -172,6 +235,260 @@ class KnowledgeWorkflowGenerationTests(unittest.TestCase):
         self.assertEqual(nodes["q_start"]["fields"]["answers"]["unsure"]["next"], "r_escalate")
         self.assertEqual(nodes["i_restart"]["fields"]["next"], "q_verify")
         self.assertEqual(nodes["t_higher"]["fields"]["next_workflow"], "higher_layer")
+
+    def test_capability_proposal_is_deterministic_evidence_backed_and_read_only(self):
+        service, package = self._capability_service()
+        before = {path: path.read_bytes() for path in self.root.rglob("*.json")}
+
+        first = service.proposal(package["generation_id"])
+        second = service.proposal(package["generation_id"])
+
+        self.assertEqual(first, second)
+        self.assertTrue(first["eligible"])
+        self.assertEqual(first["capability"]["gap_identity"],
+                         "capability:desktop-support:windows:vpn:missing_workflow")
+        self.assertEqual(first["workflow"]["id"], "vpn")
+        self.assertEqual(first["workflow"]["start_node"], "q_start")
+        self.assertEqual(first["workflow"]["node_count"], 6)
+        self.assertTrue(first["questions"])
+        self.assertTrue(first["instructions"])
+        self.assertTrue(first["outcomes"])
+        self.assertEqual(first["evidence"]["source_urls"],
+                         ["https://learn.microsoft.com/windows"])
+        self.assertEqual(before, {path: path.read_bytes() for path in self.root.rglob("*.json")})
+
+    def test_capability_approval_creates_one_unpublished_draft_and_is_idempotent(self):
+        service, package = self._capability_service()
+        proposal = service.proposal(package["generation_id"])
+
+        first = service.approve_draft_creation(
+            package["generation_id"], reviewer="Greg Dougall",
+            expected_proposal_fingerprint=proposal["proposal_fingerprint"],
+            notes="Evidence and safety boundaries reviewed.",
+        )
+        draft_path = self.root / "app/workflow_drafts/vpn.json"
+        draft_before = draft_path.read_bytes()
+        package_before = (service.package_root / f"{package['generation_id']}.json").read_bytes()
+        second = service.approve_draft_creation(
+            package["generation_id"], reviewer="Greg Dougall",
+            expected_proposal_fingerprint=proposal["proposal_fingerprint"],
+            notes="Evidence and safety boundaries reviewed.",
+        )
+
+        self.assertEqual(first, second)
+        self.assertEqual(draft_path.read_bytes(), draft_before)
+        self.assertEqual((service.package_root / f"{package['generation_id']}.json").read_bytes(),
+                         package_before)
+        self.assertEqual(first["draft_creation_review"]["reviewer"], "Greg Dougall")
+        self.assertEqual(first["draft_creation_review"]["campaign_id"], self.campaign_id)
+        self.assertEqual(first["status"], "handed_off")
+        saved = json.loads(draft_path.read_text(encoding="utf-8"))
+        self.assertEqual(saved["knowledge_factory"]["capability_id"], "vpn")
+        self.assertEqual(
+            saved["knowledge_factory"]["gap_identity"],
+            "capability:desktop-support:windows:vpn:missing_workflow",
+        )
+        self.assertEqual(list((self.root / "app/workflow_publications").rglob("*.json")), [])
+
+    def test_capability_proposal_route_is_read_only_and_approval_uses_existing_orchestration(self):
+        service, package = self._capability_service()
+        proposal = service.proposal(package["generation_id"])
+        before = {path: path.read_bytes() for path in self.root.rglob("*.json")}
+        orchestration = Mock()
+        orchestration.campaign_root = self.campaign_root
+        orchestration.read_persisted.return_value = [{
+            "campaign_id": self.campaign_id, "orchestration_id": "KORCH-TEST",
+        }]
+        flask_app.config.update(TESTING=True, AUTH_TEST_BYPASS=True)
+
+        with patch("app.app.KnowledgeWorkflowGenerationService", return_value=service), \
+             patch("app.app.KnowledgeCampaignOrchestrationService",
+                   return_value=orchestration):
+            client = flask_app.test_client()
+            page = client.get(
+                f"/curator/growth/workflow-generation/{package['generation_id']}"
+            )
+            self.assertEqual(before, {
+                path: path.read_bytes() for path in self.root.rglob("*.json")
+            })
+            response = client.post(
+                f"/curator/growth/workflow-generation/{package['generation_id']}"
+                "/approve-draft-creation",
+                data={"proposal_fingerprint": proposal["proposal_fingerprint"],
+                      "notes": "Reviewed."},
+            )
+
+        self.assertEqual(page.status_code, 200)
+        self.assertIn(b"Missing Workflow Proposal", page.data)
+        self.assertIn(b"Approve Draft Creation", page.data)
+        self.assertIn(b"VPN", page.data)
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue((self.root / "app/workflow_drafts/vpn.json").is_file())
+        orchestration.refresh.assert_called_once_with("KORCH-TEST")
+        self.assertEqual(list((self.root / "app/workflow_publications").rglob("*.json")), [])
+
+    def test_draft_creation_approval_route_requires_reviewer_and_csrf(self):
+        prior = {key: flask_app.config.get(key) for key in (
+            "TESTING", "AUTH_TEST_BYPASS", "GNOJO_STABLE_SESSION_SECRET_CONFIGURED",
+            "GNOJO_REVIEWER_USERNAME", "GNOJO_REVIEWER_PASSWORD_HASH",
+        )}
+        flask_app.config.update(
+            TESTING=True, AUTH_TEST_BYPASS=False,
+            GNOJO_STABLE_SESSION_SECRET_CONFIGURED=True,
+            GNOJO_REVIEWER_USERNAME="Reviewer",
+            GNOJO_REVIEWER_PASSWORD_HASH="configured-test-hash",
+        )
+        try:
+            client = flask_app.test_client()
+            unauthenticated = client.post(
+                "/curator/growth/workflow-generation/KWG-TEST/approve-draft-creation"
+            )
+            with client.session_transaction() as reviewer_session:
+                reviewer_session[AuthenticationService.AUTHENTICATED_KEY] = True
+                reviewer_session[AuthenticationService.USERNAME_KEY] = "Reviewer"
+                reviewer_session[AuthenticationService.ROLE_KEY] = "reviewer_admin"
+                reviewer_session[AuthenticationService.CSRF_KEY] = "valid-token"
+            missing_csrf = client.post(
+                "/curator/growth/workflow-generation/KWG-TEST/approve-draft-creation"
+            )
+            invalid_csrf = client.post(
+                "/curator/growth/workflow-generation/KWG-TEST/approve-draft-creation",
+                data={"authenticity_token": "wrong-token"},
+            )
+        finally:
+            flask_app.config.update(prior)
+        self.assertEqual(unauthenticated.status_code, 403)
+        self.assertEqual(missing_csrf.status_code, 400)
+        self.assertEqual(invalid_csrf.status_code, 400)
+
+    def test_capability_proposal_stale_fingerprint_fails_closed(self):
+        service, package = self._capability_service()
+        proposal = service.proposal(package["generation_id"])
+        claim_path = self.campaign_root / "claim_planning/KCPM-WORKFLOW01.json"
+        claims = json.loads(claim_path.read_text(encoding="utf-8"))
+        claims["claims"][0]["workflow_spec"]["fields"]["help_text"] += " Changed."
+        self._write(claim_path, claims)
+        with self.assertRaisesRegex(KnowledgeWorkflowGenerationError, "changed"):
+            service.approve_draft_creation(
+                package["generation_id"], reviewer="Reviewer",
+                expected_proposal_fingerprint=proposal["proposal_fingerprint"],
+            )
+
+    def test_capability_proposal_identity_collision_fails_closed(self):
+        service, package = self._capability_service()
+        self._write(self.root / "app/workflow_drafts/vpn.json", {
+            "workflow_id": "vpn", "name": "Collision", "start_node": "done",
+            "nodes": {"done": {"type": "resolution", "message": "Existing."}},
+        })
+        proposal = service.proposal(package["generation_id"])
+        self.assertFalse(proposal["eligible"])
+        self.assertTrue(any("proposed identity" in item or "proposed filename" in item
+                            for item in proposal["blockers"]))
+
+    def test_capability_proposal_unsafe_state_change_fails_closed(self):
+        service, package = self._capability_service()
+        path = service.package_root / f"{package['generation_id']}.json"
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        raw["workflow_plan"]["nodes"][1]["fields"].update({
+            "title": "Reset the VPN", "instruction": "Reset the VPN now."
+        })
+        self._write(path, raw)
+        unsafe = service.proposal(package["generation_id"])
+        self.assertFalse(unsafe["eligible"])
+        self.assertTrue(any("state-changing safety" in item
+                            for item in unsafe["blockers"]))
+
+    def test_state_change_matching_requires_exact_action_context(self):
+        matcher = KnowledgeWorkflowGenerationService._state_change_signals
+        for text in (
+            "Multiple profiles are configured.",
+            "The configured profile is already available.",
+            "The restart status is pending.",
+            "The service restart is scheduled.",
+            "The updater reports the current version.",
+        ):
+            with self.subTest(false_positive=text):
+                self.assertEqual(matcher(text), [])
+        expected = {
+            "Configure the VPN profile.": ["configure"],
+            "Change the network setting.": ["change"],
+            "Delete the obsolete profile.": ["delete"],
+            "Restart the service.": ["restart"],
+            "Save work, then reset the adapter.": ["reset"],
+            "Use Settings to disable the adapter.": ["disable"],
+        }
+        for text, signals in expected.items():
+            with self.subTest(true_positive=text):
+                self.assertEqual(matcher(text), signals)
+
+    def test_configured_condition_does_not_block_capability_proposal(self):
+        service, package = self._capability_service()
+        path = service.package_root / f"{package['generation_id']}.json"
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        target = raw["workflow_plan"]["nodes"][1]
+        target["fields"].update({
+            "title": "Select the VPN",
+            "instruction": (
+                "If multiple VPN profiles are configured, select the intended "
+                "connection and then select Connect."
+            ),
+        })
+        self._write(path, raw)
+        proposal = service.proposal(package["generation_id"])
+        self.assertEqual(
+            service.safety_exception_review(package["generation_id"])["exceptions"],
+            [],
+        )
+        self.assertTrue(proposal["validation"]["valid"])
+        self.assertTrue(proposal["eligible"])
+
+    def test_governed_safety_review_updates_one_plan_node_and_revalidates(self):
+        service, package = self._capability_service()
+        path = service.package_root / f"{package['generation_id']}.json"
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        target = raw["workflow_plan"]["nodes"][1]
+        target["fields"].update({
+            "title": "Connect to the VPN",
+            "instruction": "Configure the intended VPN connection, then select Connect.",
+        })
+        self._write(path, raw)
+        review = service.safety_exception_review(
+            package["generation_id"], target["node_id"]
+        )
+        exception = review["current"]
+        self.assertEqual(
+            exception["instruction"],
+            "Configure the intended VPN connection, then select Connect.",
+        )
+        self.assertTrue(exception["claim_ids"])
+        self.assertTrue(exception["evidence_ids"])
+        with self.assertRaisesRegex(KnowledgeWorkflowGenerationError, "changed"):
+            service.review_safety_exception(
+                package["generation_id"], target["node_id"],
+                "accept_recommended", reviewer="Reviewer",
+                expected_proposal_fingerprint="stale",
+                expected_exception_fingerprint=exception["exception_fingerprint"],
+            )
+        service.review_safety_exception(
+            package["generation_id"], target["node_id"],
+            "accept_recommended", reviewer="Reviewer",
+            expected_proposal_fingerprint=review["proposal_fingerprint"],
+            expected_exception_fingerprint=exception["exception_fingerprint"],
+            notes="Proportional guidance reviewed.",
+        )
+        updated = service.get(package["generation_id"])
+        updated_target = next(
+            item for item in updated["workflow_plan"]["nodes"]
+            if item["node_id"] == target["node_id"]
+        )
+        self.assertIn("authorized", updated_target["fields"]["help_text"])
+        self.assertEqual(updated["safety_reviews"][-1]["reviewer"], "Reviewer")
+        self.assertEqual(updated["safety_reviews"][-1]["claim_ids"], exception["claim_ids"])
+        self.assertEqual(service.safety_exception_review(
+            package["generation_id"]
+        )["exceptions"], [])
+        self.assertTrue(service.proposal(package["generation_id"])["eligible"])
+        self.assertEqual(list((self.root / "app/workflow_publications").rglob("*.json")), [])
 
     def test_valid_draft_passes_structure_reasoning_safety_relationships(self):
         package = self._draft()
@@ -271,6 +588,7 @@ class KnowledgeWorkflowGenerationTests(unittest.TestCase):
         self.assertEqual(list((self.root / "app/workflow_publications").rglob("*.json")), [])
 
     def test_routes_expose_supervised_plan_draft_review_and_handoff(self):
+        flask_app.config.update(TESTING=True, AUTH_TEST_BYPASS=True)
         with flask_app.test_client() as client, \
              patch("app.app.KnowledgeWorkflowGenerationService", return_value=self.service):
             response = client.post(f"/curator/growth/coverage-campaigns/{self.campaign_id}/workflow-generation",

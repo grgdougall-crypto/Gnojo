@@ -141,11 +141,7 @@ class KnowledgeClaimPlanningService:
             package, evidence = self._eligible_workflow(plan["campaign_id"], plan["work_item_id"])
         else:
             package, evidence = self._eligible(plan["kdg_package_id"])
-        fingerprint = self._fingerprint([
-            {key: unit.get(key) for key in ("evidence_id", "evidence_type", "normalized_claim",
-                                             "fingerprint", "review_state")}
-            for unit in sorted(evidence, key=lambda value: value["evidence_id"])
-        ])
+        fingerprint = self._evidence_input_fingerprint(evidence)
         if plan.get("input_fingerprint") == fingerprint and plan.get("claims"):
             return plan
         now = self.generation._now()
@@ -169,7 +165,13 @@ class KnowledgeClaimPlanningService:
         prior_sections = {item["section"]: item for item in plan.get("sections") or []}
         sections, gaps = self._sections(package, claims, conflicts, reuse, prior_sections)
         if plan.get("target_asset_type") == "workflow":
+            procedure_coverage, procedure_gaps = self._workflow_procedure_coverage(
+                package, claims
+            )
+            gaps.extend(procedure_gaps)
             gaps.extend(self._workflow_spec_gaps(package, claims))
+        else:
+            procedure_coverage = None
         plan.update({
             "status": self._status(claims, conflicts, gaps, sections), "sections": sections,
             "claims": claims, "conflicts": conflicts, "evidence_gaps": gaps,
@@ -180,12 +182,291 @@ class KnowledgeClaimPlanningService:
             "validation": {"approved_evidence_only": True,
                            "blocking_conflicts": len([item for item in conflicts
                                                       if item.get("resolution") in {None, "", "deferred"}]),
-                           "required_gaps": len([item for item in gaps if item["required"]])},
+                           "required_gaps": len([item for item in gaps if item["required"]]),
+                           "workflow_procedure_coverage": procedure_coverage,
+                           "substantive_completeness_percent": (
+                               round(100 * len(procedure_coverage["covered"]) /
+                                     len(procedure_coverage["required"]))
+                               if procedure_coverage and procedure_coverage["required"] else None
+                           )},
         })
         self._event(plan, "claim_plan_built", now, actor="Deterministic Claim Planner",
                     claim_count=len(claims), conflict_count=len(conflicts), gap_count=len(gaps))
         self._save(plan)
         return self.get(plan_id)
+
+    def input_is_current(self, plan_id: str) -> bool:
+        """Return whether a persisted plan represents current approved evidence."""
+        plan = self._read(self._path(plan_id))
+        if plan.get("target_asset_type") == "workflow":
+            _, evidence = self._eligible_workflow(
+                plan["campaign_id"], plan["work_item_id"]
+            )
+        else:
+            _, evidence = self._eligible(plan["kdg_package_id"])
+        return bool(
+            plan.get("input_fingerprint")
+            and plan["input_fingerprint"] == self._evidence_input_fingerprint(evidence)
+        )
+
+    def review_workspace(self, plan_id: str) -> dict[str, Any]:
+        """Project the bounded missing-workflow claim-set review without writes."""
+        plan = self.get(plan_id)
+        compression = self._claim_review_compression(plan)
+        return {"plan": plan, "compression": compression}
+
+    def approve_reviewed_claim_set(
+        self, plan_id: str, *, expected_plan_fingerprint: str,
+        expected_evidence_fingerprint: str, reviewer: str,
+    ) -> dict[str, Any]:
+        """Atomically approve one exact, current, human-reviewed workflow claim set."""
+        path = self._path(plan_id)
+        before_bytes = path.read_bytes()
+        plan = self.get(plan_id)
+        compression = self._claim_review_compression(plan)
+        prior_approval = plan.get("claim_set_approval") or {}
+        if (
+            prior_approval.get("plan_fingerprint") == expected_plan_fingerprint
+            and prior_approval.get("evidence_input_fingerprint")
+            == expected_evidence_fingerprint
+            and prior_approval.get("decision") == "approved"
+            and self.input_is_current(plan_id)
+        ):
+            result = deepcopy(plan)
+            result["claim_set_approval_result"] = "already_approved"
+            return result
+        if not compression.get("enabled"):
+            raise KnowledgeClaimPlanningError(
+                "Claim-set approval is limited to governed missing-workflow plans."
+            )
+        if not self.input_is_current(plan_id):
+            raise KnowledgeClaimPlanningError(
+                "Approved evidence changed. Re-plan before reviewing this claim set."
+            )
+        if expected_evidence_fingerprint != plan.get("input_fingerprint"):
+            raise KnowledgeClaimPlanningError(
+                "The reviewed evidence fingerprint is stale."
+            )
+        if expected_plan_fingerprint != compression.get("plan_fingerprint"):
+            raise KnowledgeClaimPlanningError(
+                "The reviewed claim-set fingerprint is stale."
+            )
+        if not compression.get("ready_for_package_approval"):
+            reasons = compression.get("blocking_reasons") or [
+                "Resolve every claim exception, conflict, and evidence gap first."
+            ]
+            raise KnowledgeClaimPlanningError(" ".join(reasons))
+        reviewer = str(reviewer or "").strip()
+        if not reviewer:
+            raise KnowledgeClaimPlanningError("Reviewer identity is required.")
+        # Recheck the exact persisted bytes immediately before the single write.
+        if path.read_bytes() != before_bytes:
+            raise KnowledgeClaimPlanningError(
+                "The claim plan changed during review. Reload and try again."
+            )
+        now = self.generation._now()
+        approved_plan = deepcopy(plan)
+        for claim in approved_plan.get("claims") or []:
+            if claim.get("review_state") == "proposed":
+                claim.update(
+                    review_state="approved", reviewed_at=now,
+                    reviewer_notes="Approved in governed claim-set review.",
+                    reviewed_by=reviewer,
+                )
+        for section in approved_plan.get("sections") or []:
+            if section.get("claim_ids") and self._section_is_package_approvable(section):
+                section.update(
+                    review_state="approved", reviewed_at=now,
+                    reviewer_notes="Approved in governed claim-set review.",
+                    reviewed_by=reviewer,
+                )
+        approved_plan["status"] = self._status(
+            approved_plan.get("claims") or [], approved_plan.get("conflicts") or [],
+            approved_plan.get("evidence_gaps") or [], approved_plan.get("sections") or [],
+        )
+        if approved_plan["status"] != "ready_for_drafting":
+            raise KnowledgeClaimPlanningError(
+                "The reviewed claim set cannot reach the governed drafting boundary: "
+                + "; ".join(self._drafting_boundary_blockers(approved_plan))
+            )
+        approved_plan["claim_set_approval"] = {
+            "decision": "approved", "reviewer": reviewer, "approved_at": now,
+            "plan_fingerprint": expected_plan_fingerprint,
+            "evidence_input_fingerprint": expected_evidence_fingerprint,
+        }
+        approved_plan["updated_at"] = now
+        self._event(
+            approved_plan, "reviewed_claim_set_approved", now, actor=reviewer,
+            plan_fingerprint=expected_plan_fingerprint,
+            evidence_input_fingerprint=expected_evidence_fingerprint,
+            claim_count=len(approved_plan.get("claims") or []),
+        )
+        self._save(approved_plan)
+        result = self.get(plan_id)
+        result["claim_set_approval_result"] = "approved"
+        return result
+
+    def _claim_review_compression(self, plan: dict[str, Any]) -> dict[str, Any]:
+        enabled = False
+        if plan.get("target_asset_type") == "workflow":
+            try:
+                package, _ = self._eligible_workflow(
+                    plan["campaign_id"], plan["work_item_id"], allow_conflicts=True
+                )
+                enabled = package.get("gap_type") == "missing_workflow"
+            except KnowledgeClaimPlanningError:
+                enabled = False
+        if not enabled:
+            return {"enabled": False}
+        conflict_claims = {
+            claim_id for conflict in plan.get("conflicts") or []
+            if conflict.get("resolution") in {None, "", "deferred"}
+            for claim_id in conflict.get("claim_ids") or []
+        }
+        exceptions = []
+        routine = []
+        for claim in plan.get("claims") or []:
+            reasons = []
+            if claim.get("stale"):
+                reasons.append("stale evidence")
+            if claim.get("claim_id") in conflict_claims:
+                reasons.append("deterministic conflict")
+            if claim.get("confidence") == "low" or claim.get("support_level") == "partial":
+                reasons.append("weak support")
+            if claim.get("claim_type") in {
+                "command", "caution", "authorization_requirement"
+            }:
+                reasons.append("safety or state-changing review")
+            if not claim.get("applicability"):
+                reasons.append("platform applicability is unresolved")
+            if claim.get("support_level") == "conditional" and (
+                not claim.get("applicability") or claim.get("limitations")
+            ):
+                reasons.append("conditional applicability is unresolved")
+            if claim.get("review_state") in {"rejected", "needs_revision"}:
+                reasons.append("prior human decision requires resolution")
+            projected = deepcopy(claim)
+            projected["attention_reasons"] = self._unique(reasons)
+            (exceptions if reasons else routine).append(projected)
+        unresolved = [
+            claim for claim in exceptions if claim.get("review_state") != "approved"
+        ]
+        plan_fingerprint = self._fingerprint({
+            "claim_plan_id": plan.get("claim_plan_id"),
+            "input_fingerprint": plan.get("input_fingerprint"),
+            "claims": [{key: claim.get(key) for key in (
+                "claim_id", "normalized_claim", "evidence_ids", "workflow_coverage_roles",
+                "support_level", "confidence", "applicability", "limitations", "review_state",
+            )} for claim in plan.get("claims") or []],
+            "sections": [{key: section.get(key) for key in (
+                "section", "claim_ids", "review_state", "missing_evidence",
+            )} for section in plan.get("sections") or []],
+            "conflicts": plan.get("conflicts") or [],
+            "evidence_gaps": plan.get("evidence_gaps") or [],
+        })
+        coverage = (plan.get("validation") or {}).get(
+            "workflow_procedure_coverage"
+        ) or {"required": [], "covered": [], "missing": []}
+        section_blockers = self._package_section_blockers(plan)
+        blocking_reasons = []
+        if unresolved:
+            blocking_reasons.append(
+                f"{len(unresolved)} claim exception(s) still require review."
+            )
+        if plan.get("conflicts"):
+            blocking_reasons.append("Deterministic claim conflicts remain unresolved.")
+        if plan.get("evidence_gaps"):
+            blocking_reasons.append("Required evidence gaps remain.")
+        if (plan.get("validation") or {}).get("stale_evidence_ids"):
+            blocking_reasons.append("The claim plan references stale evidence.")
+        blocking_reasons.extend(section_blockers)
+        return {
+            "enabled": True,
+            "plan_fingerprint": plan_fingerprint,
+            "evidence_input_fingerprint": plan.get("input_fingerprint"),
+            "total_claims": len(plan.get("claims") or []),
+            "direct_high_confidence": sum(
+                claim.get("support_level") == "direct"
+                and claim.get("confidence") == "high"
+                for claim in plan.get("claims") or []
+            ),
+            "conditional_claims": sum(
+                claim.get("support_level") == "conditional"
+                for claim in plan.get("claims") or []
+            ),
+            "attention_count": len(exceptions),
+            "unresolved_attention_count": len(unresolved),
+            "routine_claims": routine,
+            "exception_claims": exceptions,
+            "procedure_coverage": coverage,
+            "verification_coverage": "success_verification" in set(
+                coverage.get("covered") or []
+            ),
+            "conflict_count": len(plan.get("conflicts") or []),
+            "evidence_gap_count": len(plan.get("evidence_gaps") or []),
+            "section_blockers": section_blockers,
+            "blocking_reasons": blocking_reasons,
+            "ready_for_package_approval": bool(plan.get("claims"))
+            and not unresolved
+            and not plan.get("conflicts")
+            and not plan.get("evidence_gaps")
+            and not (plan.get("validation") or {}).get("stale_evidence_ids")
+            and not section_blockers,
+        }
+
+    @staticmethod
+    def _section_is_package_approvable(section: dict[str, Any]) -> bool:
+        state = section.get("review_state")
+        if state == "proposed":
+            return True
+        # Older rebuilt plans could retain a deterministic needs_evidence label
+        # after their evidence gap was resolved. It is not a human decision and
+        # may be normalized only when every current blocker is absent.
+        return (
+            state == "needs_evidence"
+            and not section.get("missing_evidence")
+            and not section.get("conflict_ids")
+            and not section.get("reviewed_at")
+        )
+
+    @classmethod
+    def _package_section_blockers(cls, plan: dict[str, Any]) -> list[str]:
+        blockers = []
+        for section in plan.get("sections") or []:
+            if not section.get("claim_ids"):
+                continue
+            state = section.get("review_state")
+            if state == "approved" or cls._section_is_package_approvable(section):
+                continue
+            name = str(section.get("section") or "unknown").replace("_", " ").title()
+            blockers.append(
+                f"The {name} section mapping remains {str(state or 'unknown').replace('_', ' ')}."
+            )
+        return blockers
+
+    @classmethod
+    def _drafting_boundary_blockers(cls, plan: dict[str, Any]) -> list[str]:
+        blockers = cls._package_section_blockers(plan)
+        unapproved = sum(
+            claim.get("review_state") != "approved"
+            for claim in plan.get("claims") or []
+        )
+        if unapproved:
+            blockers.append(f"{unapproved} claim(s) remain unapproved.")
+        if plan.get("conflicts"):
+            blockers.append("Claim conflicts remain unresolved.")
+        if plan.get("evidence_gaps"):
+            blockers.append("Required evidence gaps remain.")
+        return blockers or ["the authoritative post-approval status is not drafting-ready."]
+
+    @classmethod
+    def _evidence_input_fingerprint(cls, evidence: list[dict[str, Any]]) -> str:
+        return cls._fingerprint([
+            {key: unit.get(key) for key in ("evidence_id", "evidence_type", "normalized_claim",
+                                             "fingerprint", "review_state",
+                                             "workflow_coverage_roles")}
+            for unit in sorted(evidence, key=lambda value: value["evidence_id"])
+        ])
 
     def review_claim(self, plan_id: str, claim_id: str, decision: str, notes: str = "") -> dict[str, Any]:
         if decision not in {"approved", "rejected", "needs_revision"}:
@@ -309,6 +590,48 @@ class KnowledgeClaimPlanningService:
         value.setdefault("validation", {})["stale_evidence_ids"] = sorted(stale_ids)
         if stale_ids and value.get("status") not in {"rejected", "superseded"}:
             value["status"] = "needs_evidence"
+            stale_gap_id = self._stable_id(
+                "GAP", value["claim_plan_id"], "stale_evidence"
+            )
+            if not any(
+                gap.get("gap_id") == stale_gap_id
+                for gap in value.get("evidence_gaps") or []
+            ):
+                value.setdefault("evidence_gaps", []).append({
+                    "gap_id": stale_gap_id,
+                    "section": "procedure",
+                    "required": True,
+                    "reason": (
+                        "The plan references superseded evidence. Re-plan against "
+                        "the current approved evidence before human claim review."
+                    ),
+                })
+        completeness = value["validation"].get(
+            "substantive_completeness_percent"
+        )
+        if not isinstance(completeness, (int, float)):
+            coverage = value["validation"].get("workflow_procedure_coverage") or {}
+            required = coverage.get("required") or []
+            if required:
+                completeness = round(
+                    100 * len(coverage.get("covered") or []) / len(required)
+                )
+            elif stale_ids:
+                completeness = 0
+            else:
+                required_sections = [
+                    section for section in value.get("sections") or []
+                    if section.get("required")
+                ]
+                complete_sections = [
+                    section for section in required_sections
+                    if not section.get("missing_evidence")
+                ]
+                completeness = (
+                    round(100 * len(complete_sections) / len(required_sections))
+                    if required_sections else 0
+                )
+            value["validation"]["substantive_completeness_percent"] = completeness
         return value
 
     def _eligible_workflow(self, campaign_id: str, work_item_id: str, *, allow_conflicts=False):
@@ -342,6 +665,9 @@ class KnowledgeClaimPlanningService:
                               if gap.get("gap_id") == work.get("gap_id")), None),
             "work_type": work.get("work_type"), "proposed_purpose": work.get("reason") or work.get("title"),
             "existing_assets_considered": [],
+            "workflow_required_coverage_roles": self._workflow_required_coverage_roles(
+                research_ids
+            ),
         }
         return package, evidence
 
@@ -386,6 +712,9 @@ class KnowledgeClaimPlanningService:
                 "provenance": [{"evidence_id": unit["evidence_id"], "source_url": unit.get("source_url"),
                                 "source_title": unit.get("source_title"), "publisher": unit.get("publisher")}
                                for unit in units],
+                "workflow_coverage_roles": self._unique(
+                    role for unit in units for role in unit.get("workflow_coverage_roles") or []
+                ),
                 "support_level": "corroborated" if len(evidence_ids) > 1 else self._support(units[0]),
                 "confidence": "high" if len(evidence_ids) > 1 else units[0].get("confidence", "medium"),
                 "applicability": self._unique(unit.get("platform_applicability") for unit in units),
@@ -395,6 +724,53 @@ class KnowledgeClaimPlanningService:
                 "source_urls": self._unique(unit.get("source_url") for unit in units),
             })
         return claims
+
+    def _workflow_required_coverage_roles(self, research_ids: list[str]) -> list[str]:
+        required: set[str] = set()
+        optional_when_present = {"conditional_input", "branch_handling", "escalation"}
+        for research_id in research_ids:
+            for extraction in self.generation.extraction.list_for_research(research_id):
+                if extraction.get("status") in {"needs_refresh", "failed", "rejected", "superseded"}:
+                    continue
+                if not (extraction.get("retrieval") or {}).get(
+                        "workflow_evidence_compression_policy"):
+                    continue
+                required.update({"entry_setup", "primary_action", "success_verification"})
+                for unit in extraction.get("evidence_units") or []:
+                    if (unit.get("content_disposition") or {}).get("status") == "suppressed_non_substantive":
+                        continue
+                    required.update(set(unit.get("workflow_coverage_roles") or []) & optional_when_present)
+        return sorted(required)
+
+    def _workflow_procedure_coverage(self, package: dict[str, Any],
+                                     claims: list[dict[str, Any]]):
+        required = set(package.get("workflow_required_coverage_roles") or [])
+        covered = {
+            role for claim in claims for role in claim.get("workflow_coverage_roles") or []
+        }
+        missing = sorted(required - covered)
+        labels = {
+            "entry_setup": "entry or setup action",
+            "primary_action": "primary action or transition",
+            "conditional_input": "conditional credential or input step",
+            "success_verification": "success verification",
+            "branch_handling": "branch handling",
+            "escalation": "escalation boundary",
+        }
+        gaps = [{
+            "gap_id": self._stable_id("GAP", package["package_id"], "workflow_coverage", role),
+            "section": "verification" if role == "success_verification" else "procedure",
+            "required": True,
+            "reason": (
+                "Missing-workflow evidence does not yet support the required "
+                f"{labels.get(role, role.replace('_', ' '))}."
+            ),
+            "coverage_role": role,
+        } for role in missing]
+        return {
+            "required": sorted(required), "covered": sorted(required & covered),
+            "missing": missing, "complete": not missing,
+        }, gaps
 
     def _workflow_specs(self, package, claims):
         """Attach Phase 8's existing node specification to evidence-bound claims."""
@@ -487,15 +863,22 @@ class KnowledgeClaimPlanningService:
             deterministic_state = ("supported_context" if supported and not section_claims else
                                    "not_applicable" if not applicable else
                                    "needs_evidence" if missing else "proposed")
+            preserve_human_review = (
+                old.get("review_state") in SECTION_REVIEW_STATES
+                and bool(old.get("reviewed_at"))
+            )
             sections.append({"section": name, "applicable": applicable,
                              "required": name in required_sections,
                              "claim_ids": [item["claim_id"] for item in section_claims],
                              "evidence_ids": self._unique(eid for item in section_claims for eid in item["evidence_ids"]),
                              "missing_evidence": missing, "conflict_ids": section_conflicts,
                              "canonical_reuse": section_reuse,
-                             "review_state": old.get("review_state", deterministic_state),
-                             "reviewer_notes": old.get("reviewer_notes", ""),
-                             "reviewed_at": old.get("reviewed_at")})
+                             "review_state": (old.get("review_state")
+                                              if preserve_human_review else deterministic_state),
+                             "reviewer_notes": (old.get("reviewer_notes", "")
+                                                if preserve_human_review else ""),
+                             "reviewed_at": (old.get("reviewed_at")
+                                             if preserve_human_review else None)})
         return sections, gaps
 
     def _required_sections(self, package):

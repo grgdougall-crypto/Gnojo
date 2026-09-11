@@ -14,6 +14,7 @@
     </div>
     {% if item.next_action == 'approve_source' and not item.review_link and item.review_unavailable_reason %}<p class="text-warning mb-1" role="status">{{ item.review_unavailable_reason }}</p>{% endif %}
     <p class="mb-0"><strong>Next:</strong> {{ item.next_action|default('No action', true)|replace('_',' ')|title }}{% if item.blocker %} · {{ item.blocker.explanation }}{% endif %}</p>
+    {% if item.work_type in ['workflow', 'workflow_branch', 'verification_step', 'escalation_path', 'safety_review'] %}<p class="mt-2 mb-0"><a href="{{ url_for('knowledge_builder_detail', campaign_id=orchestration.campaign_id, work_item_id=item.work_item_id) }}">Open in Knowledge Builder</a></p>{% endif %}
     {% if item.evidence_progress %}<p class="mb-1"><strong>Evidence progress:</strong> {{ item.evidence_progress.prepared_sources }} of {{ item.evidence_progress.total_sources }} sources prepared</p>{% endif %}
     {% if item.evidence_packages %}<div class="d-flex flex-wrap gap-2" aria-label="Prepared evidence packages">{% for package in item.evidence_packages %}<a class="btn btn-sm btn-outline-secondary" href="{{ package.review_link }}">{{ package.source_candidate_id }} · {{ package.extraction_id }} · {{ package.status|replace('_',' ')|title }}</a>{% endfor %}</div>{% endif %}
     {% if item.review_destination and not item.review_destination.resolved %}<p class="text-muted mb-0">{{ item.review_destination.reason }}</p>{% endif %}

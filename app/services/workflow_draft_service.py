@@ -62,6 +62,21 @@ class WorkflowDraftService:
 
         return filename
 
+    def create_draft(self, workflow):
+        """Create one new editable draft without overwriting an existing identity."""
+        workflow_id = workflow.get("workflow_id", "untitled_workflow")
+        filename = self.filename_for(workflow_id)
+        with self.persistence.locked(filename) as draft:
+            if draft.path.exists():
+                raise WorkflowDraftError(
+                    "An editable workflow draft already exists for this identity."
+                )
+            try:
+                draft.create_or_replace(workflow)
+            except WorkflowDraftPersistenceError as error:
+                raise WorkflowDraftError(str(error)) from error
+        return filename
+
     @staticmethod
     def filename_for(workflow_id):
         filename = f"{workflow_id}.json"

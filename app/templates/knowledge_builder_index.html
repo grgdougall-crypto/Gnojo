@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Knowledge Builder | Gnojo{% endblock %}
+{% block content %}
+<main class="container curator-page" id="main-content" aria-labelledby="builderIndexTitle">
+  {% with curator_active='growth' %}{% include 'partials/_curator_nav.html' %}{% endwith %}
+  <nav aria-label="Breadcrumb"><a href="{{ url_for('growth_operations') }}">Growth Operations</a> / Knowledge Builder</nav>
+  <header class="curator-heading"><div><span class="section-eyebrow">Supervised knowledge creation</span><h1 id="builderIndexTitle">Knowledge Builder</h1><p>Prepare, review, and complete governed workflow knowledge without traversing internal pipeline pages.</p></div></header>
+  <section class="quality-section" aria-labelledby="builderWorkTitle"><h2 id="builderWorkTitle">Workflow opportunities</h2>
+    {% for item in builder_items %}<article class="integrity-record mb-2"><div class="quality-section__heading"><div><strong>{{ item.title }}</strong><p class="text-muted mb-0">{{ item.state|replace('_',' ')|title }}</p></div><a class="btn btn-primary" href="{{ url_for('knowledge_builder_detail', campaign_id=item.campaign_id, work_item_id=item.work_item_id) }}">Open Knowledge Builder</a></div></article>{% else %}<p class="text-muted mb-0">No governed workflow opportunities are currently available.</p>{% endfor %}
+  </section>
+</main>
+{% endblock %}

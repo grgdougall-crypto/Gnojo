@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block title %}Evidence exception - Knowledge Builder{% endblock %}
+{% block content %}
+<main id="main-content" class="container py-4">
+  <nav aria-label="Breadcrumb" class="mb-3">
+    <a href="{{ url_for('knowledge_builder_index') }}">Knowledge Builder</a>
+    <span aria-hidden="true"> / </span>
+    <a href="{{ workspace.builder_url }}">{{ workspace.title }}</a>
+    <span aria-hidden="true"> / </span> Evidence exception
+  </nav>
+
+  <header class="mb-4">
+    <span class="section-eyebrow">Knowledge Builder</span>
+    <h1 class="mb-1">{{ workspace.title }}</h1>
+    <p class="lead mb-0">Evidence exception{% if workspace.capability %} &middot; {{ workspace.capability|replace('_', ' ')|title }}{% endif %}</p>
+  </header>
+
+  {% if request.args.get('builder_error') %}
+  <div class="alert alert-danger" role="alert">{{ request.args.get('builder_error') }}</div>
+  {% endif %}
+
+  {% if workspace.current %}
+  {% set unit = workspace.current %}
+  {% set candidacy = unit.candidacy or {} %}
+  {% set compression = unit.workflow_evidence_compression or {} %}
+  <article class="integrity-record mb-4" aria-labelledby="exception-title">
+    <div class="quality-section__heading">
+      <div>
+        <span class="section-eyebrow">Needs human judgment</span>
+        <h2 id="exception-title" class="h4 mb-0">Evidence exception</h2>
+      </div>
+      <span class="badge text-bg-warning">Unresolved</span>
+    </div>
+
+    <section class="mb-3" aria-labelledby="exception-issue">
+      <h3 id="exception-issue" class="h6">Issue</h3>
+      <p class="mb-0">{{ compression.reason or candidacy.machine_rationale or 'Gnojo could not classify this evidence safely.' }}</p>
+    </section>
+
+    <section class="mb-3" aria-labelledby="exception-source">
+      <h3 id="exception-source" class="h6">Relevant source evidence</h3>
+      <blockquote class="mb-2">{{ unit.supporting_passage or unit.normalized_claim }}</blockquote>
+      <p class="text-secondary mb-0">
+        {{ workspace.source.title }}{% if workspace.source.domain %} &middot; {{ workspace.source.domain }}{% elif workspace.source.publisher %} &middot; {{ workspace.source.publisher }}{% endif %}
+      </p>
+    </section>
+
+    <section class="mb-3" aria-labelledby="machine-recommendation">
+      <h3 id="machine-recommendation" class="h6">Machine recommendation</h3>
+      <p class="mb-1"><strong>{{ (unit.machine_recommendation or candidacy.machine_recommended_role or 'undetermined')|replace('_', ' ')|title }}</strong></p>
+      <p class="text-secondary mb-0">{{ candidacy.machine_rationale or compression.reason or 'The evidence could not be classified with sufficient confidence.' }}</p>
+    </section>
+
+    {% if not candidacy.human_confirmed_role %}
+    <section aria-labelledby="exception-question">
+      <h3 id="exception-question" class="h6">Gnojo could not safely determine</h3>
+      <p>Should this proposition support the workflow, or remain reviewer context only?</p>
+      <form class="d-flex gap-2 flex-wrap" method="post" action="{{ url_for('knowledge_builder_evidence_exception_role', campaign_id=workspace.campaign_id, work_item_id=workspace.work_item_id, extraction_id=workspace.extraction_id, evidence_id=unit.evidence_id) }}">
+        <input type="hidden" name="authenticity_token" value="{{ authenticity_token() }}">
+        <button class="btn btn-primary" name="role" value="candidate" type="submit">Candidate Evidence</button>
+        <button class="btn btn-outline-secondary" name="role" value="context" type="submit">Reviewer Context</button>
+      </form>
+    </section>
+    {% elif workspace.candidate_set_current %}
+    <section aria-labelledby="exception-question">
+      <h3 id="exception-question" class="h6">Gnojo could not safely determine</h3>
+      <p>Does this proposition provide supported evidence for the workflow?</p>
+      <form method="post" action="{{ url_for('knowledge_builder_evidence_exception_decision', campaign_id=workspace.campaign_id, work_item_id=workspace.work_item_id, extraction_id=workspace.extraction_id, evidence_id=unit.evidence_id) }}">
+        <input type="hidden" name="authenticity_token" value="{{ authenticity_token() }}">
+        <label class="form-label" for="exception-notes">Reviewer note <span class="text-secondary">(optional)</span></label>
+        <textarea class="form-control mb-3" id="exception-notes" name="notes" rows="3"></textarea>
+        <div class="d-flex gap-2 flex-wrap">
+          <button class="btn btn-success" name="decision" value="approved" type="submit">Approve Evidence</button>
+          <button class="btn btn-outline-danger" name="decision" value="rejected" type="submit">Reject Evidence</button>
+          <button class="btn btn-outline-secondary" name="decision" value="needs_revision" type="submit">Needs Revision</button>
+        </div>
+      </form>
+    </section>
+    {% else %}
+    <section aria-labelledby="exception-question">
+      <h3 id="exception-question" class="h6">Finish classifying the remaining exceptions</h3>
+      <p>This evidence decision becomes available after each exception has an explicit role.</p>
+      <a class="btn btn-primary" href="{{ url_for('knowledge_builder_evidence_exceptions', campaign_id=workspace.campaign_id, work_item_id=workspace.work_item_id) }}">Review remaining exceptions</a>
+    </section>
+    {% endif %}
+  </article>
+  {% elif workspace.exceptions %}
+  <section aria-labelledby="exceptions-heading">
+    <h2 id="exceptions-heading" class="h4">{{ workspace.exceptions|length }} evidence exceptions need review</h2>
+    <p>Choose an exception to resolve. Settled and unrelated evidence is omitted here.</p>
+    <div class="d-grid gap-3">
+      {% for unit in workspace.exceptions %}
+      <article class="integrity-record">
+        <h3 class="h5">{{ unit.normalized_claim }}</h3>
+        <p class="text-secondary">{{ (unit.workflow_evidence_compression or {}).reason or (unit.candidacy or {}).machine_rationale or 'Human judgment is required.' }}</p>
+        <a class="btn btn-primary" href="{{ url_for('knowledge_builder_evidence_exception', campaign_id=workspace.campaign_id, work_item_id=workspace.work_item_id, extraction_id=workspace.extraction_id, evidence_id=unit.evidence_id) }}">Review exception</a>
+      </article>
+      {% endfor %}
+    </div>
+  </section>
+  {% else %}
+  <div class="alert alert-success" role="status">
+    <strong>Evidence exceptions are settled.</strong>
+    <p class="mb-0">Return to Knowledge Builder to resume safe preparation.</p>
+  </div>
+  {% endif %}
+
+  <div class="d-flex gap-2 flex-wrap mt-4">
+    <a class="btn btn-primary" href="{{ workspace.builder_url }}">{{ 'Resume Preparation' if not workspace.exceptions else 'Return to Knowledge Builder' }}</a>
+    <details>
+      <summary class="btn btn-outline-secondary">Technical details</summary>
+      <dl class="integrity-detail-grid mt-3">
+        <dt>Evidence ID</dt><dd>{{ workspace.current.evidence_id if workspace.current else 'Multiple exceptions' }}</dd>
+        <dt>Extraction ID</dt><dd>{{ workspace.extraction_id }}</dd>
+      </dl>
+      <p class="mb-0"><a href="{{ workspace.legacy_url }}">Open full evidence review</a></p>
+    </details>
+  </div>
+</main>
+{% endblock %}

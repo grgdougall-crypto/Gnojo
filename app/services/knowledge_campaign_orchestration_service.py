@@ -56,6 +56,7 @@ ACTION_POLICY = {
     "review_claims": {"authority": "human_gate", "external": False},
     "review_article_draft": {"authority": "human_gate", "external": False},
     "review_workflow_draft": {"authority": "human_gate", "external": False},
+    "approve_workflow_draft_creation": {"authority": "human_gate", "external": False},
     "accept_article_content_studio": {"authority": "human_gate", "external": False},
     "accept_workflow_content_studio": {"authority": "human_gate", "external": False},
     "publish": {"authority": "human_gate", "external": False},
@@ -903,7 +904,18 @@ class KnowledgeCampaignOrchestrationService:
         if status == "stale":
             return self._blocked(base, "stale", "Workflow generation", "Upstream inputs changed.", "Refresh the workflow package.", stale=True)
         if status == "prepared": return self._action(base, "workflow_planning_ready", "plan_workflow")
-        if status == "plan_ready": return self._action(base, "workflow_draft_ready", "prepare_workflow_draft")
+        if status == "plan_ready":
+            if (
+                work.get("work_type") == "workflow"
+                and work.get("capability_id")
+                and work.get("gap_identity")
+                and "workflow" in (work.get("expected_artifacts") or [])
+            ):
+                return self._gate(
+                    base, "workflow_proposal_review_required",
+                    "approve_workflow_draft_creation",
+                )
+            return self._action(base, "workflow_draft_ready", "prepare_workflow_draft")
         if status == "draft_ready": return self._gate(base, "draft_review_required", "review_workflow_draft")
         if status == "approved_for_handoff": return self._gate(base, "content_studio_ready", "accept_workflow_content_studio")
         if status == "handed_off":
@@ -975,6 +987,19 @@ class KnowledgeCampaignOrchestrationService:
         base.update(package_id=plan["claim_plan_id"],
                     dependencies=base["dependencies"] + [plan["claim_plan_id"]],
                     review_link=f"/curator/growth/claim-planning/{plan['claim_plan_id']}")
+        try:
+            plan_current = self.claims.input_is_current(plan["claim_plan_id"])
+        except Exception as error:
+            return self._blocked(
+                base, "claim_input_state", "Workflow claim planning",
+                f"Current approved evidence could not be verified: {error}",
+                "Resolve the evidence identity or freshness issue before claim review.",
+                stale=True,
+            )
+        if not plan_current:
+            return self._action(
+                base, "workflow_claim_planning_ready", "plan_workflow_claims"
+            )
         if plan.get("status") == "proposed":
             return self._action(base, "workflow_claim_planning_ready", "plan_workflow_claims")
         if plan.get("status") in {"needs_review", "partially_approved"}:

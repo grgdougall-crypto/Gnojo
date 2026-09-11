@@ -11,6 +11,8 @@ from app.services.knowledge_evidence_extraction_service import (
     KnowledgeEvidenceExtractionError,
     KnowledgeEvidenceExtractionService,
 )
+from app.services.knowledge_claim_planning_service import KnowledgeClaimPlanningService
+from app.services.knowledge_source_research_service import SourceHTTPValidator
 
 
 class FakeValidator:
@@ -35,6 +37,11 @@ class FakeValidator:
 
 class KnowledgeEvidenceExtractionTests(unittest.TestCase):
     def setUp(self):
+        self.previous_app_config = {
+            key: (key in flask_app.config, flask_app.config.get(key))
+            for key in ("TESTING", "AUTH_TEST_BYPASS")
+        }
+        flask_app.config.update(TESTING=True, AUTH_TEST_BYPASS=True)
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name)
         self.campaign_root = self.root / "campaigns"
@@ -83,9 +90,66 @@ class KnowledgeEvidenceExtractionTests(unittest.TestCase):
 
     def tearDown(self):
         self.temporary.cleanup()
+        for key, (was_present, value) in self.previous_app_config.items():
+            if was_present:
+                flask_app.config[key] = value
+            else:
+                flask_app.config.pop(key, None)
 
     def prepare(self):
         return self.service.prepare("KRP-AAAAAAAAAAAA", "KSC-AAAAAAAAAAAA")
+
+    def configure_vpn_missing_workflow(self):
+        identity = "capability:desktop-support:windows:vpn:missing_workflow"
+        self.taxonomy.write_text(json.dumps({
+            "schema_version": "1.0", "domains": [{
+                "id": "desktop-support", "title": "Desktop Support",
+                "category": "Desktop Support", "platforms": ["Windows"],
+                "capability_catalog": "capabilities.json", "areas": [],
+            }],
+        }), encoding="utf-8")
+        (self.root / "capabilities.json").write_text(json.dumps({
+            "schema_version": "1.0", "catalog_id": "test-capabilities",
+            "domain_id": "desktop-support", "title": "Desktop Support",
+            "capabilities": [{
+                "id": "vpn", "title": "VPN", "level": "core",
+                "platform": "Windows", "category": "Network access",
+                "terms": ["vpn", "virtual private network"],
+                "expected_artifacts": ["workflow"], "likely_relationships": [],
+                "artifact_matches": {"workflow": [], "article": [], "command": []},
+            }],
+        }), encoding="utf-8")
+        campaign_path = self.campaign_root / "KCP-AAAAAAAAAAAA.json"
+        campaign = json.loads(campaign_path.read_text(encoding="utf-8"))
+        campaign.update({
+            "domain": "desktop-support",
+            "creation_metadata": {
+                "initiated_by": "autonomous_growth_stage2",
+                "gap_identity": identity,
+                "selected_gap": {
+                    "gap_identity": identity, "gap_type": "missing_workflow",
+                    "domain_id": "desktop-support", "area_id": "vpn",
+                    "capability_id": "vpn", "platform": "Windows",
+                    "expected_artifacts": ["workflow"],
+                },
+            },
+            "gaps": [{
+                "gap_id": "KCG-AAAAAAAAAAAA", "gap_type": "missing_workflow",
+                "gap_identity": identity, "area_id": "vpn", "capability_id": "vpn",
+                "summary": "VPN troubleshooting workflow is missing.",
+                "expected_artifacts": ["workflow"],
+            }],
+            "work_items": [{
+                "work_item_id": "KCW-AAAAAAAAAAAA", "gap_id": "KCG-AAAAAAAAAAAA",
+                "area_id": "vpn", "capability_id": "vpn", "work_type": "workflow",
+                "status": "proposed", "gap_identity": identity,
+                "expected_artifacts": ["workflow"],
+            }],
+        })
+        campaign_path.write_text(json.dumps(campaign), encoding="utf-8")
+        self.service = KnowledgeEvidenceExtractionService(
+            self.root, self.campaign_root, self.policy, self.taxonomy, self.validator,
+        )
 
     def confirm_all_candidates(self, extraction_id):
         package = self.service.get(extraction_id)
@@ -123,6 +187,590 @@ class KnowledgeEvidenceExtractionTests(unittest.TestCase):
         self.assertTrue(all(unit["provenance"]["source_candidate_id"] == "KSC-AAAAAAAAAAAA"
                             for unit in package["evidence_units"]))
         self.assertNotIn("Advertising", json.dumps(package["evidence_units"]))
+
+    def test_microsoft_vpn_extraction_suppresses_chrome_related_topics_and_title_pollution(self):
+        self.configure_vpn_missing_workflow()
+        polluted = "Connect to a VPN in Windows Your Privacy Choices Opt-Out Icon"
+        self.research["candidate_sources"][0]["page_title"] = polluted
+        self.research_path.write_text(json.dumps(self.research), encoding="utf-8")
+        self.validator.html = """<html><head><title>ignored</title></head><body>
+        <header><p>Your Privacy Choices Opt-Out Icon</p></header>
+        <main><article>
+          <h1>Connect to a VPN in Windows</h1>
+          <p>A VPN connection can provide a more secure connection to your network.</p>
+          <h2>Connect to a VPN</h2>
+          <ol><li>Select Network, then choose the VPN connection you want to use.</li>
+          <li>When prompted, enter the VPN sign-in information.</li></ol>
+          <section class="related-content"><h2>Related topics</h2><ul>
+            <li>Essential Network Settings</li><li>Setting up a Wireless Network</li>
+            <li>File Sharing over Network</li><li>Use an eSIM to Get Cellular Data</li>
+            <li>Add Device to Mobile Data Plan</li><li>Fix Nearby Sharing Problems</li>
+            <li>Fix Connectivity Problems During Setup</li><li>Why is my internet slow?</li>
+          </ul></section>
+        </article></main><footer><p>Privacy and cookies</p></footer></body></html>"""
+        self.validator.inspect = lambda url: {
+            "http_status": 200, "final_url": self.validator.final_url,
+            "redirect_chain": [], "page_title": polluted,
+            "content_type": "text/html", "last_modified": "today", "etag": "v1",
+            "content_digest": "vpn-microsoft", "content_preview": self.validator.html,
+        }
+
+        package = self.service.extract(self.prepare()["extraction_id"])
+        reviewable = [unit for unit in package["evidence_units"]
+                      if self.service._is_reviewable(unit)]
+        evidence_text = json.dumps(reviewable)
+
+        self.assertTrue(reviewable)
+        self.assertTrue(all("vpn" in (
+            f"{(unit.get('source_location') or {}).get('heading', '')} "
+            f"{unit.get('supporting_passage', '')}"
+        ).casefold() for unit in reviewable))
+        self.assertNotIn("Essential Network Settings", evidence_text)
+        self.assertNotIn("Why is my internet slow?", evidence_text)
+        self.assertNotIn("Your Privacy Choices", json.dumps(package))
+        self.assertEqual(package["source_title"], "Connect to a VPN in Windows")
+        self.assertEqual(package["retrieval"]["source_title"],
+                         "Connect to a VPN in Windows")
+
+    def test_microsoft_support_body_after_large_navigation_shell_is_extracted(self):
+        self.configure_vpn_missing_workflow()
+        source_url = (
+            "https://support.microsoft.com/en-us/windows/experience/"
+            "connectivity-networking/connect-to-a-vpn-in-windows"
+        )
+        policy = json.loads(self.policy.read_text(encoding="utf-8"))
+        policy["tiers"][0]["publishers"][0]["domains"].append("support.microsoft.com")
+        self.policy.write_text(json.dumps(policy), encoding="utf-8")
+        self.research["candidate_sources"][0].update({
+            "canonical_url": source_url,
+            "page_title": "Connect to a VPN in Windows | Microsoft Support",
+        })
+        self.research_path.write_text(json.dumps(self.research), encoding="utf-8")
+
+        unrelated = [
+            "Essential Network Settings", "Setting up a Wireless Network",
+            "File Sharing over Network", "Use an eSIM to Get Cellular Data",
+            "Add Device to Mobile Data Plan", "Fix Nearby Sharing Problems",
+            "Fix Connectivity Problems During Setup", "Why is my internet slow?",
+        ]
+        html = f"""<!doctype html><html><head>
+        <title>Connect to a VPN in Windows | Microsoft Support</title></head>
+        <body class="article"><div class="bodyWrapper"><div id="ocHelp">
+        <div id="ocArticle" class="container"><div class="row">
+        <div class="learnRenderLeftNav" role="complementary">
+          <p>Your Privacy Choices Opt-Out Icon</p>
+          <ul>{''.join(f'<li><a href="#">{title}</a></li>' for title in unrelated)}</ul>
+        </div>
+        <!--{'x' * 66000}-->
+        <main id="supMainContent" role="main"><div class="learnArticleContent">
+          <section role="tabpanel">
+            <h2>Connect to a VPN from Windows Settings</h2>
+            <p>Open VPN settings.</p>
+            <p>Open VPN settings.</p>
+            <ol><li>Select the intended VPN connection.</li>
+            <li>Select Connect.</li>
+            <p>If prompted, enter your sign-in information.</p>
+            <li>If a certificate is required, select the required certificate.</li></ol>
+            <h2>Verify the VPN connection</h2>
+            <p>The VPN connection name will display Connected underneath it.</p>
+          </section>
+        </div></main></div></div></div></div></body></html>"""
+
+        class Response:
+            status_code = 200
+            headers = {"Content-Type": "text/html; charset=utf-8"}
+
+            def iter_content(self, chunk_size=8192):
+                encoded = html.encode("utf-8")
+                for offset in range(0, len(encoded), chunk_size):
+                    yield encoded[offset:offset + chunk_size]
+
+            def close(self):
+                return None
+
+        session = Mock()
+        session.get.return_value = Response()
+        validator = SourceHTTPValidator(
+            session=session,
+            host_resolver=lambda *args, **kwargs: [
+                (None, None, None, None, ("8.8.8.8", 443))
+            ],
+        )
+        self.service = KnowledgeEvidenceExtractionService(
+            self.root, self.campaign_root, self.policy, self.taxonomy, validator,
+        )
+
+        package = self.service.extract(self.prepare()["extraction_id"])
+        reviewable = [unit for unit in package["evidence_units"]
+                      if self.service._is_reviewable(unit)]
+        evidence_text = json.dumps(reviewable, ensure_ascii=False)
+        all_text = json.dumps(package["evidence_units"], ensure_ascii=False)
+
+        self.assertTrue(reviewable)
+        self.assertEqual(len(reviewable), 5)
+        self.assertIn("Open VPN settings", evidence_text)
+        self.assertIn("Select the intended VPN connection. Select Connect.", evidence_text)
+        self.assertIn("sign-in information", evidence_text)
+        self.assertIn("display Connected", evidence_text)
+        for title in unrelated:
+            self.assertNotIn(title, evidence_text)
+        self.assertNotIn("Your Privacy Choices", all_text)
+        self.assertEqual(package["source_title"],
+                         "Connect to a VPN in Windows | Microsoft Support")
+        workspace = self.service.review_workspace(package["extraction_id"])
+        self.assertGreater(workspace["machine_recommendation_counts"]["candidate"], 0)
+        open_settings = next(unit for unit in reviewable
+                             if unit["normalized_claim"] == "Open VPN settings.")
+        self.assertEqual(len(open_settings["provenance"]["source_blocks"]), 2)
+        ordered = next(unit for unit in reviewable
+                       if "intended VPN connection" in unit["normalized_claim"])
+        self.assertEqual(
+            [block["block_index"] for block in ordered["provenance"]["source_blocks"]],
+            sorted(block["block_index"] for block in ordered["provenance"]["source_blocks"]),
+        )
+        self.assertEqual(sum(
+            unit["normalized_claim"].startswith("If ") for unit in reviewable
+        ), 2)
+
+        confirmed = self.confirm_all_candidates(package["extraction_id"])
+        for unit in confirmed["evidence_units"]:
+            self.service.review_evidence(
+                package["extraction_id"], unit["evidence_id"], "approved"
+            )
+        generation_evidence = self.service.approved_units_for(
+            [package["research_package_id"]]
+        )
+        self.assertEqual(len(generation_evidence), 5)
+        self.assertEqual(
+            [unit["normalized_claim"] for unit in generation_evidence],
+            [unit["normalized_claim"] for unit in reviewable],
+        )
+
+    def test_excessively_fragmented_workflow_source_fails_closed(self):
+        self.configure_vpn_missing_workflow()
+        fragments = "".join(
+            f"<li>If VPN condition {index} applies, review distinct supported option {index}.</li>"
+            for index in range(self.service.MAX_WORKFLOW_REVIEWABLE_PROPOSITIONS + 1)
+        )
+        self.validator.html = (
+            "<html><body><main><h2>Connect to a VPN</h2><ul>" + fragments +
+            "</ul></main></body></html>"
+        )
+
+        package = self.service.extract(self.prepare()["extraction_id"])
+
+        self.assertEqual(package["status"], "failed")
+        self.assertIn("too fragmented", package["retrieval"]["reason"])
+        self.assertEqual(package["evidence_units"], [])
+
+    def test_current_v4_package_with_legacy_content_window_can_be_reextracted_once(self):
+        self.configure_vpn_missing_workflow()
+        self.validator.html = """<html><body><main>
+        <h2>VPN overview</h2><p>A VPN connection provides a connection to a network.</p>
+        </main></body></html>"""
+        package = self.service.extract(self.prepare()["extraction_id"])
+        self.assertFalse(any(
+            (unit.get("candidacy") or {}).get("machine_recommended_role") == "candidate"
+            for unit in package["evidence_units"]
+        ))
+
+        package_path = (self.campaign_root / "evidence_extraction" /
+                        f"{package['extraction_id']}.json")
+        legacy_window = json.loads(package_path.read_text(encoding="utf-8"))
+        legacy_window["retrieval"].pop("source_content_policy")
+        package_path.write_text(json.dumps(legacy_window), encoding="utf-8")
+        self.validator.html = """<html><body><main>
+        <h2>Connect to a VPN from Windows Settings</h2>
+        <p>Open VPN settings.</p>
+        <p>Confirm the VPN connection displays Connected.</p>
+        </main></body></html>"""
+
+        self.assertEqual(
+            self.service.reextraction_state(package["extraction_id"])["reason"],
+            "source_content_window",
+        )
+        refreshed = self.service.reextract(package["extraction_id"])
+        self.assertTrue(any(self.service._is_reviewable(unit)
+                            for unit in refreshed["evidence_units"]))
+        self.assertEqual(
+            refreshed["retrieval"]["source_content_policy"],
+            "bounded-full-response-v1",
+        )
+        history_count = len(refreshed["history"])
+        revision_count = len(refreshed["evidence_revisions"])
+        repeated = self.service.reextract(package["extraction_id"])
+        self.assertEqual(len(repeated["history"]), history_count)
+        self.assertEqual(len(repeated["evidence_revisions"]), revision_count)
+
+    def test_pre_consolidation_v4_package_is_reextracted_once(self):
+        self.configure_vpn_missing_workflow()
+        self.validator.html = """<html><body><main>
+        <h2>Connect to a VPN from Windows Settings</h2>
+        <p>Open VPN settings.</p><p>Open VPN settings.</p>
+        <ol><li>Select the intended VPN connection.</li><li>Select Connect.</li>
+        <li>If prompted, enter your sign-in information.</li></ol>
+        <h2>Verify VPN connection</h2>
+        <p>Confirm the VPN connection displays Connected.</p>
+        </main></body></html>"""
+        consolidated = self.service.extract(self.prepare()["extraction_id"])
+        consolidated_count = len(consolidated["evidence_units"])
+        self.assertEqual(consolidated["retrieval"]["source_content_policy"],
+                         "bounded-full-response-v1")
+        self.assertEqual(consolidated["retrieval"]["workflow_proposition_policy"],
+                         "deterministic-workflow-propositions-v1")
+
+        package_path = (self.campaign_root / "evidence_extraction" /
+                        f"{consolidated['extraction_id']}.json")
+        legacy = json.loads(package_path.read_text(encoding="utf-8"))
+        legacy["retrieval"].pop("workflow_proposition_policy")
+        seed = deepcopy(legacy["evidence_units"][0])
+        for index in range(6):
+            fragment = deepcopy(seed)
+            fragment["evidence_id"] = f"EVD-PRECONSOLIDATION-{index}"
+            fragment["normalized_claim"] = f"VPN source fragment {index}."
+            fragment["supporting_passage"] = fragment["normalized_claim"]
+            legacy["evidence_units"].append(fragment)
+        pre_consolidation_count = len(legacy["evidence_units"])
+        package_path.write_text(json.dumps(legacy), encoding="utf-8")
+
+        state = self.service.reextraction_state(consolidated["extraction_id"])
+        self.assertTrue(state["available"])
+        self.assertEqual(state["reason"], "workflow_proposition_policy")
+        refreshed = self.service.reextract(consolidated["extraction_id"])
+        self.assertLess(len(refreshed["evidence_units"]), pre_consolidation_count)
+        self.assertEqual(len(refreshed["evidence_units"]), consolidated_count)
+        self.assertEqual(
+            refreshed["retrieval"]["workflow_proposition_policy"],
+            "deterministic-workflow-propositions-v1",
+        )
+        self.assertFalse(self.service.reextraction_state(refreshed)["available"])
+        self.assertEqual(len(refreshed["evidence_revisions"]), 1)
+
+        history_count = len(refreshed["history"])
+        revision_count = len(refreshed["evidence_revisions"])
+        repeated = self.service.reextract(consolidated["extraction_id"])
+        self.assertEqual(len(repeated["history"]), history_count)
+        self.assertEqual(len(repeated["evidence_revisions"]), revision_count)
+        self.assertEqual(repeated["evidence_units"], refreshed["evidence_units"])
+
+    def test_missing_workflow_compression_auto_settles_safe_evidence_and_context(self):
+        self.configure_vpn_missing_workflow()
+        self.validator.html = """<html><body><main><article>
+        <h1>Connect to a VPN</h1>
+        <p>A VPN connection provides access to the governed network.</p>
+        <h2>Connect to a VPN</h2><ol>
+        <li>Open VPN settings and select the intended VPN connection.</li>
+        <li>If prompted, enter the VPN sign-in information.</li>
+        <li>Confirm the VPN connection shows Connected.</li>
+        </ol></article></main></body></html>"""
+
+        package = self.service.extract(self.prepare()["extraction_id"])
+        workspace = self.service.review_workspace(package["extraction_id"])
+
+        self.assertEqual(package["status"], "approved")
+        self.assertTrue(workspace["compression"]["enabled"])
+        self.assertGreaterEqual(workspace["compression"]["auto_approved"], 2)
+        self.assertGreaterEqual(workspace["compression"]["auto_context"], 1)
+        self.assertEqual(workspace["compression"]["human_exceptions"], 0)
+        self.assertEqual(workspace["units"], [])
+        self.assertTrue(workspace["compression"]["verification_coverage"])
+        self.assertTrue(all(
+            unit.get("reviewed_by") == "Deterministic Evidence Compression"
+            for unit in package["evidence_units"] if unit.get("review_state") == "approved"
+        ))
+        self.assertEqual(
+            package["retrieval"]["workflow_evidence_compression_policy"],
+            "deterministic-workflow-evidence-compression-v1",
+        )
+        repeated = self.service.extract(package["extraction_id"])
+        self.assertEqual(repeated, package)
+        self.assertEqual(
+            len([event for event in repeated["history"]
+                 if event["event"] == "workflow_evidence_compressed"]),
+            1,
+        )
+
+    def test_missing_workflow_compression_leaves_unsafe_and_ambiguous_for_human(self):
+        self.configure_vpn_missing_workflow()
+        self.validator.html = """<html><body><main><article>
+        <h1>Connect to a VPN</h1><h2>Connect to a VPN</h2><ol>
+        <li>Open VPN settings and select the intended VPN connection.</li>
+        <li>Reset the VPN adapter with administrator approval.</li>
+        <li>Review the VPN information as appropriate.</li>
+        <li>Confirm the VPN connection shows Connected.</li>
+        </ol></article></main></body></html>"""
+
+        package = self.service.extract(self.prepare()["extraction_id"])
+        workspace = self.service.review_workspace(package["extraction_id"])
+
+        self.assertEqual(package["status"], "needs_review")
+        self.assertGreaterEqual(workspace["compression"]["human_exceptions"], 1)
+        reasons = {
+            (unit.get("workflow_evidence_compression") or {}).get("reason")
+            for unit in workspace["compression"]["exception_units"]
+        }
+        self.assertIn("unsafe_or_state_changing_content", reasons)
+        self.assertEqual(workspace["units"], workspace["compression"]["exception_units"])
+        self.assertTrue(all(
+            unit.get("review_state") == "proposed"
+            for unit in workspace["compression"]["exception_units"]
+        ))
+
+    def test_settled_compressed_exceptions_require_one_confirmation_then_advance_campaign(self):
+        self.configure_vpn_missing_workflow()
+        self.validator.html = """<html><body><main><article>
+        <h1>Connect to a VPN</h1><h2>Connect to a VPN</h2><ol>
+        <li>Open VPN settings and select the intended VPN connection.</li>
+        <li>Reset the VPN adapter with administrator approval.</li>
+        <li>Confirm the VPN connection shows Connected.</li>
+        </ol></article></main></body></html>"""
+        package = self.service.extract(self.prepare()["extraction_id"])
+        initial = self.service.review_workspace(package["extraction_id"])
+        self.assertGreater(initial["compression"]["remaining_exceptions"], 0)
+        for unit in initial["compression"]["exception_units"]:
+            self.service.set_candidacy_role(
+                package["extraction_id"], unit["evidence_id"], "context"
+            )
+
+        settled = self.service.review_workspace(package["extraction_id"])
+        self.assertEqual(settled["compression"]["remaining_exceptions"], 0)
+        self.assertTrue(settled["candidacy_ready_to_confirm"])
+        self.assertFalse(settled["candidate_set_current"])
+        self.assertEqual(settled["package"]["status"], "needs_review")
+
+        claims = Mock()
+        claims.workflow_is_eligible.return_value = True
+        with patch("app.app.KnowledgeEvidenceExtractionService", return_value=self.service), \
+             patch("app.app.KnowledgeClaimPlanningService", return_value=claims):
+            page = flask_app.test_client().get(
+                f"/curator/growth/evidence-extraction/{package['extraction_id']}"
+            )
+        self.assertIn(b"Confirm Evidence Review Complete", page.data)
+        self.assertNotIn(
+            b"Safe evidence processing is settled. Return to the campaign",
+            page.data,
+        )
+
+        persisted = {
+            "orchestration_id": "KORCH-AAAAAAAAAAAA",
+            "campaign_id": package["campaign_id"],
+            "work_item_states": [{
+                "work_item_id": package["work_item_id"],
+                "package_id": package["extraction_id"],
+                "next_action": "review_evidence",
+                "action_authority": "human_gate",
+            }],
+        }
+        advanced = {
+            **persisted,
+            "work_item_states": [{
+                "work_item_id": package["work_item_id"],
+                "package_id": "KCLM-NEXT",
+                "next_action": "review_claims",
+                "action_authority": "human_gate",
+            }],
+        }
+        orchestration = Mock()
+        with patch("app.app.KnowledgeEvidenceExtractionService", return_value=self.service), \
+             patch("app.app.KnowledgeCampaignOrchestrationService") as factory:
+            factory.read_persisted.side_effect = [[persisted], [advanced]]
+            factory.return_value = orchestration
+            response = flask_app.test_client().post(
+                f"/curator/growth/evidence-extraction/{package['extraction_id']}"
+                "/candidacy/confirm"
+            )
+            repeated = flask_app.test_client().post(
+                f"/curator/growth/evidence-extraction/{package['extraction_id']}"
+                "/candidacy/confirm"
+            )
+
+        confirmed = self.service.get(package["extraction_id"])
+        self.assertEqual(confirmed["status"], "approved")
+        self.assertEqual(
+            len([event for event in confirmed["history"]
+                 if event["event"] == "candidate_set_confirmed"]),
+            1,
+        )
+        orchestration.continue_after_human_gate.assert_called_once_with(
+            "KORCH-AAAAAAAAAAAA",
+            actor="Evidence review completion",
+            max_transitions=2,
+        )
+        orchestration.refresh.assert_called_once_with("KORCH-AAAAAAAAAAAA")
+        self.assertIn(
+            f"/curator/growth/coverage-campaigns/{package['campaign_id']}/orchestration",
+            response.headers["Location"],
+        )
+        self.assertIn(
+            f"/curator/growth/coverage-campaigns/{package['campaign_id']}/orchestration",
+            repeated.headers["Location"],
+        )
+
+    def test_pre_compression_package_is_eligible_for_one_explicit_reextraction(self):
+        self.configure_vpn_missing_workflow()
+        package = self.service.extract(self.prepare()["extraction_id"])
+        package_path = (self.campaign_root / "evidence_extraction" /
+                        f"{package['extraction_id']}.json")
+        legacy = json.loads(package_path.read_text(encoding="utf-8"))
+        legacy["retrieval"].pop("workflow_evidence_compression_policy")
+        legacy["retrieval"].pop("workflow_proposition_policy")
+        legacy["candidacy"].pop("workflow_evidence_compression_policy")
+        legacy["candidacy"].pop("compression_counts")
+        for unit in legacy["evidence_units"]:
+            unit.pop("workflow_evidence_compression", None)
+            unit.pop("workflow_coverage_roles", None)
+        package_path.write_text(json.dumps(legacy), encoding="utf-8")
+
+        state = self.service.reextraction_state(package["extraction_id"])
+        self.assertEqual(state["reason"], "workflow_proposition_policy")
+        self.assertTrue(state["compression_policy_adoption_required"])
+        self.assertIn("workflow_evidence_compression_policy", state["reasons"])
+        before_get = package_path.read_bytes()
+        claims = Mock()
+        claims.workflow_is_eligible.return_value = False
+        with patch("app.app.KnowledgeEvidenceExtractionService", return_value=self.service), \
+             patch("app.app.KnowledgeClaimPlanningService", return_value=claims):
+            with flask_app.test_client() as client:
+                page = client.get(
+                    f"/curator/growth/evidence-extraction/{package['extraction_id']}"
+                )
+                self.assertIn(b"Adopt Evidence Review Compression", page.data)
+                self.assertNotIn(b"Evidence review compression</span>", page.data)
+                self.assertIn(b"Legacy evidence review paused", page.data)
+                self.assertNotIn(b"Evidence Requiring Review", page.data)
+                self.assertNotIn(b'integrity-record evidence-card', page.data)
+                self.assertEqual(package_path.read_bytes(), before_get)
+                response = client.post(
+                    f"/curator/growth/evidence-extraction/{package['extraction_id']}/reextract"
+                )
+        self.assertEqual(response.status_code, 302)
+        refreshed = self.service.get(package["extraction_id"])
+        self.assertFalse(self.service.reextraction_state(refreshed)["available"])
+        self.assertTrue(self.service.review_workspace(
+            package["extraction_id"]
+        )["compression"]["enabled"])
+        self.assertEqual(len(refreshed["evidence_revisions"]), 1)
+        self.assertEqual(
+            refreshed["evidence_revisions"][0]["evidence_units"],
+            legacy["evidence_units"],
+        )
+        with patch("app.app.KnowledgeEvidenceExtractionService", return_value=self.service), \
+             patch("app.app.KnowledgeClaimPlanningService", return_value=claims):
+            compact = flask_app.test_client().get(
+                f"/curator/growth/evidence-extraction/{package['extraction_id']}"
+            )
+        self.assertIn(b"Evidence review compression", compact.data)
+        self.assertIn(b"View settled propositions", compact.data)
+        self.assertNotIn(b"Legacy evidence review paused", compact.data)
+        self.assertNotIn(b"Evidence Requiring Review", compact.data)
+        history_count = len(refreshed["history"])
+        revision_count = len(refreshed["evidence_revisions"])
+        with patch("app.app.KnowledgeEvidenceExtractionService", return_value=self.service):
+            flask_app.test_client().post(
+                f"/curator/growth/evidence-extraction/{package['extraction_id']}/reextract"
+            )
+        self.assertEqual(len(self.service.get(package["extraction_id"])["history"]), history_count)
+        self.assertEqual(
+            len(self.service.get(package["extraction_id"])["evidence_revisions"]),
+            revision_count,
+        )
+
+    def test_compressed_evidence_fingerprint_drift_fails_closed(self):
+        self.configure_vpn_missing_workflow()
+        self.validator.html = """<html><body><main><article>
+        <h1>Connect to a VPN</h1><h2>Connect to a VPN</h2><ol>
+        <li>Open VPN settings and select the intended VPN connection.</li>
+        <li>Confirm the VPN connection shows Connected.</li>
+        </ol></article></main></body></html>"""
+        package = self.service.extract(self.prepare()["extraction_id"])
+        package["evidence_units"][0]["normalized_claim"] += " changed"
+        self.service._save(package)
+
+        self.assertFalse(self.service._candidate_set_current(
+            self.service.get(package["extraction_id"])
+        ))
+        self.assertEqual(self.service.approved_units_for(
+            [package["research_package_id"]]
+        ), [])
+
+    def test_compressed_review_get_is_summary_first_and_write_free(self):
+        self.configure_vpn_missing_workflow()
+        package = self.service.extract(self.prepare()["extraction_id"])
+        path = (self.campaign_root / "evidence_extraction" /
+                f"{package['extraction_id']}.json")
+        before = path.read_bytes()
+        claims = Mock()
+        claims.workflow_is_eligible.return_value = True
+        with patch("app.app.KnowledgeEvidenceExtractionService", return_value=self.service), \
+             patch("app.app.KnowledgeClaimPlanningService", return_value=claims):
+            with flask_app.test_client() as client:
+                response = client.get(
+                    f"/curator/growth/evidence-extraction/{package['extraction_id']}"
+                )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Evidence review compression", response.data)
+        self.assertIn(b"Continue Safe Processing", response.data)
+        self.assertIn(b"View settled propositions", response.data)
+        self.assertEqual(path.read_bytes(), before)
+
+    def test_capability_missing_workflow_unrelated_approved_evidence_is_unavailable(self):
+        self.configure_vpn_missing_workflow()
+        package = self.service.extract(self.prepare()["extraction_id"])
+        relevant = next(unit for unit in package["evidence_units"]
+                        if self.service._is_reviewable(unit))
+        irrelevant = deepcopy(relevant)
+        irrelevant.update({
+            "evidence_id": "EVD-IRRELEVANT01",
+            "normalized_claim": "Essential Network Settings",
+            "supporting_passage": "Essential Network Settings",
+            "source_location": {"heading": "Related topics", "block_index": 99,
+                                "html_element": "li"},
+            "review_state": "approved",
+            "candidacy": {"human_confirmed_role": "candidate"},
+        })
+        relevant.update(
+            review_state="rejected",
+            candidacy={"human_confirmed_role": "candidate"},
+        )
+        package["evidence_units"] = [relevant, irrelevant]
+        package["status"] = "approved"
+        package["candidacy"] = self.service._empty_candidacy_state()
+        for unit in package["evidence_units"]:
+            unit.setdefault("content_disposition", {"status": "reviewable"})
+        package["candidacy"].update(
+            candidate_set_status="confirmed",
+            confirmation_fingerprint=self.service._candidate_set_fingerprint(package),
+        )
+        self.service._save(package)
+
+        self.assertEqual(self.service.approved_units_for([package["research_package_id"]]), [])
+        generation = Mock()
+        generation.planner = self.service.research.planner
+        generation.research.list_for_campaign.return_value = [{
+            "package_id": package["research_package_id"],
+            "work_item_id": package["work_item_id"], "status": "approved",
+        }]
+        generation.extraction = self.service
+        claims = KnowledgeClaimPlanningService(generation, self.campaign_root)
+        self.assertFalse(claims.workflow_is_eligible(
+            package["campaign_id"], package["work_item_id"]
+        ))
+
+    def test_capability_missing_workflow_with_only_unrelated_content_fails_safe(self):
+        self.configure_vpn_missing_workflow()
+        self.validator.html = """<html><body><main><article>
+        <h1>Related topics</h1>
+        <p>Essential Network Settings and File Sharing over Network.</p>
+        <p>Use an eSIM to get cellular data or review Nearby Sharing.</p>
+        </article></main></body></html>"""
+
+        package = self.service.extract(self.prepare()["extraction_id"])
+        self.assertEqual(package["status"], "failed")
+        self.assertEqual(package["evidence_units"], [])
+        self.assertIn("No bounded technical evidence", package["retrieval"]["reason"])
+        self.assertEqual(self.service.approved_units_for(
+            [package["research_package_id"]]
+        ), [])
 
     def test_supervised_candidacy_is_orthogonal_confirmed_and_auditable(self):
         package = self.service.extract(self.prepare()["extraction_id"])
@@ -478,7 +1126,9 @@ class KnowledgeEvidenceExtractionTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("Run Extraction Again", html)
         self.assertIn("deterministic-html-block-v1", html)
-        self.assertIn("deterministic-html-block-v3", html)
+        self.assertIn("deterministic-html-block-v4", html)
+        self.assertIn("substantive source content—not relevance", html)
+        self.assertIn("VPN guide · Microsoft", html)
         self.assertIn(
             f"/curator/growth/evidence-extraction/{package['extraction_id']}/reextract", html
         )

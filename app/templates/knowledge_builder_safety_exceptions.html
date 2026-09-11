@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}Safety review - Knowledge Builder{% endblock %}
+{% block content %}
+<main class="container curator-page" id="main-content" aria-labelledby="safetyReviewTitle">
+  {% with curator_active='growth' %}{% include 'partials/_curator_nav.html' %}{% endwith %}
+  <nav aria-label="Breadcrumb">
+    <a href="{{ url_for('knowledge_builder_index') }}">Knowledge Builder</a> /
+    <a href="{{ review.builder_url }}">{{ review.workflow.name }}</a> / Safety review
+  </nav>
+  <header class="curator-heading">
+    <div><span class="section-eyebrow">Knowledge Builder exception</span><h1 id="safetyReviewTitle">{{ review.workflow.name }}</h1><p>Safety review</p></div>
+    <span class="badge text-bg-warning">Human decision required</span>
+  </header>
+  {% if builder_error %}<div class="alert alert-danger" role="alert">{{ builder_error }}</div>{% endif %}
+
+  {% if review.current %}
+  {% set exception = review.current %}
+  <article class="quality-section" aria-labelledby="safetyIssueTitle">
+    <span class="section-eyebrow">Why Gnojo stopped</span>
+    <h2 id="safetyIssueTitle">Review safety issue</h2>
+    <p>{{ exception.reason }}</p>
+
+    <section class="integrity-record mb-3" aria-labelledby="affectedInstructionTitle">
+      <h3 id="affectedInstructionTitle" class="h5">Affected instruction</h3>
+      <p class="mb-0">{{ exception.instruction }}</p>
+    </section>
+
+    <dl class="integrity-detail-grid">
+      <dt>Safety classification</dt><dd>State-changing action</dd>
+      <dt>Detected signals</dt><dd>{{ exception.state_change_signals|join(', ')|replace('_', ' ')|title }}</dd>
+    </dl>
+
+    <section class="mb-3" aria-labelledby="supportingEvidenceTitle">
+      <h3 id="supportingEvidenceTitle" class="h5">Approved support</h3>
+      {% for claim in exception.claims %}
+      <blockquote>{{ claim.normalized_claim }}</blockquote>
+      {% if claim.provenance %}<p class="text-secondary">{{ claim.provenance[0].source_title }}{% if claim.provenance[0].publisher %} &middot; {{ claim.provenance[0].publisher }}{% endif %}</p>{% endif %}
+      {% else %}<p>No current approved claim supports this instruction.</p>{% endfor %}
+    </section>
+
+    <section class="alert alert-info" aria-labelledby="recommendedGuidanceTitle">
+      <h3 id="recommendedGuidanceTitle" class="h5">Recommended proportional safety guidance</h3>
+      <p class="mb-0">{{ exception.recommended_guidance }}</p>
+    </section>
+
+    <form method="post" action="{{ url_for('knowledge_builder_safety_exception_decision', campaign_id=review.campaign_id, work_item_id=review.work_item_id, generation_id=review.generation_id, node_id=exception.node_id) }}">
+      <input type="hidden" name="authenticity_token" value="{{ authenticity_token() }}">
+      <input type="hidden" name="proposal_fingerprint" value="{{ review.proposal_fingerprint }}">
+      <input type="hidden" name="exception_fingerprint" value="{{ exception.exception_fingerprint }}">
+      <label class="form-label" for="safetyReviewNotes">Review note <span class="text-secondary">(optional)</span></label>
+      <textarea class="form-control mb-3" id="safetyReviewNotes" name="notes" rows="3"></textarea>
+      <div class="d-flex gap-2 flex-wrap">
+        <button class="btn btn-success" type="submit" name="decision" value="accept_recommended">Accept recommended safety guidance</button>
+        <button class="btn btn-warning" type="submit" name="decision" value="needs_revision">Mark for revision</button>
+        <button class="btn btn-outline-secondary" type="submit" name="decision" value="keep_exception">Keep as human exception</button>
+      </div>
+    </form>
+  </article>
+  {% else %}
+  <section class="quality-section" aria-labelledby="safetyQueueTitle">
+    <h2 id="safetyQueueTitle">{{ review.exceptions|length }} safety issues require review</h2>
+    <p>Choose an issue. Unrelated workflow nodes are omitted.</p>
+    {% for exception in review.exceptions %}
+    <article class="integrity-record mb-3">
+      <h3 class="h5">{{ exception.instruction }}</h3>
+      <p>{{ exception.reason }}</p>
+      <a class="btn btn-primary" href="{{ url_for('knowledge_builder_safety_exception', campaign_id=review.campaign_id, work_item_id=review.work_item_id, generation_id=review.generation_id, node_id=exception.node_id) }}">Review safety issue</a>
+    </article>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  <div class="d-flex gap-2 flex-wrap mt-4">
+    <a class="btn btn-primary" href="{{ review.builder_url }}">Return to Knowledge Builder</a>
+    <details>
+      <summary class="btn btn-outline-secondary">Technical details</summary>
+      <dl class="integrity-detail-grid mt-3">
+        <dt>Instruction ID</dt><dd>{{ review.current.node_id if review.current else 'Multiple' }}</dd>
+        <dt>Generation ID</dt><dd>{{ review.generation_id }}</dd>
+        <dt>Claims</dt><dd>{{ review.current.claim_ids|join(', ') if review.current else 'See each issue' }}</dd>
+        <dt>Evidence</dt><dd>{{ review.current.evidence_ids|join(', ') if review.current else 'See each issue' }}</dd>
+      </dl>
+      <p><a href="{{ review.legacy_url }}">Open detailed governed review</a></p>
+    </details>
+  </div>
+</main>
+{% endblock %}

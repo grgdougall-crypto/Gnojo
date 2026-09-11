@@ -67,6 +67,21 @@ class _TitleParser(HTMLParser):
         return " ".join(" ".join(self.parts).split())
 
 
+def sanitize_source_title(value: str) -> str:
+    """Remove known browser/privacy chrome without changing source identity."""
+    title = " ".join(str(value or "").split())
+    title = re.sub(
+        r"\s*(?:[-|·:]\s*)?your privacy choices(?:\s+opt[- ]out icon)?(?:\s+opt[- ]out)?\s*",
+        " ", title, flags=re.IGNORECASE,
+    )
+    title = re.sub(
+        r"\s*(?:[-|·:]\s*)?opt[- ]out icon\s*",
+        " ", title, flags=re.IGNORECASE,
+    )
+    title = re.sub(r"\s+", " ", title).strip(" -|·:")
+    return title
+
+
 class SourceAuthorityPolicy:
     """Configurable authority and vendor-target policy, separate from research."""
 
@@ -177,12 +192,14 @@ class SourceHTTPValidator:
                     "http_status": status,
                     "final_url": current,
                     "redirect_chain": redirects,
-                    "page_title": parser.title,
+                    "page_title": sanitize_source_title(parser.title),
                     "content_type": content_type or "unknown",
                     "last_modified": response.headers.get("Last-Modified"),
                     "etag": response.headers.get("ETag"),
                     "content_digest": hashlib.sha256(preview).hexdigest(),
-                    "content_preview": text[:65536],
+                    # Extraction needs the complete bounded response. Some authoritative
+                    # pages place their article body after a large navigation shell.
+                    "content_preview": text,
                 }
             finally:
                 response.close()
@@ -496,7 +513,9 @@ class KnowledgeSourceResearchService:
         authority = self.policy.classify(final_url)
         if authority["authority_tier"] is None:
             raise KnowledgeSourceResearchError("Publisher is not classified by the authoritative-source policy.")
-        page_title = inspected.get("page_title") or " ".join(str(source.get("title") or "").split())
+        page_title = sanitize_source_title(
+            inspected.get("page_title") or source.get("title")
+        )
         topic_relevant, reason = self._relevance(package, source, page_title, inspected.get("content_preview", ""))
         if not topic_relevant:
             raise KnowledgeSourceResearchError("Resolved page does not contain enough evidence for the requested topic.")
@@ -529,7 +548,8 @@ class KnowledgeSourceResearchService:
             canonical = raw_url
         return {
             "source_candidate_id": self._stable_id("KSC", package["package_id"], canonical),
-            "canonical_url": canonical, "page_title": str(source.get("title") or "Unknown source"),
+            "canonical_url": canonical,
+            "page_title": sanitize_source_title(source.get("title")) or "Unknown source",
             "publisher": source.get("publisher"), "domain": urlsplit(canonical).hostname,
             "source_type": "Unverified", "retrieved_at": self._now(), "http_status": None,
             "final_resolved_url": None, "authority_tier": None, "authority_label": "Unverified",

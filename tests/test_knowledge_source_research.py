@@ -201,6 +201,28 @@ class KnowledgeSourceResearchTests(unittest.TestCase):
         self.assertIn("Microsoft Windows VPN", package["research_query"])
         self.assertEqual(self.search.calls[0][1], ("learn.microsoft.com", "support.microsoft.com"))
 
+    def test_source_title_removes_privacy_choice_pollution(self):
+        inspected = self.validator.inspect
+
+        def polluted(url):
+            result = inspected(url)
+            result["page_title"] = (
+                "Connect to a VPN in Windows Your Privacy Choices Opt-Out Icon"
+            )
+            return result
+
+        self.validator.inspect = polluted
+        package = self.service.run(self.create()["package_id"], force_external=True)
+
+        self.assertEqual(
+            package["candidate_sources"][0]["page_title"],
+            "Connect to a VPN in Windows",
+        )
+        self.assertEqual(
+            package["candidate_sources"][0]["canonical_url"],
+            "https://learn.microsoft.com/windows/vpn-help",
+        )
+
     def test_capability_missing_article_enters_catalog_governed_research(self):
         service, campaign, gap, work = self.capability_article_service()
 

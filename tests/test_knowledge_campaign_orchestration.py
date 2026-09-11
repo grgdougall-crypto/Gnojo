@@ -64,6 +64,7 @@ class Generation(Store):
 
 
 class Claims(Store):
+    def list_for_work(self, campaign_id, work_item_id): return deepcopy(self.items)
     def prepare(self, package_id):
         value = {"claim_plan_id": "KCPM-1", "status": "proposed"}
         self.items.append(value); self.calls.append(("prepare", package_id)); return value
@@ -72,6 +73,7 @@ class Claims(Store):
         value = {"claim_plan_id": "KCPM-WORKFLOW-1", "work_item_id": work_item_id,
                  "target_asset_type": "workflow", "status": "proposed"}
         self.items.append(value); self.calls.append(("prepare_workflow", work_item_id)); return value
+    def input_is_current(self, plan_id): return True
 
 
 class Assembly(Store):
@@ -783,6 +785,34 @@ class KnowledgeCampaignOrchestrationTests(unittest.TestCase):
         self.assertEqual(workflows.calls, [("prepare", "KCW-1")])
         self.assertEqual(result["work_item_states"][0]["next_action"], "plan_workflow")
 
+    def test_capability_missing_workflow_plan_stops_at_draft_creation_approval(self):
+        campaign = campaign_fixture()
+        campaign["work_items"][0].update({
+            "work_type": "workflow", "capability_id": "vpn",
+            "gap_identity": "capability:desktop-support:windows:vpn:missing_workflow",
+            "expected_artifacts": ["workflow", "article"],
+        })
+        workflows = Workflows()
+        workflows.items = [{
+            "generation_id": "KWG-VPN", "work_item_id": "KCW-1",
+            "status": "plan_ready", "effective_status": "plan_ready",
+        }]
+        service = KnowledgeCampaignOrchestrationService(
+            self.root, self.root / "capability-workflow-campaigns",
+            planner=Planner(campaign), research=Research(), evidence=Evidence(),
+            generation=Generation(), claims=Claims(), assembly=Assembly(),
+            workflows=workflows,
+        )
+
+        state = service.get_or_create("KCAMP-TEST")["work_item_states"][0]
+
+        self.assertEqual(state["next_action"], "approve_workflow_draft_creation")
+        self.assertEqual(state["action_authority"], "human_gate")
+        self.assertEqual(
+            state["review_link"], "/curator/growth/workflow-generation/KWG-VPN"
+        )
+        self.assertEqual(workflows.calls, [])
+
     def test_workflow_item_starts_supervised_evidence_chain_when_phase_eight_is_not_eligible(self):
         campaign = campaign_fixture()
         campaign["work_items"][0]["work_type"] = "workflow"
@@ -798,6 +828,101 @@ class KnowledgeCampaignOrchestrationTests(unittest.TestCase):
         self.assertEqual(record["readiness_summary"]["machine_ready"], 1)
         self.assertEqual(record["readiness_summary"]["blocked"], 0)
         self.assertEqual(record["work_item_states"][0]["next_action"], "prepare_research")
+
+    def test_settled_workflow_evidence_advances_claim_planning_to_next_human_gate(self):
+        campaign = campaign_fixture()
+        campaign["work_items"][0].update({
+            "work_type": "workflow", "capability_id": "vpn",
+            "gap_identity": "capability:desktop-support:windows:vpn:missing_workflow",
+            "expected_artifacts": ["workflow"],
+        })
+        research, evidence, claims, workflows = Research(), Evidence(), Claims(), Workflows()
+        research.items = [{
+            "package_id": "KRP-1", "work_item_id": "KCW-1",
+            "status": "approved", "selected_sources": ["SRC-1"],
+        }]
+        evidence.items = [{
+            "extraction_id": "KEX-SETTLED", "source_candidate_id": "SRC-1",
+            "status": "approved",
+        }]
+        workflows.eligibility = lambda campaign_id, work_item_id: {
+            "eligible": False, "reasons": ["Approved workflow claims are required."],
+        }
+        service = KnowledgeCampaignOrchestrationService(
+            self.root, self.root / "settled-evidence-campaigns",
+            planner=Planner(campaign), research=research, evidence=evidence,
+            generation=Generation(), claims=claims, assembly=Assembly(),
+            workflows=workflows,
+        )
+        record = service.get_or_create("KCAMP-TEST")
+
+        result = service.continue_after_human_gate(
+            record["orchestration_id"],
+            actor="Evidence review completion",
+            max_transitions=2,
+        )
+
+        self.assertEqual(
+            [outcome["action"] for outcome in result["execution"]["outcomes"]],
+            ["prepare_workflow_claim_plan", "plan_workflow_claims"],
+        )
+        self.assertEqual(claims.calls, [
+            ("prepare_workflow", "KCW-1"),
+            ("plan", "KCPM-WORKFLOW-1"),
+        ])
+        self.assertEqual(
+            result["work_item_states"][0]["next_action"], "review_claims"
+        )
+        self.assertEqual(
+            result["work_item_states"][0]["action_authority"], "human_gate"
+        )
+
+    def test_stale_existing_workflow_claim_plan_is_rebuilt_before_review(self):
+        campaign = campaign_fixture()
+        campaign["work_items"][0].update({
+            "work_type": "workflow", "capability_id": "vpn",
+            "gap_identity": "capability:desktop-support:windows:vpn:missing_workflow",
+            "expected_artifacts": ["workflow"],
+        })
+        research, evidence, claims, workflows = Research(), Evidence(), Claims(), Workflows()
+        research.items = [{
+            "package_id": "KRP-1", "work_item_id": "KCW-1",
+            "status": "approved", "selected_sources": ["SRC-1"],
+        }]
+        evidence.items = [{
+            "extraction_id": "KEX-CURRENT", "source_candidate_id": "SRC-1",
+            "status": "approved",
+        }]
+        claims.items = [{
+            "claim_plan_id": "KCPM-WORKFLOW-1", "work_item_id": "KCW-1",
+            "target_asset_type": "workflow", "status": "needs_review",
+        }]
+        claims.input_is_current = lambda plan_id: ("plan", plan_id) in claims.calls
+        workflows.eligibility = lambda campaign_id, work_item_id: {
+            "eligible": False, "reasons": ["Approved workflow claims are required."],
+        }
+        service = KnowledgeCampaignOrchestrationService(
+            self.root, self.root / "stale-claim-campaigns",
+            planner=Planner(campaign), research=research, evidence=evidence,
+            generation=Generation(), claims=claims, assembly=Assembly(),
+            workflows=workflows,
+        )
+        record = service.get_or_create("KCAMP-TEST")
+        self.assertEqual(
+            record["work_item_states"][0]["next_action"], "plan_workflow_claims"
+        )
+
+        result = service.continue_after_human_gate(
+            record["orchestration_id"],
+            actor="Evidence review completion",
+            max_transitions=2,
+        )
+
+        self.assertEqual(result["execution"]["transitions"], 1)
+        self.assertEqual(claims.calls, [("plan", "KCPM-WORKFLOW-1")])
+        self.assertEqual(
+            result["work_item_states"][0]["next_action"], "review_claims"
+        )
 
     def test_continue_advances_only_the_displayed_machine_ready_workflow_item(self):
         campaign = campaign_fixture()

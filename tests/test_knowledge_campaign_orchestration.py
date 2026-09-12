@@ -41,6 +41,10 @@ class Research(Store):
     def run(self, package_id):
         self.calls.append(("run", package_id)); self.items[0]["status"] = "ready_for_review"
         return deepcopy(self.items[0])
+    def validate_research_objective(self, package_id):
+        package = next(item for item in self.items
+                       if item["package_id"] == package_id)
+        return deepcopy(package.get("research_objective"))
 
 
 class Evidence(Store):
@@ -707,6 +711,123 @@ class KnowledgeCampaignOrchestrationTests(unittest.TestCase):
         self.assertEqual(generation.items, [])
         self.assertEqual(claims.items, [])
 
+    def test_verification_recovery_exhausted_source_advances_to_remaining_source(self):
+        campaign = campaign_fixture()
+        campaign["work_items"][0]["work_type"] = "workflow"
+        research, evidence, claims, workflows = Research(), Evidence(), Claims(), Workflows()
+        objective = {
+            "kind": "workflow_success_verification", "fingerprint": "objective-current"
+        }
+        research.items = [{
+            "package_id": "KRP-VERIFY", "work_item_id": "KCW-1",
+            "status": "approved", "selected_sources": ["SRC-EMPTY", "SRC-NEXT"],
+            "research_objective": objective,
+        }]
+        evidence.items = [{
+            "extraction_id": "KEX-EMPTY", "source_candidate_id": "SRC-EMPTY",
+            "status": "insufficient_evidence",
+        }]
+        workflows.eligibility = lambda *args: {
+            "eligible": False, "reasons": ["Verification evidence is required."]
+        }
+        service = KnowledgeCampaignOrchestrationService(
+            self.root, self.root / "verification-next-source",
+            planner=Planner(campaign), research=research, evidence=evidence,
+            generation=Generation(), claims=claims, assembly=Assembly(),
+            workflows=workflows,
+        )
+        state = service.get_or_create("KCAMP-TEST")["work_item_states"][0]
+
+        self.assertEqual(state["next_action"], "prepare_evidence")
+        self.assertEqual(state["source_candidate_id"], "SRC-NEXT")
+        self.assertEqual(state["action_authority"], "machine_safe")
+        self.assertEqual(
+            state["verification_recovery"]["research_package_id"], "KRP-VERIFY"
+        )
+        self.assertIsNone(state.get("blocker"))
+
+    def test_all_verification_recovery_sources_exhausted_is_specific_blocker(self):
+        campaign = campaign_fixture()
+        campaign["work_items"][0]["work_type"] = "workflow"
+        research, evidence, claims, workflows = Research(), Evidence(), Claims(), Workflows()
+        research.items = [{
+            "package_id": "KRP-VERIFY", "work_item_id": "KCW-1",
+            "status": "approved", "selected_sources": ["SRC-ONE", "SRC-TWO"],
+            "research_objective": {
+                "kind": "workflow_success_verification",
+                "fingerprint": "objective-current",
+            },
+        }]
+        evidence.items = [
+            {"extraction_id": "KEX-ONE", "source_candidate_id": "SRC-ONE",
+             "status": "insufficient_evidence"},
+            {"extraction_id": "KEX-TWO", "source_candidate_id": "SRC-TWO",
+             "status": "insufficient_evidence"},
+        ]
+        workflows.eligibility = lambda *args: {
+            "eligible": False, "reasons": ["Verification evidence is required."]
+        }
+        service = KnowledgeCampaignOrchestrationService(
+            self.root, self.root / "verification-exhausted",
+            planner=Planner(campaign), research=research, evidence=evidence,
+            generation=Generation(), claims=claims, assembly=Assembly(),
+            workflows=workflows,
+        )
+        state = service.get_or_create("KCAMP-TEST")["work_item_states"][0]
+
+        self.assertEqual(state["stage"], "verification_evidence_exhausted")
+        self.assertEqual(
+            state["blocker"]["blocker_type"], "verification_evidence_exhausted"
+        )
+        self.assertIn(
+            "could not be established", state["blocker"]["explanation"]
+        )
+        self.assertEqual(
+            state["verification_recovery"]["exhausted_source_count"], 2
+        )
+        self.assertIsNone(state["next_action"])
+
+    def test_later_recovery_source_with_approved_evidence_replans_current_claims(self):
+        campaign = campaign_fixture()
+        campaign["work_items"][0]["work_type"] = "workflow"
+        research, evidence, claims, workflows = Research(), Evidence(), Claims(), Workflows()
+        research.items = [{
+            "package_id": "KRP-VERIFY", "work_item_id": "KCW-1",
+            "status": "approved", "selected_sources": ["SRC-EMPTY", "SRC-GOOD"],
+            "research_objective": {
+                "kind": "workflow_success_verification",
+                "fingerprint": "objective-current",
+            },
+        }]
+        evidence.items = [
+            {"extraction_id": "KEX-EMPTY", "source_candidate_id": "SRC-EMPTY",
+             "status": "insufficient_evidence"},
+            {"extraction_id": "KEX-GOOD", "source_candidate_id": "SRC-GOOD",
+             "status": "approved"},
+        ]
+        claims.items = [{
+            "claim_plan_id": "KCPM-1", "work_item_id": "KCW-1",
+            "target_asset_type": "workflow", "status": "needs_evidence",
+        }]
+        claims.input_is_current = lambda plan_id: False
+        workflows.eligibility = lambda *args: {
+            "eligible": False, "reasons": ["Current claims require rebuilding."]
+        }
+        service = KnowledgeCampaignOrchestrationService(
+            self.root, self.root / "verification-replan",
+            planner=Planner(campaign), research=research, evidence=evidence,
+            generation=Generation(), claims=claims, assembly=Assembly(),
+            workflows=workflows,
+        )
+        state = service.get_or_create("KCAMP-TEST")["work_item_states"][0]
+
+        self.assertEqual(state["next_action"], "plan_workflow_claims")
+        self.assertEqual(state["action_authority"], "machine_safe")
+        self.assertNotEqual(
+            (state.get("blocker") or {}).get("blocker_type"),
+            "verification_evidence_exhausted",
+        )
+
     def test_two_source_evidence_preparation_reports_progress_and_packages(self):
         service, _, research, evidence, *_ = self.factory
         research.items = [{"package_id": "KRP-1", "work_item_id": "KCW-1", "status": "approved",
@@ -737,6 +858,100 @@ class KnowledgeCampaignOrchestrationTests(unittest.TestCase):
                          ["KEX-1", "KEX-2"])
         self.assertEqual(evidence.calls, [("prepare", "SRC-ETHERNET"),
                                           ("prepare", "SRC-NETADAPTER")])
+
+    def test_workflow_evidence_human_gate_precedes_other_unretrieved_sources(self):
+        campaign = campaign_fixture()
+        campaign["work_items"][0]["work_type"] = "workflow"
+        service, _, research, evidence, _, _, _, workflows = factory_fixture(
+            self.root, campaign
+        )
+        workflows.eligibility = Mock(return_value={
+            "eligible": False, "reasons": ["Approved workflow evidence is required."]
+        })
+        research.items = [{
+            "package_id": "KRP-1", "work_item_id": "KCW-1",
+            "status": "approved", "selected_sources": ["SRC-1", "SRC-2"],
+        }]
+        evidence.items = [
+            {"extraction_id": "KEX-PROPOSED", "source_candidate_id": "SRC-1",
+             "status": "proposed"},
+            {"extraction_id": "KEX-REVIEW", "source_candidate_id": "SRC-2",
+             "status": "needs_review"},
+        ]
+        record = service.get_or_create("KCAMP-TEST")
+
+        current = service.refresh(record["orchestration_id"])
+        state = current["work_item_states"][0]
+
+        self.assertEqual(state["state"], "awaiting_human_review")
+        self.assertEqual(state["next_action"], "review_evidence")
+        self.assertEqual(state["package_id"], "KEX-REVIEW")
+        self.assertEqual(evidence.calls, [])
+
+    def test_nonselected_evidence_package_does_not_create_workflow_human_gate(self):
+        campaign = campaign_fixture()
+        campaign["work_items"][0]["work_type"] = "workflow"
+        service, _, research, evidence, _, _, _, workflows = factory_fixture(
+            self.root, campaign
+        )
+        workflows.eligibility = Mock(return_value={
+            "eligible": False, "reasons": ["Approved workflow evidence is required."]
+        })
+        research.items = [{
+            "package_id": "KRP-1", "work_item_id": "KCW-1",
+            "status": "approved", "selected_sources": ["SRC-CURRENT"],
+        }]
+        evidence.items = [
+            {"extraction_id": "KEX-OLD", "source_candidate_id": "SRC-OLD",
+             "status": "needs_review"},
+            {"extraction_id": "KEX-CURRENT", "source_candidate_id": "SRC-CURRENT",
+             "status": "proposed"},
+        ]
+        record = service.get_or_create("KCAMP-TEST")
+
+        state = service.project_current(
+            record["orchestration_id"]
+        )["work_item_states"][0]
+
+        self.assertEqual(state["state"], "machine_ready")
+        self.assertEqual(state["next_action"], "extract_evidence")
+        self.assertEqual(state["package_id"], "KEX-CURRENT")
+
+    def test_current_projection_is_read_only_and_supersedes_persisted_state(self):
+        campaign = campaign_fixture()
+        campaign["work_items"][0]["work_type"] = "workflow"
+        service, _, research, evidence, _, _, _, workflows = factory_fixture(
+            self.root, campaign
+        )
+        workflows.eligibility = Mock(return_value={
+            "eligible": False, "reasons": ["Approved workflow evidence is required."]
+        })
+        research.items = [{
+            "package_id": "KRP-1", "work_item_id": "KCW-1",
+            "status": "approved", "selected_sources": ["SRC-1", "SRC-2"],
+        }]
+        evidence.items = [
+            {"extraction_id": "KEX-PROPOSED", "source_candidate_id": "SRC-1",
+             "status": "proposed"},
+        ]
+        record = service.get_or_create("KCAMP-TEST")
+        path = service._path(record["orchestration_id"])
+        before = path.read_bytes()
+        evidence.items.append({
+            "extraction_id": "KEX-REVIEW", "source_candidate_id": "SRC-2",
+            "status": "needs_review",
+        })
+
+        current = service.project_current(record["orchestration_id"])
+
+        self.assertEqual(
+            current["work_item_states"][0]["next_action"], "review_evidence"
+        )
+        self.assertEqual(path.read_bytes(), before)
+        self.assertEqual(
+            service.get(record["orchestration_id"])["work_item_states"][0]["next_action"],
+            "prepare_evidence",
+        )
 
     def test_item_advance_failure_is_recorded_as_failure_not_success(self):
         service, _, research, *_ = self.factory

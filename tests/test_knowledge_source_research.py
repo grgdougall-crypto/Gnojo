@@ -177,6 +177,86 @@ class KnowledgeSourceResearchTests(unittest.TestCase):
         )
         return service, campaign, gap, work
 
+    def capability_workflow_service(self, *, verification_content=True):
+        taxonomy = {
+            "schema_version": "1.0",
+            "domains": [{
+                "id": "desktop-support", "title": "Desktop Support",
+                "category": "Desktop Support", "platforms": ["Windows"],
+                "capability_catalog": "workflow-capabilities.json", "areas": [],
+            }],
+        }
+        catalog = {
+            "schema_version": "1.0", "catalog_id": "workflow-capabilities",
+            "domain_id": "desktop-support", "title": "Workflow capabilities",
+            "capabilities": [{
+                "id": "device-manager", "title": "Device Manager",
+                "level": "core", "platform": "Windows",
+                "category": "Hardware", "terms": ["device manager", "device status"],
+                "expected_artifacts": ["workflow"], "likely_relationships": [],
+                "artifact_matches": {"workflow": [], "article": [], "command": []},
+            }],
+        }
+        self.taxonomy.write_text(json.dumps(taxonomy), encoding="utf-8")
+        (self.root / "workflow-capabilities.json").write_text(
+            json.dumps(catalog), encoding="utf-8"
+        )
+        planner = KnowledgeCoveragePlannerService(
+            self.root, self.campaign_root, self.taxonomy
+        )
+        identity = (
+            "capability:desktop-support:windows:device-manager:missing_workflow"
+        )
+        candidate = {
+            "gap_identity": identity, "gap_type": "missing_workflow",
+            "domain_id": "desktop-support", "area_id": "device-manager",
+            "area_title": "Device Manager", "capability_id": "device-manager",
+            "capability_level": "core", "capability_category": "Hardware",
+            "platform": "Windows", "expected_artifacts": ["workflow"],
+            "likely_relationships": [], "evidence": ["Workflow coverage is absent."],
+        }
+        campaign = planner.create(
+            title="Device Manager", domain_id="desktop-support",
+            objective="Prepare a governed workflow.",
+            actor="Autonomous Growth Stage 2",
+            metadata={
+                "initiated_by": "autonomous_growth_stage2",
+                "gap_identity": identity, "selected_gap": candidate,
+            },
+        )
+        campaign = planner.analyze(campaign["campaign_id"])
+        gap = campaign["gaps"][0]
+        work = campaign["work_items"][0]
+        body = (
+            "Device Manager shows the device status as working properly. "
+            "Confirm the expected result in Device Status."
+            if verification_content else
+            "Device Manager provides hardware troubleshooting instructions."
+        )
+        validator = FakeValidator()
+
+        def inspect(url):
+            result = FakeValidator().inspect(url)
+            result.update(
+                page_title=("Verify Device Status in Device Manager"
+                            if verification_content else "Device Manager Guide"),
+                content_preview=body,
+            )
+            return result
+
+        validator.inspect = inspect
+        search = FakeSearch([{
+            "title": ("Verify Device Status" if verification_content
+                      else "Device Manager Guide"),
+            "url": "https://learn.microsoft.com/device-status",
+            "summary": body, "publisher": "Microsoft",
+        }])
+        service = KnowledgeSourceResearchService(
+            self.root, self.campaign_root, self.policy,
+            {"microsoft_learn": search}, validator, self.taxonomy,
+        )
+        return service, search, campaign, gap, work
+
     def test_request_has_stable_identity_associations_defaults_and_history(self):
         first = self.create(); second = self.create()
         self.assertEqual(first["package_id"], second["package_id"])
@@ -249,6 +329,59 @@ class KnowledgeSourceResearchTests(unittest.TestCase):
             KnowledgeSourceResearchError, "identity is missing, stale, or ambiguous"
         ):
             service.create(campaign["campaign_id"], gap["gap_id"], work["work_item_id"])
+
+    def test_verification_recovery_is_stable_and_uses_only_targeted_terms(self):
+        service, search, campaign, gap, work = self.capability_workflow_service()
+        values = dict(
+            claim_plan_id="KCPM-DEVICE",
+            evidence_input_fingerprint="evidence-current",
+            gap_fingerprint="verification-gap-current",
+            actor="Reviewer",
+        )
+        first = service.create_verification_recovery(
+            campaign["campaign_id"], gap["gap_id"], work["work_item_id"],
+            **values,
+        )
+        second = service.create_verification_recovery(
+            campaign["campaign_id"], gap["gap_id"], work["work_item_id"],
+            **values,
+        )
+        researched = service.run(first["package_id"], force_external=True)
+
+        self.assertEqual(first["package_id"], second["package_id"])
+        self.assertEqual(
+            first["research_objective"]["supported_evidence_types"],
+            ["verification", "expected_result"],
+        )
+        self.assertEqual(
+            first["research_objective"]["required_coverage_roles"],
+            ["success_verification"],
+        )
+        self.assertIn("Device Manager", researched["research_query"])
+        self.assertIn("verify expected result successful outcome", researched["research_query"])
+        self.assertEqual(len(search.calls), 1)
+        self.assertTrue(researched["candidate_sources"][0]["topic_relevant"])
+
+    def test_verification_recovery_without_verification_support_fails_closed(self):
+        service, _, campaign, gap, work = self.capability_workflow_service(
+            verification_content=False
+        )
+        package = service.create_verification_recovery(
+            campaign["campaign_id"], gap["gap_id"], work["work_item_id"],
+            claim_plan_id="KCPM-DEVICE",
+            evidence_input_fingerprint="evidence-current",
+            gap_fingerprint="verification-gap-current",
+        )
+        researched = service.run(package["package_id"], force_external=True)
+
+        self.assertFalse(any(
+            item.get("topic_relevant") is True
+            for item in researched["candidate_sources"]
+        ))
+        self.assertIn(
+            "No authoritative source with capability-specific success-verification",
+            researched["remaining_gaps"][0],
+        )
 
     def test_capability_missing_article_package_fails_if_catalog_terms_change(self):
         service, campaign, gap, work = self.capability_article_service()

@@ -174,9 +174,7 @@ class KnowledgeCampaignOrchestrationService:
 
     def refresh(self, orchestration_id: str) -> dict[str, Any]:
         record = self.get(orchestration_id)
-        campaign = self.planner.get(record["campaign_id"])
-        states = [self._resolve_item(campaign, item) for item in campaign.get("work_items") or []]
-        projection = self._projection(campaign, states)
+        projection = self._current_projection(record)
         fingerprint = self._fingerprint(projection)
         previous = record.get("fingerprints", {}).get("projection")
         if previous != fingerprint:
@@ -190,6 +188,21 @@ class KnowledgeCampaignOrchestrationService:
             record["updated_at"] = self._now()
             self._save(record)
         return deepcopy(record)
+
+    def project_current(self, orchestration_id: str) -> dict[str, Any]:
+        """Resolve current orchestration state without persisting derived changes."""
+        record = self.get(orchestration_id)
+        current = deepcopy(record)
+        current.update(self._current_projection(record))
+        return current
+
+    def _current_projection(self, record: dict[str, Any]) -> dict[str, Any]:
+        campaign = self.planner.get(record["campaign_id"])
+        states = [
+            self._resolve_item(campaign, item)
+            for item in campaign.get("work_items") or []
+        ]
+        return self._projection(campaign, states)
 
     def continue_campaign(self, orchestration_id: str) -> dict[str, Any]:
         record = self.refresh(orchestration_id)
@@ -933,6 +946,35 @@ class KnowledgeCampaignOrchestrationService:
         rp = research[0]
         base.update(package_id=rp["package_id"], dependencies=[rp["package_id"]],
                     review_link=f"/curator/growth/source-research/{rp['package_id']}")
+        recovery_objective = rp.get("research_objective") or {}
+        verification_recovery = (
+            recovery_objective.get("kind") == "workflow_success_verification"
+        )
+        if verification_recovery:
+            try:
+                current_objective = self.research.validate_research_objective(
+                    rp["package_id"]
+                )
+            except Exception as error:
+                return self._blocked(
+                    base, "verification_recovery_identity",
+                    "Verification evidence recovery",
+                    f"The targeted verification recovery identity is stale or invalid: {error}",
+                    "Return to the current Builder claim review before attempting recovery again.",
+                    stale=True,
+                )
+            if current_objective != recovery_objective:
+                return self._blocked(
+                    base, "verification_recovery_identity",
+                    "Verification evidence recovery",
+                    "The targeted verification recovery objective no longer matches its authoritative package.",
+                    "Return to the current Builder claim review before attempting recovery again.",
+                    stale=True,
+                )
+            base["verification_recovery"] = {
+                "research_package_id": rp["package_id"],
+                "objective_fingerprint": recovery_objective.get("fingerprint"),
+            }
         if rp.get("status") in {"pending", "researching"}:
             return self._action(base, "research_needed", "run_source_research")
         if rp.get("status") == "ready_for_review":
@@ -947,18 +989,18 @@ class KnowledgeCampaignOrchestrationService:
         selected = list(rp.get("selected_sources") or [])
         extractions = self.evidence.list_for_research(rp["package_id"])
         self._add_evidence_progress(base, selected, extractions)
+        current_extractions = [
+            item for item in extractions
+            if item.get("source_candidate_id") in set(selected)
+        ]
         missing = next((source for source in selected if not any(
-            item.get("source_candidate_id") == source for item in extractions)), None)
+            item.get("source_candidate_id") == source
+            for item in current_extractions
+        )), None)
         if missing:
             base["source_candidate_id"] = missing
             return self._action(base, "evidence_extraction_ready", "prepare_evidence")
-        proposed = next((item for item in extractions if item.get("status") == "proposed"), None)
-        if proposed:
-            base.update(package_id=proposed["extraction_id"],
-                        dependencies=base["dependencies"] + [proposed["extraction_id"]],
-                        review_link=f"/curator/growth/evidence-extraction/{proposed['extraction_id']}")
-            return self._action(base, "evidence_extraction_ready", "extract_evidence")
-        pending = next((item for item in extractions if item.get("status") in {
+        pending = next((item for item in current_extractions if item.get("status") in {
             "retrieving", "needs_review", "partially_approved", "extracted"
         }), None)
         if pending:
@@ -966,13 +1008,45 @@ class KnowledgeCampaignOrchestrationService:
                         dependencies=base["dependencies"] + [pending["extraction_id"]],
                         review_link=f"/curator/growth/evidence-extraction/{pending['extraction_id']}")
             return self._gate(base, "evidence_review_required", "review_evidence")
-        insufficient = next((item for item in extractions
+        proposed = next((item for item in current_extractions
+                         if item.get("status") == "proposed"), None)
+        if proposed:
+            base.update(package_id=proposed["extraction_id"],
+                        dependencies=base["dependencies"] + [proposed["extraction_id"]],
+                        review_link=f"/curator/growth/evidence-extraction/{proposed['extraction_id']}")
+            return self._action(base, "evidence_extraction_ready", "extract_evidence")
+        insufficient = next((item for item in current_extractions
                              if item.get("status") == "insufficient_evidence"), None)
-        approved = any(item.get("status") == "approved" for item in extractions)
+        approved = any(item.get("status") == "approved"
+                       for item in current_extractions)
         if insufficient and not approved:
             base.update(package_id=insufficient["extraction_id"],
                         dependencies=base["dependencies"] + [insufficient["extraction_id"]],
                         review_link=f"/curator/growth/evidence-extraction/{insufficient['extraction_id']}")
+            if verification_recovery:
+                result = self._blocked(
+                    base, "verification_evidence_exhausted",
+                    "Verification evidence recovery",
+                    (
+                        "Verification evidence could not be established. Gnojo "
+                        "reviewed the approved verification sources but did not "
+                        "find enough authoritative evidence to define a supported "
+                        "success condition."
+                    ),
+                    (
+                        "Keep the claim plan blocked until authoritative "
+                        "success-verification evidence becomes available."
+                    ),
+                )
+                result["stage"] = "verification_evidence_exhausted"
+                result["verification_recovery"].update({
+                    "approved_source_count": len(selected),
+                    "exhausted_source_count": sum(
+                        item.get("status") == "insufficient_evidence"
+                        for item in current_extractions
+                    ),
+                })
+                return result
             result = self._blocked(
                 base, "insufficient_evidence", "Evidence research",
                 "Human review confirmed that the extracted source contains no Candidate Evidence.",

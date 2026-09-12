@@ -38,6 +38,11 @@ DEAD_PAGE_MARKERS = (
     "this document is not currently available",
     "the requested document is not available",
 )
+VERIFICATION_OBJECTIVE_KIND = "workflow_success_verification"
+VERIFICATION_OBJECTIVE_TERMS = (
+    "verify", "verification", "confirm", "confirmed", "expected result",
+    "successful", "success", "status", "working", "resolved", "result",
+)
 
 
 class KnowledgeSourceResearchError(ValueError):
@@ -309,15 +314,91 @@ class KnowledgeSourceResearchService:
         self._attach_reference(campaign, package)
         return deepcopy(package)
 
+    def create_verification_recovery(
+        self, campaign_id: str, gap_id: str, work_item_id: str, *,
+        claim_plan_id: str, evidence_input_fingerprint: str,
+        gap_fingerprint: str, actor: str = "Human",
+    ) -> dict[str, Any]:
+        """Prepare one exact follow-up research objective for missing verification."""
+        campaign, gap, work_item = self._context(
+            campaign_id, gap_id, work_item_id
+        )
+        capability = self._capability_workflow_context(campaign, gap, work_item)
+        if not all((claim_plan_id, evidence_input_fingerprint, gap_fingerprint)):
+            raise KnowledgeSourceResearchError(
+                "Verification recovery identity is incomplete."
+            )
+        objective = {
+            "schema_version": "1.0",
+            "kind": VERIFICATION_OBJECTIVE_KIND,
+            "claim_plan_id": claim_plan_id,
+            "evidence_input_fingerprint": evidence_input_fingerprint,
+            "gap_fingerprint": gap_fingerprint,
+            "supported_evidence_types": ["verification", "expected_result"],
+            "required_coverage_roles": ["success_verification"],
+            "capability_context": capability,
+        }
+        objective["fingerprint"] = self._fingerprint(objective)
+        package_id = self._stable_id(
+            "KRP", campaign_id, gap_id, work_item_id,
+            VERIFICATION_OBJECTIVE_KIND, objective["fingerprint"],
+        )
+        path = self._path(package_id)
+        if path.exists():
+            package = self._read(path)
+            if package.get("research_objective") != objective:
+                raise KnowledgeSourceResearchError(
+                    "Verification recovery package identity is stale or inconsistent."
+                )
+            return package
+        platform = str((campaign.get("platforms") or [""])[0])
+        vendor = "Microsoft" if platform.casefold() == "windows" else None
+        now = self._now()
+        package = {
+            "schema_version": "1.0", "package_id": package_id,
+            "campaign_id": campaign_id, "gap_id": gap_id,
+            "work_item_id": work_item_id,
+            "target_coverage_area": gap["area_id"],
+            "coverage_facet": gap["facet"],
+            "requested_evidence_type": VERIFICATION_OBJECTIVE_KIND,
+            "research_objective": objective,
+            "platform": platform, "product_vendor": vendor,
+            "status": "pending", "created_at": now, "last_checked_at": None,
+            "research_query": None, "existing_sources": [],
+            "candidate_sources": [], "selected_sources": [],
+            "rejected_sources": [], "reuse_recommendation": None,
+            "remaining_gaps": [], "research_notes": "",
+            "history": [{
+                "event": "verification_recovery_created", "at": now,
+                "actor": actor, "claim_plan_id": claim_plan_id,
+                "objective_fingerprint": objective["fingerprint"],
+            }],
+        }
+        self._save(package)
+        self._attach_reference(campaign, package)
+        return deepcopy(package)
+
     def get(self, package_id: str) -> dict[str, Any]:
         path = self._path(package_id)
         if not path.exists():
             raise KnowledgeSourceResearchError(f"Research package '{package_id}' was not found.")
         return self._read(path)
 
+    def validate_research_objective(
+        self, package_id: str
+    ) -> dict[str, Any] | None:
+        """Validate and return one persisted governed objective without writes."""
+        package = self.get(package_id)
+        campaign, gap, work = self._context(
+            package["campaign_id"], package["gap_id"], package["work_item_id"]
+        )
+        self._validate_research_objective(package, campaign, gap, work)
+        return deepcopy(package.get("research_objective"))
+
     def run(self, package_id: str, *, force_external: bool = False) -> dict[str, Any]:
         package = self.get(package_id)
         campaign, gap, work_item = self._context(package["campaign_id"], package["gap_id"], package["work_item_id"])
+        self._validate_research_objective(package, campaign, gap, work_item)
         self._validate_article_package_context(
             package, self._capability_article_context(campaign, gap, work_item)
         )
@@ -355,9 +436,21 @@ class KnowledgeSourceResearchService:
                                        if item.get("review_state") == "selected"]
         package["rejected_sources"] = [item["source_candidate_id"] for item in package["candidate_sources"]
                                        if item.get("review_state") == "rejected"]
-        package["remaining_gaps"] = ([] if package["candidate_sources"] else [
-            "No resolving, topic-relevant authoritative candidate is currently available."
-        ])
+        relevant_candidates = [
+            item for item in package["candidate_sources"]
+            if item.get("topic_relevant") is True
+        ]
+        if relevant_candidates:
+            package["remaining_gaps"] = []
+        elif self._is_verification_recovery(package):
+            package["remaining_gaps"] = [
+                "No authoritative source with capability-specific success-verification "
+                "or expected-result evidence is currently available."
+            ]
+        else:
+            package["remaining_gaps"] = [
+                "No resolving, topic-relevant authoritative candidate is currently available."
+            ]
         fingerprint = self._fingerprint({
             "existing": package["existing_sources"], "candidates": package["candidate_sources"],
             "reuse": package["reuse_recommendation"], "remaining": package["remaining_gaps"],
@@ -480,8 +573,13 @@ class KnowledgeSourceResearchService:
         if provider is None:
             raise KnowledgeSourceResearchError("The configured external research provider is unavailable.")
         area = self._area(campaign, gap["area_id"])
+        objective = (
+            "verify expected result successful outcome"
+            if self._is_verification_recovery(package) else ""
+        )
         query = " ".join(filter(None, [target.get("vendor"), package["platform"], area["title"],
-                                       gap.get("facet", "").replace("_", " "), "official documentation"]))
+                                       gap.get("facet", "").replace("_", " "), objective,
+                                       "official documentation"]))
         try:
             results = provider.search(query, domains=target.get("domains", []), limit=8)
         except Exception as error:
@@ -567,11 +665,115 @@ class KnowledgeSourceResearchService:
         campaign = self.planner.get(package["campaign_id"])
         area = self._area(campaign, package["target_coverage_area"])
         terms = [term.casefold() for term in area.get("terms", [])]
-        haystack = " ".join((title, str(source.get("summary") or ""), content[:65536])).casefold()
+        content_window = (
+            content if self._is_verification_recovery(package)
+            else content[:65536]
+        )
+        haystack = " ".join((
+            title, str(source.get("summary") or ""), content_window
+        )).casefold()
         matched = sorted({term for term in terms if term in haystack})
         if not matched:
             return False, "No configured coverage terms were found in the resolved source."
+        if self._is_verification_recovery(package):
+            verification_matches = sorted({
+                term for term in VERIFICATION_OBJECTIVE_TERMS
+                if re.search(
+                    rf"(?<![a-z0-9]){re.escape(term)}(?![a-z0-9])", haystack
+                )
+            })
+            if not verification_matches:
+                return False, (
+                    "The source matched the capability but did not contain "
+                    "success-verification or expected-result evidence."
+                )
+            return True, (
+                f"Resolved content matched the configured {area['title']} terms "
+                f"({', '.join(matched[:5])}) and the governed verification objective "
+                f"({', '.join(verification_matches[:5])})."
+            )
         return True, f"Resolved content matched the configured {area['title']} terms: {', '.join(matched[:5])}."
+
+    @staticmethod
+    def _is_verification_recovery(package: dict[str, Any]) -> bool:
+        return (package.get("research_objective") or {}).get("kind") == VERIFICATION_OBJECTIVE_KIND
+
+    def _validate_research_objective(
+        self, package: dict[str, Any], campaign: dict[str, Any],
+        gap: dict[str, Any], work: dict[str, Any],
+    ) -> None:
+        objective = package.get("research_objective")
+        if objective is None:
+            return
+        expected_context = self._capability_workflow_context(campaign, gap, work)
+        value = {key: objective.get(key) for key in (
+            "schema_version", "kind", "claim_plan_id",
+            "evidence_input_fingerprint", "gap_fingerprint",
+            "supported_evidence_types", "required_coverage_roles",
+            "capability_context",
+        )}
+        if (
+            value["schema_version"] != "1.0"
+            or value["kind"] != VERIFICATION_OBJECTIVE_KIND
+            or not value["claim_plan_id"]
+            or not value["evidence_input_fingerprint"]
+            or not value["gap_fingerprint"]
+            or value["supported_evidence_types"] != ["verification", "expected_result"]
+            or value["required_coverage_roles"] != ["success_verification"]
+            or value["capability_context"] != expected_context
+            or objective.get("fingerprint") != self._fingerprint(value)
+        ):
+            raise KnowledgeSourceResearchError(
+                "Verification recovery objective is stale or inconsistent."
+            )
+
+    def _capability_workflow_context(
+        self, campaign: dict[str, Any], gap: dict[str, Any], work: dict[str, Any]
+    ) -> dict[str, Any]:
+        metadata = campaign.get("creation_metadata")
+        selected = metadata.get("selected_gap") if isinstance(metadata, dict) else None
+        domain = next((item for item in self.planner.domains()
+                       if item.get("id") == campaign.get("domain")), None)
+        capabilities = [item for item in (domain or {}).get("areas", [])
+                        if item.get("id") == work.get("capability_id")]
+        if len(capabilities) != 1 or not isinstance(selected, dict):
+            raise KnowledgeSourceResearchError(
+                "Capability-derived missing-workflow identity is missing or ambiguous."
+            )
+        capability = capabilities[0]
+        platform = str(capability.get("platform") or "").strip()
+        platform_id = re.sub(r"[^a-z0-9]+", "-", platform.casefold()).strip("-")
+        identity = (
+            f"capability:{campaign.get('domain')}:{platform_id}:"
+            f"{capability.get('id')}:missing_workflow"
+        )
+        records = (selected, gap, work)
+        if (
+            metadata.get("initiated_by") != "autonomous_growth_stage2"
+            or gap.get("gap_type") != "missing_workflow"
+            or work.get("work_type") != "workflow"
+            or "workflow" not in (capability.get("expected_artifacts") or [])
+            or any(record.get("gap_identity") != identity for record in records)
+            or any(record.get("capability_id") != capability.get("id")
+                   for record in records)
+            or any("workflow" not in (record.get("expected_artifacts") or [])
+                   for record in records)
+            or selected.get("domain_id") != campaign.get("domain")
+        ):
+            raise KnowledgeSourceResearchError(
+                "Capability-derived missing-workflow identity is stale or inconsistent."
+            )
+        return {
+            "domain_id": campaign["domain"],
+            "capability_id": capability["id"],
+            "capability_title": capability["title"],
+            "gap_identity": identity,
+            "campaign_id": campaign["campaign_id"],
+            "work_item_id": work["work_item_id"],
+            "platform": platform,
+            "expected_artifact": "workflow",
+            "terms": list(capability.get("terms") or []),
+        }
 
     def _existing_url_index(self) -> dict[str, dict[str, Any]]:
         index = {}

@@ -519,6 +519,97 @@ class KnowledgeClaimPlanningTests(unittest.TestCase):
         )
         self.assertEqual(complete["validation"]["substantive_completeness_percent"], 100)
 
+    def test_targeted_followup_evidence_replans_current_workflow_with_verification(self):
+        complete, work = self._compressed_missing_workflow_plan()
+        evidence_path = (
+            self.campaign_root / "evidence_extraction" / "KEX-AAAAAAAAAAAA.json"
+        )
+        original = json.loads(evidence_path.read_text(encoding="utf-8"))
+        original["evidence_units"] = [
+            unit for unit in original["evidence_units"]
+            if "success_verification" not in (unit.get("workflow_coverage_roles") or [])
+        ]
+        original["candidacy"]["confirmation_fingerprint"] = (
+            self.generation.extraction._candidate_set_fingerprint(original)
+        )
+        evidence_path.write_text(json.dumps(original), encoding="utf-8")
+        missing = self.service.plan(complete["claim_plan_id"])
+        self.assertEqual(missing["status"], "needs_evidence")
+        self.assertIn(
+            "success_verification",
+            missing["validation"]["workflow_procedure_coverage"]["missing"],
+        )
+
+        recovery_research_id = "KRP-BBBBBBBBBBBB"
+        research = json.loads(
+            (self.campaign_root / "research" / f"{self.research_id}.json")
+            .read_text(encoding="utf-8")
+        )
+        research.update(
+            package_id=recovery_research_id,
+            requested_evidence_type="workflow_success_verification",
+            created_at="later",
+        )
+        (self.campaign_root / "research" / f"{recovery_research_id}.json").write_text(
+            json.dumps(research), encoding="utf-8"
+        )
+        verification = self._unit(
+            "EVD-RECOVERY-VERIFY", "verification",
+            "Confirm that Device Status reports the device is working properly.",
+            workflow_coverage_roles=["success_verification"],
+        )
+        verification["provenance"].update(
+            research_package_id=recovery_research_id,
+            extraction_id="KEX-BBBBBBBBBBBB",
+        )
+        verification["fingerprint"] = self.generation.extraction._fingerprint({
+            "text": verification["normalized_claim"],
+            "type": verification["evidence_type"],
+        })
+        verification["workflow_evidence_compression"] = {
+            "policy_id": "deterministic-workflow-evidence-compression-v1",
+            "decision": "auto_approved",
+            "evidence_fingerprint": verification["fingerprint"],
+        }
+        verification["candidacy"] = {
+            "machine_recommended_role": "candidate",
+            "human_confirmed_role": "candidate",
+            "recommendation_fingerprint": "recommend-recovery",
+            "rule_version": CANDIDACY_RULE_VERSION,
+        }
+        recovered_package = {
+            **original,
+            "extraction_id": "KEX-BBBBBBBBBBBB",
+            "research_package_id": recovery_research_id,
+            "evidence_units": [verification],
+            "status": "approved",
+            "candidacy": {
+                "schema_version": "1.0", "rule_version": CANDIDACY_RULE_VERSION,
+                "candidate_set_status": "confirmed", "confirmed_at": "later",
+                "confirmed_by": "Deterministic Evidence Compression",
+                "workflow_evidence_compression_policy":
+                    "deterministic-workflow-evidence-compression-v1",
+                "confirmation_fingerprint": None,
+            },
+        }
+        recovered_package["candidacy"]["confirmation_fingerprint"] = (
+            self.generation.extraction._candidate_set_fingerprint(recovered_package)
+        )
+        (self.campaign_root / "evidence_extraction" / "KEX-BBBBBBBBBBBB.json").write_text(
+            json.dumps(recovered_package), encoding="utf-8"
+        )
+
+        rebuilt = self.service.plan(complete["claim_plan_id"])
+        self.assertEqual(
+            rebuilt["validation"]["workflow_procedure_coverage"]["missing"], []
+        )
+        self.assertFalse(rebuilt["evidence_gaps"])
+        self.assertTrue(any(
+            claim.get("claim_type") == "verification"
+            and "EVD-RECOVERY-VERIFY" in (claim.get("evidence_ids") or [])
+            for claim in rebuilt["claims"]
+        ))
+
     def test_settled_compressed_evidence_rebuilds_a_stale_workflow_plan_coherently(self):
         old_plan, work = self._workflow_plan()
         campaign_path = self.campaign_root / f"{self.work['campaign_id']}.json"

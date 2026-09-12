@@ -19,7 +19,62 @@
   <div class="alert alert-danger" role="alert">{{ request.args.get('builder_error') }}</div>
   {% endif %}
 
-  {% if workspace.current %}
+  {% if workspace.current_group %}
+  {% set group = workspace.current_group %}
+  <article class="integrity-record mb-4" aria-labelledby="exception-group-title">
+    <div class="quality-section__heading">
+      <div>
+        <span class="section-eyebrow">Needs human judgment</span>
+        <h2 id="exception-group-title" class="h4 mb-0">{{ group.title }}</h2>
+      </div>
+      <span class="badge text-bg-warning">{{ group.count }} proposition{{ '' if group.count == 1 else 's' }}</span>
+    </div>
+    <p>{{ group.explanation }}</p>
+    <p><strong>Gnojo could not safely determine:</strong> Should these propositions support the workflow, or remain reviewer context only?</p>
+
+    <details class="mb-3">
+      <summary>View {{ group.count }} source excerpt{{ '' if group.count == 1 else 's' }}</summary>
+      <div class="d-grid gap-2 mt-3">
+        {% for unit in group.units %}
+        <blockquote class="integrity-record mb-0">{{ unit.supporting_passage or unit.normalized_claim }}</blockquote>
+        {% endfor %}
+      </div>
+    </details>
+    <p class="text-secondary">{{ workspace.source.title }}{% if workspace.source.domain %} &middot; {{ workspace.source.domain }}{% elif workspace.source.publisher %} &middot; {{ workspace.source.publisher }}{% endif %}</p>
+
+    {% if group.decision_mode == 'role' %}
+    <form class="d-flex gap-2 flex-wrap" method="post" action="{{ url_for('knowledge_builder_evidence_exception_group_decision', campaign_id=workspace.campaign_id, work_item_id=workspace.work_item_id, extraction_id=workspace.extraction_id, group_id=group.group_id) }}">
+      <input type="hidden" name="authenticity_token" value="{{ authenticity_token() }}">
+      <input type="hidden" name="group_fingerprint" value="{{ group.group_fingerprint }}">
+      <button class="btn btn-primary" name="decision" value="candidate" type="submit">Candidate Evidence</button>
+      <button class="btn btn-outline-secondary" name="decision" value="context" type="submit">Reviewer Context</button>
+    </form>
+    {% elif group.decision_mode == 'evidence' %}
+    <form method="post" action="{{ url_for('knowledge_builder_evidence_exception_group_decision', campaign_id=workspace.campaign_id, work_item_id=workspace.work_item_id, extraction_id=workspace.extraction_id, group_id=group.group_id) }}">
+      <input type="hidden" name="authenticity_token" value="{{ authenticity_token() }}">
+      <input type="hidden" name="group_fingerprint" value="{{ group.group_fingerprint }}">
+      <label class="form-label" for="group-notes">Reviewer note <span class="text-secondary">(optional)</span></label>
+      <textarea class="form-control mb-3" id="group-notes" name="notes" rows="3"></textarea>
+      <div class="d-flex gap-2 flex-wrap">
+        <button class="btn btn-success" name="decision" value="approved" type="submit">Approve Evidence Group</button>
+        <button class="btn btn-outline-danger" name="decision" value="rejected" type="submit">Reject Evidence Group</button>
+        <button class="btn btn-outline-secondary" name="decision" value="needs_revision" type="submit">Needs Revision</button>
+      </div>
+    </form>
+    {% else %}
+    <p class="text-secondary">Finish the remaining role decisions before reviewing this Candidate Evidence group.</p>
+    {% endif %}
+
+    <details class="mt-3">
+      <summary>Review propositions individually</summary>
+      <ul class="mt-2 mb-0">
+        {% for unit in group.units %}
+        <li><a href="{{ url_for('knowledge_builder_evidence_exception', campaign_id=workspace.campaign_id, work_item_id=workspace.work_item_id, extraction_id=workspace.extraction_id, evidence_id=unit.evidence_id) }}">{{ unit.normalized_claim }}</a></li>
+        {% endfor %}
+      </ul>
+    </details>
+  </article>
+  {% elif workspace.current %}
   {% set unit = workspace.current %}
   {% set candidacy = unit.candidacy or {} %}
   {% set compression = unit.workflow_evidence_compression or {} %}
@@ -84,16 +139,20 @@
     </section>
     {% endif %}
   </article>
-  {% elif workspace.exceptions %}
+  {% elif workspace.groups %}
   <section aria-labelledby="exceptions-heading">
-    <h2 id="exceptions-heading" class="h4">{{ workspace.exceptions|length }} evidence exceptions need review</h2>
-    <p>Choose an exception to resolve. Settled and unrelated evidence is omitted here.</p>
+    <h2 id="exceptions-heading" class="h4">{{ workspace.groups|length }} evidence review group{{ '' if workspace.groups|length == 1 else 's' }}</h2>
+    <p>{{ workspace.exceptions|length }} unresolved propositions have been grouped only where they share the same source, review semantics, and available decision.</p>
     <div class="d-grid gap-3">
-      {% for unit in workspace.exceptions %}
+      {% for group in workspace.groups %}
       <article class="integrity-record">
-        <h3 class="h5">{{ unit.normalized_claim }}</h3>
-        <p class="text-secondary">{{ (unit.workflow_evidence_compression or {}).reason or (unit.candidacy or {}).machine_rationale or 'Human judgment is required.' }}</p>
-        <a class="btn btn-primary" href="{{ url_for('knowledge_builder_evidence_exception', campaign_id=workspace.campaign_id, work_item_id=workspace.work_item_id, extraction_id=workspace.extraction_id, evidence_id=unit.evidence_id) }}">Review exception</a>
+        <div class="d-flex justify-content-between gap-3 align-items-start">
+          <div><h3 class="h5">{{ group.title }}</h3><p class="text-secondary mb-2">{{ group.explanation }}</p></div>
+          <span class="badge text-bg-warning">{{ group.count }}</span>
+        </div>
+        <p class="mb-2">{{ group.units[0].normalized_claim }}</p>
+        {% if group.count > 1 %}<p class="text-secondary">Plus {{ group.count - 1 }} compatible proposition{{ '' if group.count == 2 else 's' }}.</p>{% endif %}
+        <a class="btn btn-primary" href="{{ url_for('knowledge_builder_evidence_exception_group', campaign_id=workspace.campaign_id, work_item_id=workspace.work_item_id, extraction_id=workspace.extraction_id, group_id=group.group_id) }}">Review {{ 'group' if group.grouped else 'exception' }}</a>
       </article>
       {% endfor %}
     </div>

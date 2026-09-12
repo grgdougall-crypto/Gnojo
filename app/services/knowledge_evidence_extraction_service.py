@@ -300,6 +300,10 @@ class KnowledgeEvidenceExtractionService:
             },
             "history": [{"event": "extraction_prepared", "at": now, "actor": "Human"}],
         }
+        if research.get("research_objective") is not None:
+            package["research_objective"] = deepcopy(
+                research["research_objective"]
+            )
         self._save(package)
         return deepcopy(package)
 
@@ -635,6 +639,206 @@ class KnowledgeEvidenceExtractionService:
                     candidate_count=candidate_count, context_count=context_count)
         self._save(package)
         return deepcopy(package)
+
+    def set_candidacy_role_group(
+        self, extraction_id: str, members: list[dict[str, Any]], role: str, *,
+        group_id: str, group_fingerprint: str, actor: str = "Human",
+    ) -> dict[str, Any]:
+        """Atomically apply one role decision to an exact compatible evidence set."""
+        if role not in CANDIDACY_ROLES:
+            raise KnowledgeEvidenceExtractionError("Unknown candidacy role.")
+        package = self.get(extraction_id)
+        decision = f"role:{role}"
+        if self._group_decision_recorded(
+            package, group_id, group_fingerprint, decision
+        ):
+            return package
+        units = self._validate_group_members(package, members)
+        if all((unit.get("candidacy") or {}).get("human_confirmed_role") == role
+               for unit in units):
+            return package
+        for unit in units:
+            previous = (unit.get("candidacy") or {}).get("human_confirmed_role")
+            if previous is not None:
+                raise KnowledgeEvidenceExtractionError(
+                    "An evidence role changed before the grouped decision. Nothing was saved."
+                )
+            if (previous == "candidate" and unit.get("review_state") != "proposed"
+                    and role == "context"):
+                raise KnowledgeEvidenceExtractionError(
+                    "Reviewed evidence cannot be reinterpreted as Reviewer Context."
+                )
+        now = self._now()
+        for unit in units:
+            unit.setdefault("candidacy", self.candidacy_recommendation(
+                unit, self._governed_context(package)
+            )).update(
+                human_confirmed_role=role,
+                role_decided_at=now,
+                role_decided_by=actor,
+            )
+            self._event(
+                package, "candidacy_role_changed", now, actor=actor,
+                evidence_id=unit["evidence_id"], previous_role=None,
+                role=role, builder_group_id=group_id,
+            )
+        state = package.setdefault("candidacy", self._empty_candidacy_state())
+        if state.get("candidate_set_status") == "confirmed":
+            state.update(
+                candidate_set_status="stale", stale_at=now,
+                stale_reason="human_role_changed",
+            )
+        unresolved = [
+            unit for unit in package.get("evidence_units") or []
+            if self._is_reviewable(unit)
+            and (unit.get("candidacy") or {}).get("human_confirmed_role")
+            not in CANDIDACY_ROLES
+        ]
+        if not unresolved:
+            rule_version = state.get("rule_version") or CANDIDACY_RULE_VERSION
+            fingerprint = self._candidate_set_fingerprint(
+                package, rule_version=rule_version
+            )
+            candidate_count = sum(
+                (unit.get("candidacy") or {}).get("human_confirmed_role") == "candidate"
+                for unit in package["evidence_units"]
+            )
+            context_count = sum(
+                (unit.get("candidacy") or {}).get("human_confirmed_role") == "context"
+                for unit in package["evidence_units"]
+            )
+            state.update({
+                "schema_version": "1.0", "rule_version": rule_version,
+                "candidate_set_status": "confirmed", "confirmed_at": now,
+                "confirmed_by": actor, "confirmation_fingerprint": fingerprint,
+                "candidate_set_outcome": (
+                    "non_empty" if candidate_count else "empty"
+                ),
+            })
+            state.pop("stale_at", None)
+            state.pop("stale_reason", None)
+            self._event(
+                package, "candidate_set_confirmed", now, actor=actor,
+                confirmation_fingerprint=fingerprint,
+                candidate_set_outcome=state["candidate_set_outcome"],
+                candidate_count=candidate_count, context_count=context_count,
+                builder_group_id=group_id,
+            )
+        package["status"] = self._review_status(package["evidence_units"], package)
+        package["updated_at"] = now
+        self._event(
+            package, "builder_evidence_group_decided", now, actor=actor,
+            builder_group_id=group_id,
+            builder_group_fingerprint=group_fingerprint,
+            decision=decision,
+            evidence_ids=[unit["evidence_id"] for unit in units],
+        )
+        self._save(package)
+        return deepcopy(package)
+
+    def review_evidence_group(
+        self, extraction_id: str, members: list[dict[str, Any]],
+        decision: str, notes: str = "", *, group_id: str,
+        group_fingerprint: str, actor: str = "Human",
+    ) -> dict[str, Any]:
+        """Atomically review an exact set of current Candidate Evidence units."""
+        if decision not in {"approved", "rejected", "needs_revision"}:
+            raise KnowledgeEvidenceExtractionError("Unknown evidence review decision.")
+        package = self.get(extraction_id)
+        recorded_decision = f"evidence:{decision}"
+        if self._group_decision_recorded(
+            package, group_id, group_fingerprint, recorded_decision
+        ):
+            return package
+        units = self._validate_group_members(package, members)
+        if not self._candidate_set_current(package):
+            raise KnowledgeEvidenceExtractionError(
+                "The evidence candidate set changed. Nothing was saved."
+            )
+        notes = str(notes or "").strip()
+        if all(unit.get("review_state") == decision
+               and unit.get("reviewer_notes", "") == notes for unit in units):
+            return package
+        for unit in units:
+            if ((unit.get("candidacy") or {}).get("human_confirmed_role")
+                    != "candidate" or unit.get("review_state") != "proposed"):
+                raise KnowledgeEvidenceExtractionError(
+                    "A grouped Candidate Evidence decision changed. Nothing was saved."
+                )
+        now = self._now()
+        for unit in units:
+            unit.update(
+                review_state=decision, reviewer_decision=decision,
+                reviewer_notes=notes, reviewed_at=now, reviewed_by=actor,
+            )
+            self._event(
+                package, f"evidence_{decision}", now, actor=actor,
+                evidence_id=unit["evidence_id"], builder_group_id=group_id,
+            )
+        package["status"] = self._review_status(package["evidence_units"], package)
+        package["updated_at"] = now
+        self._event(
+            package, "builder_evidence_group_decided", now, actor=actor,
+            builder_group_id=group_id,
+            builder_group_fingerprint=group_fingerprint,
+            decision=recorded_decision,
+            evidence_ids=[unit["evidence_id"] for unit in units],
+        )
+        self._save(package)
+        return deepcopy(package)
+
+    @staticmethod
+    def _group_decision_recorded(package: dict[str, Any], group_id: str,
+                                 group_fingerprint: str,
+                                 decision: str) -> bool:
+        return any(
+            event.get("event") == "builder_evidence_group_decided"
+            and event.get("builder_group_id") == group_id
+            and event.get("builder_group_fingerprint") == group_fingerprint
+            and event.get("decision") == decision
+            for event in package.get("history") or []
+        )
+
+    def _validate_group_members(
+        self, package: dict[str, Any], members: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        if not members or len(members) > 25:
+            raise KnowledgeEvidenceExtractionError(
+                "The grouped evidence set is empty or exceeds the governed limit."
+            )
+        expected = {str(item.get("evidence_id") or ""): item for item in members}
+        if "" in expected or len(expected) != len(members):
+            raise KnowledgeEvidenceExtractionError(
+                "The grouped evidence identity is missing or ambiguous."
+            )
+        actual = {
+            unit.get("evidence_id"): unit
+            for unit in package.get("evidence_units") or []
+            if unit.get("evidence_id") in expected
+        }
+        if len(actual) != len(expected):
+            raise KnowledgeEvidenceExtractionError(
+                "A grouped evidence member is no longer available. Nothing was saved."
+            )
+        result = []
+        for evidence_id in sorted(expected):
+            unit = actual[evidence_id]
+            item = expected[evidence_id]
+            candidacy = unit.get("candidacy") or {}
+            if (
+                not self._is_reviewable(unit)
+                or unit.get("fingerprint") != item.get("evidence_fingerprint")
+                or candidacy.get("recommendation_fingerprint")
+                != item.get("recommendation_fingerprint")
+                or candidacy.get("human_confirmed_role")
+                != item.get("human_confirmed_role")
+                or unit.get("review_state") != item.get("review_state")
+            ):
+                raise KnowledgeEvidenceExtractionError(
+                    "A grouped evidence member changed. Nothing was saved."
+                )
+            result.append(unit)
+        return result
 
     def _compress_workflow_evidence(self, package: dict[str, Any],
                                     context: dict[str, Any], now: str) -> None:
@@ -1491,6 +1695,12 @@ class KnowledgeEvidenceExtractionService:
         elif (cls._requires_exact_topic_relevance(context or {})
               and not cls._matches_source_intent(block, normalized, context or {})):
             reason, basis = "outside_approved_source_intent", "source_title_intent"
+        elif (cls._is_verification_recovery(context or {})
+              and not cls._matches_verification_objective(block, normalized)):
+            reason, basis = (
+                "outside_verification_recovery_objective",
+                "governed_research_objective",
+            )
         return {
             "status": SUPPRESSED_DISPOSITION if reason else REVIEWABLE_DISPOSITION,
             "reason": reason, "basis": basis,
@@ -1509,6 +1719,25 @@ class KnowledgeEvidenceExtractionService:
             and str(context.get("work_type") or "").casefold() == "workflow"
             and bool(context.get("capability_id"))
         )
+
+    @staticmethod
+    def _is_verification_recovery(context: dict[str, Any]) -> bool:
+        return ((context.get("research_objective") or {}).get("kind")
+                == "workflow_success_verification")
+
+    @staticmethod
+    def _matches_verification_objective(
+        block: dict[str, Any], text: str,
+    ) -> bool:
+        value = " ".join((
+            str(block.get("heading") or ""), str(text or "")
+        )).casefold()
+        return bool(re.search(
+            r"\b(verify|verification|confirm(?:ed|ing)?|expected result|"
+            r"successful(?:ly)?|success|status|working|resolved|result|"
+            r"appears|shows?|displays?|listed|recognized|detected)\b",
+            value,
+        ))
 
     @classmethod
     def _topic_matches(cls, block: dict[str, Any], text: str,
@@ -1599,6 +1828,15 @@ class KnowledgeEvidenceExtractionService:
                    "gap_summary": "Review whether each source statement supports the governed work item."}
         try:
             planner = self.research.planner
+            research = self.research.get(
+                str(package.get("research_package_id") or "")
+            )
+            persisted_objective = package.get("research_objective")
+            current_objective = research.get("research_objective")
+            if persisted_objective != current_objective:
+                raise KnowledgeEvidenceExtractionError(
+                    "The governed research objective changed before evidence extraction."
+                )
             campaign = planner.get(str(package.get("campaign_id") or ""))
             work = next((x for x in campaign.get("work_items", [])
                          if x.get("work_item_id") == package.get("work_item_id")), {})
@@ -1629,7 +1867,8 @@ class KnowledgeEvidenceExtractionService:
                            capability_id=capability_id,
                            topic_terms=list(dict.fromkeys(
                                str(term).strip() for term in topic_terms if str(term).strip()
-                           )))
+                           )),
+                           research_objective=deepcopy(current_objective))
         except KnowledgeCoveragePlannerError:
             pass
         return context

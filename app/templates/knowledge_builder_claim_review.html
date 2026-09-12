@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block title %}Review Claims - Gnojo{% endblock %}
+{% block content %}
+<div class="container py-4">
+  <nav aria-label="Breadcrumb">
+    <a href="{{ url_for('knowledge_builder_index') }}">Knowledge Builder</a> /
+    <a href="{{ review.builder_url }}">{{ review.title }}</a> / Review claims
+  </nav>
+
+  <header class="quality-section mt-3">
+    <span class="section-eyebrow">Step 1 · Governed interruption</span>
+    <h1>{{ review.title }}</h1>
+    <p class="lead mb-0">Review the supported claim set before Gnojo prepares the workflow.</p>
+  </header>
+
+  {% if builder_error %}<div class="alert alert-danger" role="alert">{{ builder_error }}</div>{% endif %}
+
+  {% set compression = review.compression %}
+  {% set plan = review.plan %}
+  <section class="quality-section" aria-labelledby="claimSummaryTitle">
+    <div class="quality-section__heading">
+      <div>
+        <span class="section-eyebrow">Reviewed claim set</span>
+        <h2 id="claimSummaryTitle">Claim summary</h2>
+      </div>
+      <span class="badge {{ 'text-bg-warning' if compression.unresolved_attention_count or compression.evidence_gap_count or compression.conflict_count else 'text-bg-success' }}">
+        {{ compression.unresolved_attention_count }} exception{{ '' if compression.unresolved_attention_count == 1 else 's' }}
+      </span>
+    </div>
+    <div class="integrity-grid">
+      <article><span>Proposed claims</span><strong>{{ compression.total_claims }}</strong></article>
+      <article><span>Direct / high confidence</span><strong>{{ compression.direct_high_confidence }}</strong></article>
+      <article><span>Procedure coverage</span><strong>{{ compression.procedure_coverage.covered|length }} / {{ compression.procedure_coverage.required|length }}</strong></article>
+      <article><span>Verification</span><strong>{{ 'Supported' if compression.verification_coverage else 'Needs evidence' }}</strong></article>
+      <article><span>Conflicts</span><strong>{{ compression.conflict_count }}</strong></article>
+      <article><span>Evidence gaps</span><strong>{{ compression.evidence_gap_count }}</strong></article>
+    </div>
+
+    {% if review.gap_recovery.eligible %}
+    <div class="alert alert-warning mt-3" role="status">
+      <strong>{{ review.gap_recovery.title }}</strong>
+      <p class="mb-3">{{ review.gap_recovery.summary }}</p>
+      <form method="post" action="{{ url_for('knowledge_builder_find_verification_evidence', campaign_id=review.campaign_id, work_item_id=review.work_item_id, plan_id=review.plan_id) }}">
+        <input type="hidden" name="authenticity_token" value="{{ authenticity_token() }}">
+        <input type="hidden" name="gap_fingerprint" value="{{ review.gap_recovery.gap_fingerprint }}">
+        <input type="hidden" name="evidence_input_fingerprint" value="{{ review.gap_recovery.evidence_input_fingerprint }}">
+        <button class="btn btn-warning" type="submit">Find Verification Evidence</button>
+      </form>
+    </div>
+    {% elif compression.blocking_reasons %}
+    <div class="alert alert-warning mt-3">
+      <strong>Claim-set approval is not yet available.</strong>
+      <ul class="mb-0">{% for reason in compression.blocking_reasons %}<li>{{ reason }}</li>{% endfor %}</ul>
+    </div>
+    {% endif %}
+
+    {% if plan.evidence_gaps %}
+    <details class="mt-3">
+      <summary>Technical evidence-gap details ({{ plan.evidence_gaps|length }})</summary>
+      <ul class="mt-2 mb-0">{% for gap in plan.evidence_gaps %}<li>{{ gap.reason }}</li>{% endfor %}</ul>
+    </details>
+    {% endif %}
+  </section>
+
+  {% if compression.unresolved_attention_count %}
+  <section class="quality-section" aria-labelledby="claimExceptionsTitle">
+    <h2 id="claimExceptionsTitle">Claims requiring human judgment</h2>
+    {% for claim in compression.exception_claims %}
+    {% if claim.review_state != 'approved' %}
+    <article class="integrity-record mb-3">
+      <strong>{{ claim.claim_type|replace('_', ' ')|title }}</strong>
+      <p>{{ claim.normalized_claim }}</p>
+      {% if claim.attention_reasons %}<p class="text-warning">{{ claim.attention_reasons|join('; ')|capitalize }}</p>{% endif %}
+      <form method="post" action="{{ url_for('knowledge_builder_claim_exception_decision', campaign_id=review.campaign_id, work_item_id=review.work_item_id, plan_id=review.plan_id, claim_id=claim.claim_id) }}">
+        <input type="hidden" name="authenticity_token" value="{{ authenticity_token() }}">
+        <input type="hidden" name="plan_fingerprint" value="{{ compression.plan_fingerprint }}">
+        <label class="form-label" for="claim-notes-{{ claim.claim_id }}">Reviewer notes</label>
+        <textarea class="form-control mb-2" id="claim-notes-{{ claim.claim_id }}" name="notes" rows="2">{{ claim.reviewer_notes }}</textarea>
+        <button class="btn btn-success btn-sm" name="decision" value="approved" type="submit">Approve claim</button>
+        <button class="btn btn-outline-danger btn-sm" name="decision" value="rejected" type="submit">Reject</button>
+        <button class="btn btn-outline-warning btn-sm" name="decision" value="needs_revision" type="submit">Needs revision</button>
+      </form>
+    </article>
+    {% endif %}
+    {% endfor %}
+  </section>
+  {% elif compression.ready_for_package_approval %}
+  <section class="quality-section" aria-labelledby="claimApprovalTitle">
+    <span class="section-eyebrow">Human approval required</span>
+    <h2 id="claimApprovalTitle">The reviewed claim set is coherent</h2>
+    <p>One approval accepts this exact supported claim set for workflow drafting. It does not publish.</p>
+    <form method="post" action="{{ url_for('knowledge_builder_claim_set_approve', campaign_id=review.campaign_id, work_item_id=review.work_item_id, plan_id=review.plan_id) }}">
+      <input type="hidden" name="authenticity_token" value="{{ authenticity_token() }}">
+      <input type="hidden" name="plan_fingerprint" value="{{ compression.plan_fingerprint }}">
+      <input type="hidden" name="evidence_input_fingerprint" value="{{ compression.evidence_input_fingerprint }}">
+      <button class="btn btn-success" type="submit">Approve Reviewed Claim Set</button>
+    </form>
+  </section>
+  {% endif %}
+
+  <section class="quality-section">
+    <details>
+      <summary>View proposed claim summary ({{ compression.total_claims }})</summary>
+      <ul class="mt-2">{% for claim in plan.claims %}<li>{{ claim.normalized_claim }}</li>{% endfor %}</ul>
+    </details>
+    <details class="mt-3">
+      <summary>Technical details</summary>
+      <dl class="mt-2">
+        <dt>Claim plan</dt><dd><code>{{ review.plan_id }}</code></dd>
+        <dt>Evidence fingerprint</dt><dd><code>{{ compression.evidence_input_fingerprint }}</code></dd>
+      </dl>
+      <a href="{{ review.legacy_url }}">Open full claim-planning review</a>
+    </details>
+  </section>
+
+  <a class="btn btn-outline-secondary" href="{{ review.builder_url }}">Return to Knowledge Builder</a>
+</div>
+{% endblock %}

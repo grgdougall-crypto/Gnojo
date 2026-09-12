@@ -1377,6 +1377,13 @@ def knowledge_builder_evidence_exceptions(campaign_id, work_item_id):
             extraction_id=workspace["extraction_id"],
             evidence_id=exception["evidence_id"],
         ))
+    if len(workspace["groups"]) == 1:
+        return redirect(url_for(
+            "knowledge_builder_evidence_exception_group",
+            campaign_id=campaign_id, work_item_id=work_item_id,
+            extraction_id=workspace["extraction_id"],
+            group_id=workspace["groups"][0]["group_id"],
+        ))
     return render_template(
         "knowledge_builder_evidence_exceptions.html", workspace=workspace,
     )
@@ -1402,12 +1409,33 @@ def knowledge_builder_evidence_exception(
     )
 
 
+@app.get(
+    "/curator/growth/knowledge-builder/<campaign_id>/<work_item_id>"
+    "/exceptions/evidence/<extraction_id>/groups/<group_id>"
+)
+def knowledge_builder_evidence_exception_group(
+    campaign_id, work_item_id, extraction_id, group_id
+):
+    try:
+        workspace = KnowledgeBuilderService().evidence_exception_group(
+            campaign_id, work_item_id, group_id
+        )
+        if workspace["extraction_id"] != extraction_id:
+            abort(404)
+    except KnowledgeBuilderError:
+        abort(404)
+    return render_template(
+        "knowledge_builder_evidence_exceptions.html", workspace=workspace,
+    )
+
+
 def _knowledge_builder_exception_redirect(campaign_id, work_item_id, result):
     exceptions = result.get("exceptions") or []
+    groups = result.get("groups") or []
     notice = (
         "Evidence exception resolved. Resume preparation."
         if not exceptions else
-        f"Evidence decision recorded. {len(exceptions)} exception(s) remain."
+        f"Evidence decision recorded. {len(groups)} review group(s) remain."
     )
     return redirect(url_for(
         "knowledge_builder_detail", campaign_id=campaign_id,
@@ -1459,14 +1487,184 @@ def knowledge_builder_evidence_exception_decision(
     return _knowledge_builder_exception_redirect(campaign_id, work_item_id, result)
 
 
+@app.post(
+    "/curator/growth/knowledge-builder/<campaign_id>/<work_item_id>"
+    "/exceptions/evidence/<extraction_id>/groups/<group_id>/decision"
+)
+def knowledge_builder_evidence_exception_group_decision(
+    campaign_id, work_item_id, extraction_id, group_id
+):
+    try:
+        result = KnowledgeBuilderService().decide_evidence_group(
+            campaign_id, work_item_id, extraction_id, group_id,
+            request.form.get("decision", ""),
+            expected_group_fingerprint=request.form.get(
+                "group_fingerprint", ""
+            ),
+            reviewer=g.reviewer_identity.username,
+            notes=request.form.get("notes", ""),
+        )
+    except KnowledgeBuilderError as exception:
+        return redirect(url_for(
+            "knowledge_builder_evidence_exceptions",
+            campaign_id=campaign_id, work_item_id=work_item_id,
+            builder_error=str(exception),
+        ))
+    return _knowledge_builder_exception_redirect(campaign_id, work_item_id, result)
+
+
+@app.get(
+    "/curator/growth/knowledge-builder/<campaign_id>/<work_item_id>"
+    "/claims/<plan_id>"
+)
+def knowledge_builder_claim_review(campaign_id, work_item_id, plan_id):
+    try:
+        review = KnowledgeBuilderService().claim_review(
+            campaign_id, work_item_id, plan_id
+        )
+    except KnowledgeBuilderError:
+        abort(404)
+    return render_template(
+        "knowledge_builder_claim_review.html", review=review,
+        builder_error=request.args.get("builder_error", ""),
+    )
+
+
+@app.post(
+    "/curator/growth/knowledge-builder/<campaign_id>/<work_item_id>"
+    "/claims/<plan_id>/claims/<claim_id>"
+)
+def knowledge_builder_claim_exception_decision(
+    campaign_id, work_item_id, plan_id, claim_id
+):
+    try:
+        KnowledgeBuilderService().decide_claim_exception(
+            campaign_id, work_item_id, plan_id, claim_id,
+            request.form.get("decision", ""),
+            expected_plan_fingerprint=request.form.get(
+                "plan_fingerprint", ""
+            ),
+            notes=request.form.get("notes", ""),
+        )
+        error = ""
+    except KnowledgeBuilderError as exception:
+        error = str(exception)
+    return redirect(url_for(
+        "knowledge_builder_claim_review",
+        campaign_id=campaign_id, work_item_id=work_item_id,
+        plan_id=plan_id, builder_error=error,
+    ))
+
+
+@app.post(
+    "/curator/growth/knowledge-builder/<campaign_id>/<work_item_id>"
+    "/claims/<plan_id>/approve"
+)
+def knowledge_builder_claim_set_approve(campaign_id, work_item_id, plan_id):
+    try:
+        result = KnowledgeBuilderService().approve_claim_set(
+            campaign_id, work_item_id, plan_id,
+            reviewer=g.reviewer_identity.username,
+            expected_plan_fingerprint=request.form.get(
+                "plan_fingerprint", ""
+            ),
+            expected_evidence_fingerprint=request.form.get(
+                "evidence_input_fingerprint", ""
+            ),
+        )
+        if result.get("claim_set_approval_result") == "already_approved":
+            notice = (
+                "The reviewed claim set was already approved; no duplicate "
+                "decision was recorded."
+            )
+        elif result.get("continuation_error"):
+            notice = (
+                "Reviewed claim set approved. Safe preparation paused: "
+                + result["continuation_error"]
+            )
+        else:
+            notice = "Reviewed claim set approved. Safe preparation continued."
+        error = ""
+    except KnowledgeBuilderError as exception:
+        notice, error = "", str(exception)
+    if error:
+        return redirect(url_for(
+            "knowledge_builder_claim_review",
+            campaign_id=campaign_id, work_item_id=work_item_id,
+            plan_id=plan_id, builder_error=error,
+        ))
+    return redirect(url_for(
+        "knowledge_builder_detail", campaign_id=campaign_id,
+        work_item_id=work_item_id, builder_notice=notice,
+    ))
+
+
+@app.post(
+    "/curator/growth/knowledge-builder/<campaign_id>/<work_item_id>"
+    "/claims/<plan_id>/find-verification-evidence"
+)
+def knowledge_builder_find_verification_evidence(
+    campaign_id, work_item_id, plan_id
+):
+    try:
+        result = KnowledgeBuilderService().recover_verification_evidence(
+            campaign_id, work_item_id, plan_id,
+            expected_gap_fingerprint=request.form.get(
+                "gap_fingerprint", ""
+            ),
+            expected_evidence_fingerprint=request.form.get(
+                "evidence_input_fingerprint", ""
+            ),
+            reviewer=g.reviewer_identity.username,
+        )
+        execution = result.get("execution") or {}
+        if execution.get("stop_reason") == "preparation_failed":
+            notice = (
+                "Verification evidence could not be established by the bounded "
+                "recovery attempt. Review the current governed preparation state."
+            )
+        elif execution.get("stop_reason") == "external_operation_boundary":
+            notice = (
+                "Verification recovery completed one bounded external operation. "
+                "Another explicit request is required before any further retrieval."
+            )
+        else:
+            notice = (
+                "Verification evidence recovery started. Continue through the "
+                "current governed source and evidence review steps."
+            )
+    except KnowledgeBuilderError as exception:
+        return redirect(url_for(
+            "knowledge_builder_claim_review",
+            campaign_id=campaign_id, work_item_id=work_item_id,
+            plan_id=plan_id, builder_error=str(exception),
+        ))
+    return redirect(url_for(
+        "knowledge_builder_detail", campaign_id=campaign_id,
+        work_item_id=work_item_id, builder_notice=notice,
+    ))
+
+
 @app.post("/curator/growth/knowledge-builder/<campaign_id>/<work_item_id>/prepare")
 def knowledge_builder_prepare(campaign_id, work_item_id):
     try:
         result = KnowledgeBuilderService().prepare(campaign_id, work_item_id)
-        notice = (
-            f"Safe preparation completed {result.get('execution', {}).get('transitions', 0)} "
-            "pipeline step(s)."
-        )
+        execution = result.get("execution", {})
+        transitions = execution.get("transitions", 0)
+        stop_reason = execution.get("stop_reason")
+        if stop_reason == "external_operation_boundary":
+            notice = (
+                f"Safe preparation completed {transitions} pipeline step(s). "
+                "The next approved external source operation requires a separate "
+                "explicit request."
+            )
+        elif stop_reason == "safety_ceiling":
+            notice = (
+                f"Safe preparation paused after {transitions} pipeline step(s) at "
+                "the bounded safety ceiling. Review the current state before continuing."
+            )
+        else:
+            notice = f"Safe preparation completed {transitions} pipeline step(s)."
         error = ""
     except KnowledgeBuilderError as exception:
         notice, error = "", str(exception)

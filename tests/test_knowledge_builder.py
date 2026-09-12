@@ -13,6 +13,12 @@ from app.services.knowledge_builder_service import (
     KnowledgeBuilderService,
 )
 from app.services.authentication_service import ReviewerAccessPolicy
+from app.services.knowledge_campaign_orchestration_service import (
+    KnowledgeCampaignOrchestrationError,
+)
+from app.services.knowledge_claim_planning_service import (
+    KnowledgeClaimPlanningError,
+)
 from app.services.knowledge_workflow_generation_service import (
     KnowledgeWorkflowGenerationError,
 )
@@ -109,7 +115,9 @@ class _Orchestration:
         self.campaign = {
             "campaign_id": "KCAMP-TEST",
             "work_items": [{"work_item_id": "KCW-VPN", "work_type": "workflow",
-                            "target_asset": "vpn"}],
+                            "target_asset": "vpn", "gap_id": "GAP-VPN"}],
+            "gaps": [{"gap_id": "GAP-VPN", "gap_type": "missing_workflow",
+                      "area_id": "vpn", "facet": "workflow"}],
         }
         self.planner = _Planner(self.campaign)
         self.workflows = workflows
@@ -123,12 +131,17 @@ class _Orchestration:
             }],
         }
         self.transitions = []
+        self.current_projection = None
+        self.research = Mock()
 
     def read_persisted(self, campaign_root):
         return [self.record]
 
     def refresh(self, orchestration_id):
         return self.record
+
+    def project_current(self, orchestration_id):
+        return self.current_projection or self.record
 
     def advance_item(self, orchestration_id, work_item_id, actor="Human"):
         self.transitions.append((work_item_id, actor))
@@ -260,6 +273,9 @@ class KnowledgeBuilderTests(unittest.TestCase):
         self.publications = _Publications()
         self.evidence = _Evidence()
         self.orchestration.evidence = self.evidence
+        self.claims = Mock()
+        self.claims.input_is_current.return_value = True
+        self.orchestration.claims = self.claims
         lifecycle = SimpleNamespace(
             reasoning_review_error="", reasoning_reviews=(),
             validation=SimpleNamespace(reasoning_findings=()),
@@ -272,6 +288,51 @@ class KnowledgeBuilderTests(unittest.TestCase):
     def tearDown(self):
         self.temporary.cleanup()
 
+    def _claim_workspace(self, *, ready=True, exceptions=None, gaps=None,
+                         approval=None):
+        exceptions = list(exceptions or [])
+        gaps = list(gaps or [])
+        plan = {
+            "claim_plan_id": "KCPM-DEVICE", "campaign_id": "KCAMP-TEST",
+            "work_item_id": "KCW-VPN", "target_asset_type": "workflow",
+            "status": "needs_review" if ready else "needs_evidence",
+            "input_fingerprint": "evidence-fingerprint",
+            "claims": [
+                {
+                    "claim_id": "CLM-1", "claim_type": "action_procedure",
+                    "normalized_claim": "Open Device Manager.",
+                    "review_state": "proposed", "reviewer_notes": "",
+                },
+                {
+                    "claim_id": "CLM-2", "claim_type": "verification",
+                    "normalized_claim": "Confirm the device status.",
+                    "review_state": "proposed", "reviewer_notes": "",
+                },
+            ],
+            "conflicts": [], "evidence_gaps": gaps,
+            "claim_set_approval": approval,
+        }
+        compression = {
+            "enabled": True, "plan_fingerprint": "plan-fingerprint",
+            "evidence_input_fingerprint": "evidence-fingerprint",
+            "total_claims": 2, "direct_high_confidence": 2,
+            "conditional_claims": 0, "attention_count": len(exceptions),
+            "unresolved_attention_count": len(exceptions),
+            "routine_claims": plan["claims"],
+            "exception_claims": exceptions,
+            "procedure_coverage": {
+                "required": ["entry_setup", "primary_action", "success_verification"],
+                "covered": (["entry_setup", "primary_action", "success_verification"]
+                            if ready else ["entry_setup", "primary_action"]),
+                "missing": [] if ready else ["success_verification"],
+            },
+            "verification_coverage": ready, "conflict_count": 0,
+            "evidence_gap_count": len(gaps), "section_blockers": [],
+            "blocking_reasons": ([] if ready else ["Required evidence gaps remain."]),
+            "ready_for_package_approval": ready and not exceptions and not gaps,
+        }
+        return {"plan": plan, "compression": compression}
+
     def test_three_step_projection_and_safe_automatic_continuation(self):
         initial = self.service.project("KCAMP-TEST", "KCW-VPN")
         self.assertEqual(initial["step"], "prepare")
@@ -280,6 +341,77 @@ class KnowledgeBuilderTests(unittest.TestCase):
         self.assertEqual(prepared["execution"]["transitions"], 2)
         self.assertEqual(len(self.orchestration.transitions), 2)
         self.assertEqual(prepared["counts"], {"sources": 1, "evidence": 1, "claims": 1})
+
+    def test_prepare_crosses_more_than_three_internal_machine_safe_stages(self):
+        actions = [
+            "prepare_evidence", "prepare_evidence",
+            "prepare_workflow_claim_plan", "plan_workflow_claims",
+            "prepare_workflow_package", "plan_workflow",
+        ]
+        state = self.orchestration.record["work_item_states"][0]
+        state.update(next_action=actions[0], action_authority="machine_safe")
+        calls = []
+
+        def advance(orchestration_id, work_item_id, actor="Human"):
+            calls.append(state["next_action"])
+            index = len(calls)
+            if index < len(actions):
+                state["next_action"] = actions[index]
+            else:
+                state.update(
+                    state="awaiting_human_review",
+                    next_action="approve_workflow_draft_creation",
+                    action_authority="human_gate",
+                )
+            return {"execution": {"outcomes": [{"status": "completed"}]}}
+
+        self.orchestration.advance_item = advance
+        with patch.object(
+            self.service, "project", side_effect=lambda *args: {"step": "review"}
+        ):
+            result = self.service.prepare("KCAMP-TEST", "KCW-VPN")
+            replay = self.service.prepare("KCAMP-TEST", "KCW-VPN")
+
+        self.assertEqual(result["execution"]["transitions"], 6)
+        self.assertEqual(result["execution"]["stop_reason"], "governed_boundary")
+        self.assertEqual(replay["execution"]["transitions"], 0)
+        self.assertEqual(calls, actions)
+        self.assertEqual(state["next_action"], "approve_workflow_draft_creation")
+
+    def test_prepare_preserves_one_external_operation_boundary_and_explains_it(self):
+        state = self.orchestration.record["work_item_states"][0]
+        state.update(next_action="extract_evidence", action_authority="machine_safe")
+        calls = []
+
+        def advance(orchestration_id, work_item_id, actor="Human"):
+            calls.append(state["next_action"])
+            return {"execution": {"outcomes": [{"status": "completed"}]}}
+
+        self.orchestration.advance_item = advance
+        control = self.service.project("KCAMP-TEST", "KCW-VPN")["prepare_action"]
+        with patch.object(self.service, "project", return_value={"step": "prepare"}):
+            result = self.service.prepare("KCAMP-TEST", "KCW-VPN")
+
+        self.assertEqual(calls, ["extract_evidence"])
+        self.assertEqual(result["execution"]["external_operations"], 1)
+        self.assertEqual(
+            result["execution"]["stop_reason"], "external_operation_boundary"
+        )
+        self.assertEqual(control["label"], "Retrieve Next Evidence Source")
+        self.assertIn("explicit request", control["explanation"])
+
+    def test_prepare_fails_closed_if_authoritative_state_changes_before_advance(self):
+        self.orchestration.advance_item = Mock(side_effect=
+            KnowledgeCampaignOrchestrationError(
+                "This item is at a human review gate or is not actionable."
+            )
+        )
+
+        with self.assertRaisesRegex(KnowledgeBuilderError, "human review gate"):
+            self.service.prepare("KCAMP-TEST", "KCW-VPN")
+
+        self.orchestration.advance_item.assert_called_once()
+        self.assertEqual(self.publications.calls, 0)
 
     def test_builder_excludes_legacy_safety_review_work_from_workflow_items(self):
         self.orchestration.campaign["work_items"].append({
@@ -312,10 +444,455 @@ class KnowledgeBuilderTests(unittest.TestCase):
         self.assertEqual(result["attention"]["count"], 1)
         self.assertEqual(result["execution"]["transitions"], 0)
 
-    def test_multiple_exceptions_use_compact_list_and_do_not_render_unrelated_units(self):
-        self.evidence.units.append(
-            self.evidence._unit("EVD-EXCEPTION-2", "Choose the intended VPN connection.")
+    def test_device_manager_claim_blocker_opens_focused_current_plan_read_only(self):
+        gaps = [{
+            "gap_id": "GAP-VERIFY", "section": "verification",
+            "reason": "Required success verification evidence is missing.",
+        }]
+        self.claims.review_workspace.return_value = self._claim_workspace(
+            ready=False, gaps=gaps
         )
+        state = self.orchestration.record["work_item_states"][0]
+        state.update(
+            title="Device Manager", state="blocked", stage="stale",
+            next_action=None, action_authority=None,
+            package_id="KCPM-DEVICE", stale=True,
+            review_link="/curator/growth/claim-planning/KCPM-DEVICE",
+            blocker={
+                "blocker_type": "workflow_eligibility",
+                "original_package_id": "KCPM-DEVICE",
+                "explanation": "Approved current workflow claims are required.",
+            },
+        )
+        path = "/curator/growth/knowledge-builder/KCAMP-TEST/KCW-VPN"
+        before = deepcopy(self.orchestration.record)
+        flask_app.config.update(TESTING=True, AUTH_TEST_BYPASS=True)
+        projected = self.service.project("KCAMP-TEST", "KCW-VPN")
+        focused_review = self.service.claim_review(
+            "KCAMP-TEST", "KCW-VPN", "KCPM-DEVICE"
+        )
+        # A stale generic orchestration URL must not override the exact Builder
+        # route at the final template-rendering boundary.
+        projected["attention"]["url"] = (
+            "/curator/growth/claim-planning/KCPM-DEVICE"
+        )
+        facade = Mock()
+        facade.project.return_value = projected
+        facade.claim_review.return_value = focused_review
+
+        with patch("app.app.KnowledgeBuilderService", return_value=facade):
+            builder = flask_app.test_client().get(path)
+            link = __import__("re").search(
+                rb'<a[^>]+href="([^"]+)"[^>]*>Review claims</a>', builder.data
+            ).group(1).decode("utf-8")
+            focused = flask_app.test_client().get(link)
+
+        self.assertEqual(
+            link, path + "/claims/KCPM-DEVICE"
+        )
+        self.assertEqual(focused.status_code, 200)
+        self.assertIn(b"Claim summary", focused.data)
+        self.assertIn(b"Required success verification evidence is missing", focused.data)
+        self.assertNotIn(b"Approve Reviewed Claim Set", focused.data)
+        self.assertIn(b"Open full claim-planning review", focused.data)
+        self.assertEqual(self.orchestration.record, before)
+        self.claims.approve_reviewed_claim_set.assert_not_called()
+
+    def test_missing_verification_gaps_are_one_targeted_builder_recovery(self):
+        gaps = [
+            {"gap_id": "GAP-SECTION", "section": "verification", "required": True,
+             "reason": "Required section 'verification' lacks approved supporting evidence."},
+            {"gap_id": "GAP-ROLE", "section": "verification", "required": True,
+             "coverage_role": "success_verification",
+             "reason": "Missing-workflow evidence does not support success verification."},
+            {"gap_id": "GAP-TERMINAL", "section": "verification", "required": True,
+             "reason": "Expected-result evidence is required for a terminal result."},
+        ]
+        self.claims.review_workspace.return_value = self._claim_workspace(
+            ready=False, gaps=gaps
+        )
+        state = self.orchestration.record["work_item_states"][0]
+        state.update(
+            title="Device Manager", state="blocked", stage="stale",
+            next_action=None, action_authority=None, package_id="KCPM-DEVICE",
+            blocker={
+                "blocker_type": "workflow_eligibility",
+                "original_package_id": "KCPM-DEVICE",
+                "explanation": "Approved current workflow claims are required.",
+            },
+        )
+        review = self.service.claim_review(
+            "KCAMP-TEST", "KCW-VPN", "KCPM-DEVICE"
+        )
+        recovery = review["gap_recovery"]
+        self.assertTrue(recovery["eligible"])
+        self.assertEqual(recovery["technical_gap_count"], 3)
+        self.assertEqual(
+            recovery["objective"]["required_coverage_roles"],
+            ["success_verification"],
+        )
+
+        flask_app.config.update(TESTING=True, AUTH_TEST_BYPASS=True)
+        facade = Mock()
+        facade.claim_review.return_value = review
+        with patch("app.app.KnowledgeBuilderService", return_value=facade):
+            page = flask_app.test_client().get(
+                "/curator/growth/knowledge-builder/KCAMP-TEST/KCW-VPN/"
+                "claims/KCPM-DEVICE"
+            )
+        self.assertEqual(page.status_code, 200)
+        self.assertEqual(page.data.count(b"Missing verification evidence"), 1)
+        self.assertIn(b"Find Verification Evidence", page.data)
+        self.assertIn(b"Technical evidence-gap details (3)", page.data)
+        self.assertNotIn(b"Approve Reviewed Claim Set", page.data)
+
+    def test_verification_recovery_rejects_stale_request_before_research(self):
+        gaps = [{
+            "gap_id": "GAP-VERIFY", "section": "verification", "required": True,
+            "coverage_role": "success_verification",
+            "reason": "Success verification evidence is missing.",
+        }]
+        self.claims.review_workspace.return_value = self._claim_workspace(
+            ready=False, gaps=gaps
+        )
+        state = self.orchestration.record["work_item_states"][0]
+        state.update(
+            state="blocked", package_id="KCPM-DEVICE",
+            blocker={"blocker_type": "workflow_eligibility",
+                     "original_package_id": "KCPM-DEVICE"},
+        )
+        with self.assertRaisesRegex(KnowledgeBuilderError, "evidence gap changed"):
+            self.service.recover_verification_evidence(
+                "KCAMP-TEST", "KCW-VPN", "KCPM-DEVICE",
+                expected_gap_fingerprint="stale",
+                expected_evidence_fingerprint="evidence-fingerprint",
+                reviewer="Reviewer",
+            )
+        self.orchestration.research.create_verification_recovery.assert_not_called()
+
+    def test_verification_recovery_creates_exact_objective_and_reuses_prepare(self):
+        gaps = [{
+            "gap_id": "GAP-VERIFY", "section": "verification", "required": True,
+            "coverage_role": "success_verification",
+            "reason": "Success verification evidence is missing.",
+        }]
+        self.claims.review_workspace.return_value = self._claim_workspace(
+            ready=False, gaps=gaps
+        )
+        state = self.orchestration.record["work_item_states"][0]
+        state.update(
+            state="blocked", package_id="KCPM-DEVICE",
+            blocker={"blocker_type": "workflow_eligibility",
+                     "original_package_id": "KCPM-DEVICE"},
+        )
+        review = self.service.claim_review(
+            "KCAMP-TEST", "KCW-VPN", "KCPM-DEVICE"
+        )
+        self.orchestration.research.create_verification_recovery.return_value = {
+            "package_id": "KRP-VERIFY",
+            "research_objective": {
+                "kind": "workflow_success_verification",
+                "supported_evidence_types": ["verification", "expected_result"],
+            },
+        }
+        with patch.object(
+            self.service, "prepare",
+            return_value={"step": "prepare", "execution": {
+                "transitions": 1, "external_operations": 1,
+                "stop_reason": "governed_boundary",
+            }},
+        ) as prepare:
+            result = self.service.recover_verification_evidence(
+                "KCAMP-TEST", "KCW-VPN", "KCPM-DEVICE",
+                expected_gap_fingerprint=review["gap_recovery"]["gap_fingerprint"],
+                expected_evidence_fingerprint="evidence-fingerprint",
+                reviewer="Reviewer",
+            )
+        self.orchestration.research.create_verification_recovery.assert_called_once_with(
+            "KCAMP-TEST", "GAP-VPN", "KCW-VPN",
+            claim_plan_id="KCPM-DEVICE",
+            evidence_input_fingerprint="evidence-fingerprint",
+            gap_fingerprint=review["gap_recovery"]["gap_fingerprint"],
+            actor="Reviewer",
+        )
+        prepare.assert_called_once_with("KCAMP-TEST", "KCW-VPN")
+        self.assertEqual(
+            result["verification_recovery"]["research_package_id"],
+            "KRP-VERIFY",
+        )
+
+    def test_non_verification_gap_has_no_recovery_action(self):
+        self.claims.review_workspace.return_value = self._claim_workspace(
+            ready=False, gaps=[{
+                "gap_id": "GAP-PROCEDURE", "section": "procedure",
+                "required": True, "coverage_role": "primary_action",
+                "reason": "Primary action evidence is missing.",
+            }]
+        )
+        state = self.orchestration.record["work_item_states"][0]
+        state.update(
+            state="blocked", package_id="KCPM-DEVICE",
+            blocker={"blocker_type": "workflow_eligibility",
+                     "original_package_id": "KCPM-DEVICE"},
+        )
+        review = self.service.claim_review(
+            "KCAMP-TEST", "KCW-VPN", "KCPM-DEVICE"
+        )
+        self.assertFalse(review["gap_recovery"]["eligible"])
+        self.assertIn("outside", review["gap_recovery"]["reason"])
+
+    def test_focused_zero_exception_claim_set_approval_returns_to_exact_builder(self):
+        workspace = self._claim_workspace(ready=True)
+        self.claims.review_workspace.return_value = workspace
+        state = self.orchestration.record["work_item_states"][0]
+        state.update(
+            title="Device Manager", state="awaiting_human_review",
+            stage="workflow_claim_review_required", next_action="review_claims",
+            action_authority="human_gate", package_id="KCPM-DEVICE",
+            review_link="/curator/growth/claim-planning/KCPM-DEVICE",
+            blocker=None,
+        )
+
+        def approve(*args, **kwargs):
+            state.update(
+                state="machine_ready", next_action="prepare_workflow_package",
+                action_authority="machine_safe", blocker=None,
+            )
+            return {
+                **workspace["plan"], "status": "ready_for_drafting",
+                "claim_set_approval_result": "approved",
+            }
+
+        self.claims.approve_reviewed_claim_set.side_effect = approve
+        path = ("/curator/growth/knowledge-builder/KCAMP-TEST/KCW-VPN/"
+                "claims/KCPM-DEVICE")
+        flask_app.config.update(TESTING=True, AUTH_TEST_BYPASS=True)
+        client = flask_app.test_client()
+        with patch("app.app.KnowledgeBuilderService", return_value=self.service):
+            page = client.get(path)
+            response = client.post(path + "/approve", data={
+                "plan_fingerprint": "plan-fingerprint",
+                "evidence_input_fingerprint": "evidence-fingerprint",
+            }, follow_redirects=True)
+
+        self.assertIn(b"Approve Reviewed Claim Set", page.data)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.request.path,
+            "/curator/growth/knowledge-builder/KCAMP-TEST/KCW-VPN",
+        )
+        self.assertIn(b"Reviewed claim set approved", response.data)
+        self.claims.approve_reviewed_claim_set.assert_called_once_with(
+            "KCPM-DEVICE", expected_plan_fingerprint="plan-fingerprint",
+            expected_evidence_fingerprint="evidence-fingerprint",
+            reviewer="Test Reviewer",
+        )
+        self.assertEqual(len(self.orchestration.transitions), 2)
+        self.assertEqual(self.publications.calls, 0)
+
+    def test_focused_claim_exception_uses_authoritative_review_and_stale_guard(self):
+        exception = {
+            "claim_id": "CLM-EXCEPTION", "claim_type": "caution",
+            "normalized_claim": "Changing the driver may affect device state.",
+            "review_state": "proposed", "reviewer_notes": "",
+            "attention_reasons": ["safety or state-changing review"],
+        }
+        workspace = self._claim_workspace(ready=False, exceptions=[exception])
+        workspace["compression"].update(
+            blocking_reasons=["1 claim exception still requires review."],
+            evidence_gap_count=0,
+        )
+        workspace["plan"]["evidence_gaps"] = []
+        self.claims.review_workspace.return_value = workspace
+        state = self.orchestration.record["work_item_states"][0]
+        state.update(
+            state="awaiting_human_review", next_action="review_claims",
+            action_authority="human_gate", package_id="KCPM-DEVICE",
+            blocker=None,
+        )
+
+        with self.assertRaisesRegex(KnowledgeBuilderError, "changed"):
+            self.service.decide_claim_exception(
+                "KCAMP-TEST", "KCW-VPN", "KCPM-DEVICE", "CLM-EXCEPTION",
+                "approved", expected_plan_fingerprint="stale",
+            )
+        self.claims.review_claim.assert_not_called()
+
+        self.service.decide_claim_exception(
+            "KCAMP-TEST", "KCW-VPN", "KCPM-DEVICE", "CLM-EXCEPTION",
+            "approved", expected_plan_fingerprint="plan-fingerprint",
+            notes="Reviewed.",
+        )
+        self.claims.review_claim.assert_called_once_with(
+            "KCPM-DEVICE", "CLM-EXCEPTION", "approved", "Reviewed."
+        )
+
+    def test_claim_review_routes_retain_reviewer_and_csrf_boundaries(self):
+        get_path = (
+            "/curator/growth/knowledge-builder/KCAMP-TEST/KCW-VPN/"
+            "claims/KCPM-DEVICE"
+        )
+        approve_path = get_path + "/approve"
+        claim_path = get_path + "/claims/CLM-EXCEPTION"
+        recovery_path = get_path + "/find-verification-evidence"
+        self.assertTrue(ReviewerAccessPolicy.requires_reviewer(get_path, "GET"))
+        self.assertTrue(ReviewerAccessPolicy.requires_reviewer(approve_path, "POST"))
+        self.assertTrue(ReviewerAccessPolicy.requires_csrf(approve_path, "POST"))
+        self.assertTrue(ReviewerAccessPolicy.requires_csrf(claim_path, "POST"))
+        self.assertTrue(ReviewerAccessPolicy.requires_reviewer(recovery_path, "POST"))
+        self.assertTrue(ReviewerAccessPolicy.requires_csrf(recovery_path, "POST"))
+        self.assertFalse(ReviewerAccessPolicy.requires_csrf(get_path, "GET"))
+
+    def test_verification_recovery_post_returns_to_exact_builder(self):
+        path = (
+            "/curator/growth/knowledge-builder/KCAMP-TEST/KCW-VPN/"
+            "claims/KCPM-DEVICE/find-verification-evidence"
+        )
+        facade = Mock()
+        facade.recover_verification_evidence.return_value = {
+            "execution": {
+                "transitions": 1, "external_operations": 1,
+                "stop_reason": "governed_boundary",
+            }
+        }
+        flask_app.config.update(TESTING=True, AUTH_TEST_BYPASS=True)
+        with patch("app.app.KnowledgeBuilderService", return_value=facade):
+            response = flask_app.test_client().post(path, data={
+                "gap_fingerprint": "gap-current",
+                "evidence_input_fingerprint": "evidence-current",
+            })
+
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response.location.startswith(
+            "/curator/growth/knowledge-builder/KCAMP-TEST/KCW-VPN"
+        ))
+        facade.recover_verification_evidence.assert_called_once_with(
+            "KCAMP-TEST", "KCW-VPN", "KCPM-DEVICE",
+            expected_gap_fingerprint="gap-current",
+            expected_evidence_fingerprint="evidence-current",
+            reviewer="Test Reviewer",
+        )
+
+    def test_builder_get_uses_current_human_gate_before_external_retrieval(self):
+        persisted_state = self.orchestration.record["work_item_states"][0]
+        persisted_state.update(
+            state="machine_ready", stage="evidence_extraction_ready",
+            next_action="extract_evidence", action_authority="machine_safe",
+            package_id="KEX-PROPOSED",
+            review_link="/curator/growth/evidence-extraction/KEX-PROPOSED",
+        )
+        current = deepcopy(self.orchestration.record)
+        current_state = current["work_item_states"][0]
+        current_state.update(
+            state="awaiting_human_review", stage="evidence_review_required",
+            next_action="review_evidence", action_authority="human_gate",
+            package_id="KEX-VPN",
+            review_link="/curator/growth/evidence-extraction/KEX-VPN",
+        )
+        self.orchestration.current_projection = current
+        flask_app.config.update(TESTING=True, AUTH_TEST_BYPASS=True)
+        path = "/curator/growth/knowledge-builder/KCAMP-TEST/KCW-VPN"
+        before_record = deepcopy(self.orchestration.record)
+        before_units = deepcopy(self.evidence.units)
+
+        with patch("app.app.KnowledgeBuilderService", return_value=self.service):
+            response = flask_app.test_client().get(path)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Review evidence exception", response.data)
+        self.assertNotIn(b"Retrieve Next Evidence Source", response.data)
+        self.assertEqual(self.orchestration.record, before_record)
+        self.assertEqual(self.evidence.units, before_units)
+        self.assertEqual(self.publications.calls, 0)
+
+        resolved = deepcopy(current)
+        resolved_state = resolved["work_item_states"][0]
+        resolved_state.update(
+            state="machine_ready", stage="evidence_extraction_ready",
+            next_action="extract_evidence", action_authority="machine_safe",
+            package_id="KEX-PROPOSED",
+            review_link="/curator/growth/evidence-extraction/KEX-PROPOSED",
+        )
+        self.orchestration.current_projection = resolved
+        with patch("app.app.KnowledgeBuilderService", return_value=self.service):
+            after = flask_app.test_client().get(path)
+        self.assertIn(b"Retrieve Next Evidence Source", after.data)
+        self.assertNotIn(b"Review evidence exception", after.data)
+
+    def test_targeted_recovery_remaining_source_uses_next_retrieval_boundary(self):
+        state = self.orchestration.record["work_item_states"][0]
+        state.update(
+            state="machine_ready", stage="evidence_extraction_ready",
+            next_action="prepare_evidence", action_authority="machine_safe",
+            source_candidate_id="SRC-NEXT", blocker=None,
+            verification_recovery={
+                "research_package_id": "KRP-VERIFY",
+                "objective_fingerprint": "objective-current",
+            },
+        )
+        before = deepcopy(self.orchestration.record)
+        projection = self.service.project("KCAMP-TEST", "KCW-VPN")
+
+        self.assertIsNone(projection["attention"])
+        self.assertEqual(
+            projection["prepare_action"]["label"],
+            "Retrieve Next Evidence Source",
+        )
+        self.assertIn(
+            "one approved verification source",
+            projection["prepare_action"]["explanation"],
+        )
+        self.assertEqual(self.orchestration.record, before)
+
+    def test_exhausted_targeted_recovery_is_focused_and_has_no_legacy_action(self):
+        state = self.orchestration.record["work_item_states"][0]
+        state.update(
+            state="blocked", stage="verification_evidence_exhausted",
+            next_action=None, action_authority=None,
+            package_id="KEX-LAST", review_link="/legacy/evidence/KEX-LAST",
+            verification_recovery={
+                "research_package_id": "KRP-VERIFY",
+                "approved_source_count": 4, "exhausted_source_count": 4,
+            },
+            blocker={
+                "blocker_type": "verification_evidence_exhausted",
+                "original_package_id": "KEX-LAST",
+                "explanation": (
+                    "Verification evidence could not be established. Gnojo reviewed "
+                    "the approved verification sources but did not find enough "
+                    "authoritative evidence to define a supported success condition."
+                ),
+            },
+        )
+        before = deepcopy(self.orchestration.record)
+        projection = self.service.project("KCAMP-TEST", "KCW-VPN")
+        self.assertEqual(
+            projection["attention"]["kind"],
+            "verification_recovery_exhausted",
+        )
+        self.assertIsNone(projection["attention"]["url"])
+
+        flask_app.config.update(TESTING=True, AUTH_TEST_BYPASS=True)
+        with patch("app.app.KnowledgeBuilderService", return_value=self.service):
+            page = flask_app.test_client().get(
+                "/curator/growth/knowledge-builder/KCAMP-TEST/KCW-VPN"
+            )
+        self.assertEqual(page.status_code, 200)
+        self.assertIn(b"Verification evidence could not be established", page.data)
+        self.assertIn(b"supported success condition", page.data)
+        self.assertNotIn(b"Review preparation issue", page.data)
+        self.assertNotIn(b"/legacy/evidence/KEX-LAST", page.data)
+        self.assertNotIn(b"Approve Reviewed Claim Set", page.data)
+        self.assertEqual(self.orchestration.record, before)
+
+    def test_multiple_exceptions_use_compact_list_and_do_not_render_unrelated_units(self):
+        second = self.evidence._unit(
+            "EVD-EXCEPTION-2", "Choose the intended VPN connection."
+        )
+        second["workflow_evidence_compression"]["reason"] = (
+            "unsafe_or_state_changing_content"
+        )
+        self.evidence.units.append(second)
         self.evidence.units.append({
             **self.evidence._unit("EVD-SETTLED", "Unrelated settled evidence."),
             "settled": True,
@@ -333,10 +910,127 @@ class KnowledgeBuilderTests(unittest.TestCase):
         with patch("app.app.KnowledgeBuilderService", return_value=facade):
             response = flask_app.test_client().get(projection["attention"]["url"])
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b"2 evidence exceptions need review", response.data)
+        self.assertIn(b"2 evidence review groups", response.data)
         self.assertNotIn(b"Unrelated settled evidence", response.data)
         facade.decide_evidence.assert_not_called()
         facade.decide_evidence_role.assert_not_called()
+
+    def test_device_manager_shaped_exceptions_compress_to_four_safe_groups(self):
+        def unit(evidence_id, claim, reason, recommendation="context",
+                 evidence_type="diagnostic_observations", roles=None):
+            value = self.evidence._unit(evidence_id, claim)
+            value["evidence_type"] = evidence_type
+            value["fingerprint"] = f"fp-{evidence_id}"
+            value["workflow_coverage_roles"] = roles or []
+            value["candidacy"].update(
+                machine_recommended_role=recommendation,
+                recommendation_fingerprint=f"rec-{evidence_id}",
+            )
+            value["workflow_evidence_compression"]["reason"] = reason
+            return value
+
+        self.evidence.units = [
+            unit("EVD-U1", "Uninstall and reinstall the driver.",
+                 "unsafe_or_state_changing_content"),
+            unit("EVD-U2", "Press F5 to refresh Device Manager.",
+                 "unsafe_or_state_changing_content", evidence_type="procedure"),
+            unit("EVD-C1", "The device was disabled.",
+                 "potentially_conflicting_evidence"),
+            unit("EVD-C2", "Enable the device.",
+                 "potentially_conflicting_evidence", roles=["primary_action"]),
+            unit("EVD-A1", "Device Manager reports an error code.",
+                 "ambiguous_evidence_role", "undetermined", "symptoms"),
+            unit("EVD-A2", "Follow the resolution for the error code.",
+                 "ambiguous_evidence_role", "undetermined", "symptoms"),
+            unit("EVD-A3", "Inspect Device Status.",
+                 "ambiguous_evidence_role", "undetermined", "symptoms"),
+            unit("EVD-A4", "Resolve the reported hardware conflict.",
+                 "ambiguous_evidence_role", "undetermined", "symptoms"),
+        ]
+        state = self.orchestration.record["work_item_states"][0]
+        state.update(
+            state="awaiting_human_review", next_action="review_evidence",
+            action_authority="human_gate", package_id="KEX-VPN",
+        )
+        before = deepcopy(self.evidence.units)
+
+        workspace = self.service.evidence_exceptions(
+            "KCAMP-TEST", "KCW-VPN"
+        )
+
+        self.assertEqual(len(workspace["exceptions"]), 8)
+        self.assertEqual(len(workspace["groups"]), 4)
+        self.assertEqual(
+            sorted(group["count"] for group in workspace["groups"]),
+            [1, 1, 2, 4],
+        )
+        conflicts = [group for group in workspace["groups"]
+                     if group["title"] == "Potential evidence conflict"]
+        self.assertEqual(len(conflicts), 2)
+        self.assertTrue(all(not group["grouped"] for group in conflicts))
+        self.assertEqual(self.evidence.units, before)
+
+        builder = self.service.project("KCAMP-TEST", "KCW-VPN")
+        self.assertEqual(builder["attention"]["count"], 4)
+        self.assertEqual(builder["attention"]["proposition_count"], 8)
+        self.assertEqual(self.evidence.units, before)
+
+    def test_group_review_routes_retain_reviewer_and_csrf_boundaries(self):
+        get_path = (
+            "/curator/growth/knowledge-builder/KCAMP-TEST/KCW-VPN/"
+            "exceptions/evidence/KEX-VPN/groups/KBEG-AAAAAAAAAAAA"
+        )
+        post_path = get_path + "/decision"
+        self.assertTrue(ReviewerAccessPolicy.requires_reviewer(get_path, "GET"))
+        self.assertTrue(ReviewerAccessPolicy.requires_reviewer(post_path, "POST"))
+        self.assertTrue(ReviewerAccessPolicy.requires_csrf(post_path, "POST"))
+        self.assertFalse(ReviewerAccessPolicy.requires_csrf(get_path, "GET"))
+
+    def test_group_review_get_is_focused_and_post_returns_to_exact_builder(self):
+        second = self.evidence._unit(
+            "EVD-EXCEPTION-2", "Choose the intended VPN connection."
+        )
+        self.evidence.units.append(second)
+        state = self.orchestration.record["work_item_states"][0]
+        state.update(
+            state="awaiting_human_review", next_action="review_evidence",
+            action_authority="human_gate", package_id="KEX-VPN",
+        )
+        workspace = self.service.evidence_exceptions(
+            "KCAMP-TEST", "KCW-VPN"
+        )
+        group = workspace["groups"][0]
+        detail = deepcopy(workspace)
+        detail["current_group"] = group
+        facade = Mock()
+        facade.evidence_exception_group.return_value = detail
+        facade.decide_evidence_group.return_value = {
+            **workspace, "exceptions": [], "groups": [],
+        }
+        flask_app.config.update(TESTING=True, AUTH_TEST_BYPASS=True)
+        builder_path = "/curator/growth/knowledge-builder/KCAMP-TEST/KCW-VPN"
+        group_path = (
+            f"{builder_path}/exceptions/evidence/KEX-VPN/groups/"
+            f"{group['group_id']}"
+        )
+        client = flask_app.test_client()
+
+        with patch("app.app.KnowledgeBuilderService", return_value=facade):
+            page = client.get(group_path)
+            decision = client.post(group_path + "/decision", data={
+                "decision": "context",
+                "group_fingerprint": group["group_fingerprint"],
+            })
+
+        self.assertEqual(page.status_code, 200)
+        self.assertIn(b"Compatible evidence exceptions", page.data)
+        self.assertIn(b"2 propositions", page.data)
+        self.assertIn(b"Review propositions individually", page.data)
+        self.assertNotIn(b"Confirm the Evidence Candidate Set", page.data)
+        self.assertEqual(decision.status_code, 302)
+        self.assertTrue(decision.headers["Location"].startswith(builder_path))
+        facade.decide_evidence_group.assert_called_once()
+        self.assertEqual(self.publications.calls, 0)
 
     def test_focused_exception_get_is_read_only_and_keeps_legacy_workspace_secondary(self):
         state = self.orchestration.record["work_item_states"][0]
@@ -421,7 +1115,7 @@ class KnowledgeBuilderTests(unittest.TestCase):
             builder = client.get(builder_path)
             self.assertEqual(builder.status_code, 200)
             match = __import__("re").search(
-                rb'<a[^>]+href="([^"]+)"[^>]*>Review exception</a>',
+                rb'<a[^>]+href="([^"]+)"[^>]*>Review evidence exception</a>',
                 builder.data,
             )
             self.assertIsNotNone(match)

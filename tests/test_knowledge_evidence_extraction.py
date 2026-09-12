@@ -157,6 +157,122 @@ class KnowledgeEvidenceExtractionTests(unittest.TestCase):
             self.service.set_candidacy_role(extraction_id, unit["evidence_id"], "candidate")
         return self.service.confirm_candidate_set(extraction_id)
 
+    def _builder_group_package(self):
+        package = self.prepare()
+        units = []
+        for index, text in enumerate((
+            "Open Device Manager and inspect Device Status.",
+            "Review the displayed Device Manager error code.",
+        ), start=1):
+            evidence_type = "diagnostic_observations"
+            fingerprint = self.service._fingerprint({
+                "text": text, "type": evidence_type,
+            })
+            units.append({
+                "evidence_id": f"EVD-GROUP00000{index}",
+                "normalized_claim": text, "supporting_passage": text,
+                "evidence_type": evidence_type, "fingerprint": fingerprint,
+                "review_state": "proposed", "candidacy_role": "unresolved",
+                "candidacy": {
+                    "human_confirmed_role": None,
+                    "machine_recommended_role": "undetermined",
+                    "machine_rationale": "Human role review is required.",
+                    "recommendation_fingerprint": f"recommendation-{index}",
+                    "rule_version": "deterministic-evidence-candidacy-v2",
+                },
+                "workflow_evidence_compression": {
+                    "decision": "human_exception",
+                    "reason": "ambiguous_evidence_role",
+                    "evidence_fingerprint": fingerprint,
+                    "policy_id": "deterministic-workflow-evidence-compression-v1",
+                },
+            })
+        package.update(
+            status="needs_review", evidence_units=units,
+            candidacy=self.service._empty_candidacy_state(),
+        )
+        self.service._save(package)
+        members = [{
+            "evidence_id": unit["evidence_id"],
+            "evidence_fingerprint": unit["fingerprint"],
+            "recommendation_fingerprint": unit["candidacy"]["recommendation_fingerprint"],
+            "human_confirmed_role": None,
+            "review_state": "proposed",
+        } for unit in units]
+        return package, members
+
+    def test_builder_group_role_and_evidence_decisions_are_atomic_and_idempotent(self):
+        package, members = self._builder_group_package()
+        extraction_id = package["extraction_id"]
+        role_fingerprint = "role-group-fingerprint"
+
+        assigned = self.service.set_candidacy_role_group(
+            extraction_id, members, "candidate", group_id="KBEG-ROLE",
+            group_fingerprint=role_fingerprint, actor="Reviewer",
+        )
+
+        self.assertTrue(all(
+            unit["candidacy"]["human_confirmed_role"] == "candidate"
+            and unit["candidacy"]["role_decided_by"] == "Reviewer"
+            for unit in assigned["evidence_units"]
+        ))
+        self.assertTrue(self.service._candidate_set_current(assigned))
+        role_events = [event for event in assigned["history"]
+                       if event.get("builder_group_id") == "KBEG-ROLE"]
+        self.assertEqual(
+            {event.get("evidence_id") for event in role_events
+             if event["event"] == "candidacy_role_changed"},
+            {unit["evidence_id"] for unit in assigned["evidence_units"]},
+        )
+        path = self.service._path(extraction_id)
+        before_replay = path.read_bytes()
+        replay = self.service.set_candidacy_role_group(
+            extraction_id, members, "candidate", group_id="KBEG-ROLE",
+            group_fingerprint=role_fingerprint, actor="Reviewer",
+        )
+        self.assertEqual(path.read_bytes(), before_replay)
+        self.assertEqual(replay, assigned)
+
+        review_members = [{
+            "evidence_id": unit["evidence_id"],
+            "evidence_fingerprint": unit["fingerprint"],
+            "recommendation_fingerprint": unit["candidacy"]["recommendation_fingerprint"],
+            "human_confirmed_role": "candidate",
+            "review_state": "proposed",
+        } for unit in assigned["evidence_units"]]
+        reviewed = self.service.review_evidence_group(
+            extraction_id, review_members, "approved", "Reviewed together.",
+            group_id="KBEG-EVIDENCE", group_fingerprint="evidence-group-fingerprint",
+            actor="Reviewer",
+        )
+        self.assertTrue(all(
+            unit["review_state"] == "approved"
+            and unit["reviewed_by"] == "Reviewer"
+            for unit in reviewed["evidence_units"]
+        ))
+        self.assertEqual(reviewed["status"], "approved")
+
+    def test_builder_group_stale_member_rejects_without_any_write(self):
+        package, members = self._builder_group_package()
+        extraction_id = package["extraction_id"]
+        members[1]["evidence_fingerprint"] = "stale"
+        path = self.service._path(extraction_id)
+        before = path.read_bytes()
+
+        with self.assertRaisesRegex(
+            KnowledgeEvidenceExtractionError, "changed"
+        ):
+            self.service.set_candidacy_role_group(
+                extraction_id, members, "context", group_id="KBEG-STALE",
+                group_fingerprint="stale-group", actor="Reviewer",
+            )
+
+        self.assertEqual(path.read_bytes(), before)
+        self.assertTrue(all(
+            (unit.get("candidacy") or {}).get("human_confirmed_role") is None
+            for unit in self.service.get(extraction_id)["evidence_units"]
+        ))
+
     def review_evidence(self, extraction_id, evidence_id, decision, notes=""):
         if not self.service._candidate_set_current(self.service.get(extraction_id)):
             self.confirm_all_candidates(extraction_id)
@@ -488,6 +604,47 @@ class KnowledgeEvidenceExtractionTests(unittest.TestCase):
             len([event for event in repeated["history"]
                  if event["event"] == "workflow_evidence_compressed"]),
             1,
+        )
+
+    def test_verification_recovery_suppresses_unrelated_procedure_evidence(self):
+        self.configure_vpn_missing_workflow()
+        research = json.loads(self.research_path.read_text(encoding="utf-8"))
+        research["research_objective"] = {
+            "schema_version": "1.0",
+            "kind": "workflow_success_verification",
+            "claim_plan_id": "KCPM-VPN",
+            "evidence_input_fingerprint": "evidence-current",
+            "gap_fingerprint": "gap-current",
+            "supported_evidence_types": ["verification", "expected_result"],
+            "required_coverage_roles": ["success_verification"],
+            "capability_context": {"capability_id": "vpn"},
+            "fingerprint": "objective-current",
+        }
+        self.research_path.write_text(json.dumps(research), encoding="utf-8")
+        self.validator.html = """<html><body><main>
+        <h2>Configure VPN</h2><p>Open VPN settings and select Add VPN.</p>
+        <h2>Verify the connection</h2><p>Confirm that VPN status displays Connected.</p>
+        </main></body></html>"""
+
+        package = self.service.extract(self.prepare()["extraction_id"])
+        reviewable = [
+            unit for unit in package["evidence_units"]
+            if (unit.get("content_disposition") or {}).get("status")
+            != "suppressed_non_substantive"
+        ]
+        suppressed = [
+            unit for unit in package["evidence_units"]
+            if (unit.get("content_disposition") or {}).get("reason")
+            == "outside_verification_recovery_objective"
+        ]
+
+        self.assertEqual(len(reviewable), 1)
+        self.assertIn("status displays Connected", reviewable[0]["normalized_claim"])
+        self.assertTrue(suppressed)
+        self.assertTrue(any("Add VPN" in unit["normalized_claim"] for unit in suppressed))
+        self.assertEqual(
+            package["research_objective"]["kind"],
+            "workflow_success_verification",
         )
 
     def test_missing_workflow_compression_leaves_unsafe_and_ambiguous_for_human(self):

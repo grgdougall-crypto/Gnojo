@@ -50,3 +50,4 @@ knowledge_campaigns/
 # OS and editor artifacts
 Thumbs.db
 Desktop.ini
+.curator-observation.lock

@@ -9,6 +9,7 @@ from app.services.knowledge_integrity_service import KnowledgeIntegrityError, Kn
 from app.services.knowledge_publication_service import KnowledgePublicationError, KnowledgePublicationService
 from app.services.article_identity_resolver import ArticleIdentityResolver
 from app.services.workflow_draft_service import WorkflowDraftService
+from app.services.workflow_publication_service import WorkflowPublicationService
 from curator.inventory import CuratorInventory
 
 
@@ -138,6 +139,82 @@ class KnowledgeIntegrityEngineTests(unittest.TestCase):
                 service.merge("canonical", ["duplicate"])
         self.assertTrue((self.repository.published_directory / "duplicate.json").exists())
         self.assertFalse((self.repository.archive_directory / "duplicate.json").exists())
+
+    @staticmethod
+    def workflow(workflow_id="flow", *article_ids):
+        nodes = {
+            f"step_{index}": {
+                "type": "instruction", "title": f"Step {index}",
+                "instruction": "Inspect the current condition carefully.",
+                "knowledge_article": article_id,
+                "next": f"step_{index + 1}" if index + 1 < len(article_ids) else "done",
+            }
+            for index, article_id in enumerate(article_ids)
+        }
+        nodes["done"] = {"type": "resolution", "title": "Done", "message": "Complete."}
+        return {
+            "workflow_id": workflow_id, "name": workflow_id.title(),
+            "start_node": next(iter(nodes)), "nodes": nodes,
+        }
+
+    def test_current_publication_relationships_are_authoritative_for_orphans(self):
+        self.repository.save_published(self.article("fallback-linked", "Fallback Linked"))
+        self.repository.save_published(self.article("currently-linked", "Currently Linked"))
+        fallback = self.root / "app" / "decision_trees" / "flow.json"
+        fallback.parent.mkdir(parents=True)
+        fallback.write_text(json.dumps(self.workflow("flow", "fallback-linked")), encoding="utf-8")
+        WorkflowPublicationService(self.root / "app" / "workflow_publications").publish(
+            self.workflow("flow", "fallback-linked", "currently-linked"), "flow.json"
+        )
+
+        report = KnowledgeIntegrityService(self.root).report()
+
+        self.assertEqual(report["workflow_inventory"], {
+            "mode": "current_publications", "workflow_count": 1, "complete": True,
+        })
+        self.assertEqual(report["counts"]["published_articles"], 2)
+        self.assertEqual(report["counts"]["orphaned_articles"], 0)
+        self.assertEqual({item["article"] for item in report["references"]}, {
+            "fallback-linked", "currently-linked",
+        })
+        self.assertTrue(all("workflow_publications/flow/v0001.json" in item["source"]
+                            for item in report["references"]))
+
+    def test_unlinked_article_remains_orphaned_under_current_publication_truth(self):
+        self.repository.save_published(self.article("linked", "Linked"))
+        self.repository.save_published(self.article("orphan", "Orphan"))
+        WorkflowPublicationService(self.root / "app" / "workflow_publications").publish(
+            self.workflow("flow", "linked"), "flow.json"
+        )
+
+        report = KnowledgeIntegrityService(self.root).report()
+
+        self.assertEqual([item["id"] for item in report["orphaned_articles"]], ["orphan"])
+
+    def test_integrity_uses_built_in_fallback_only_when_publications_are_absent(self):
+        self.repository.save_published(self.article("linked", "Linked"))
+        fallback = self.root / "app" / "decision_trees" / "flow.json"
+        fallback.parent.mkdir(parents=True)
+        fallback.write_text(json.dumps(self.workflow("flow", "linked")), encoding="utf-8")
+        publication_root = self.root / "app" / "workflow_publications"
+
+        report = KnowledgeIntegrityService(self.root).report()
+
+        self.assertEqual(report["workflow_inventory"], {
+            "mode": "built_in_fallback", "workflow_count": 1, "complete": True,
+        })
+        self.assertEqual(report["counts"]["orphaned_articles"], 0)
+        self.assertFalse(publication_root.exists())
+
+    def test_ambiguous_legacy_publication_identity_fails_closed(self):
+        publication_root = self.root / "app" / "workflow_publications"
+        publication_root.mkdir(parents=True)
+        for filename in ("one.json", "two.json"):
+            (publication_root / filename).write_text(
+                json.dumps({"workflow": self.workflow("same")}), encoding="utf-8"
+            )
+        with self.assertRaisesRegex(KnowledgeIntegrityError, "ambiguous canonical identities"):
+            KnowledgeIntegrityService(self.root).report()
 
 
 if __name__ == "__main__":

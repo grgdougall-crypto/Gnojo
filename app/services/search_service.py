@@ -1,7 +1,7 @@
 from app.models.search_result import SearchResult
 from app.repositories.command_repository import CommandRepository
 from app.repositories.knowledge_repository import KnowledgeRepository
-from app.services.workflow_publication_service import WorkflowPublicationError, WorkflowPublicationService
+from app.services.workflow_publication_service import WorkflowPublicationService
 from app.services.workflow_metadata_service import workflow_category, workflow_platform
 
 
@@ -156,10 +156,7 @@ class SearchService:
 
     def _search_workflows(self, query):
         ranked_results = []
-        try:
-            snapshots = WorkflowPublicationService().list_current()
-        except (OSError, WorkflowPublicationError):
-            snapshots = []
+        snapshots = WorkflowPublicationService().list_current(strict=True)
         for snapshot in snapshots:
             workflow = snapshot.get("workflow", {})
             name = workflow.get("name", "")

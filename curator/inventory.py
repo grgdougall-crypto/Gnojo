@@ -7,6 +7,10 @@ from typing import Any
 from app.repositories.command_repository import CommandRepository
 from app.repositories.script_repository import ScriptRepository
 from app.services.knowledge_identity_service import KnowledgeIdentityError, KnowledgeIdentityService
+from app.services.workflow_publication_service import (
+    WorkflowPublicationError,
+    WorkflowPublicationService,
+)
 
 from .models import AuditFilter, InventoryRecord
 
@@ -36,7 +40,6 @@ class CuratorInventory:
         locations = [
             (self.root / "app" / "decision_trees", "built_in"),
             (self.root / "app" / "workflow_drafts", "draft"),
-            (self.root / "app" / "workflow_publications", "published"),
         ]
         for directory, state in locations:
             if not directory.exists():
@@ -53,6 +56,34 @@ class CuratorInventory:
                     continue
                 identifier = str(workflow.get("workflow_id") or path.stem)
                 records.append(self._record("workflow", identifier, path, workflow, state))
+        publication_root = self.root / "app" / "workflow_publications"
+        try:
+            snapshots = WorkflowPublicationService(publication_root).list_current(strict=True)
+        except WorkflowPublicationError as error:
+            raise InventoryError(
+                f"Unable to read current published workflow inventory: {error}"
+            ) from error
+        if snapshots:
+            for snapshot in snapshots:
+                workflow = snapshot["workflow"]
+                identifier = str(workflow["workflow_id"])
+                version = snapshot.get("publication", {}).get("version")
+                source = publication_root / identifier / f"v{int(version):04d}.json"
+                records.append(self._record("workflow", identifier, source, workflow, "published"))
+        else:
+            # Retain the historical flat-file publication format only when no
+            # authoritative current snapshot exists.
+            for path in sorted(publication_root.glob("*.json")):
+                try:
+                    value = self._json(path)
+                except InventoryError as error:
+                    raw = {"workflow_id": path.stem, "name": path.stem, "nodes": {}, "_inventory_error": str(error)}
+                    records.append(self._record("workflow", path.stem, path, raw, "published"))
+                    continue
+                workflow = self._unwrap_workflow(value)
+                if workflow:
+                    identifier = str(workflow.get("workflow_id") or path.stem)
+                    records.append(self._record("workflow", identifier, path, workflow, "published"))
         return records
 
     def _articles(self) -> list[InventoryRecord]:

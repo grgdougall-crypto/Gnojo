@@ -25,10 +25,9 @@ class WorkflowPublicationService:
             explicit_path=publication_path,
             legacy_path=Path(__file__).resolve().parent.parent / "workflow_publications",
         )
-        self.publication_path.mkdir(parents=True, exist_ok=True)
 
     def status(self, workflow_id):
-        directory = self._workflow_directory(workflow_id)
+        directory = self._workflow_directory(workflow_id, create=False)
         versions = []
 
         for path in sorted(directory.glob("v*.json"), reverse=True):
@@ -53,19 +52,53 @@ class WorkflowPublicationService:
             "versions": versions,
         }
 
-    def list_current(self):
+    def list_current(self, *, strict=False):
         """Return the active immutable snapshot for every published workflow."""
         published = []
         if not self.publication_path.exists():
             return published
-        for directory in sorted(self.publication_path.iterdir()):
+        if not self.publication_path.is_dir():
+            raise WorkflowPublicationError("Published workflow storage is invalid.")
+        try:
+            directories = sorted(self.publication_path.iterdir())
+        except OSError as error:
+            raise WorkflowPublicationError(
+                "Published workflow storage could not be read safely."
+            ) from error
+        seen_workflow_ids = set()
+        for directory in directories:
             if not directory.is_dir():
+                continue
+            manifest_path = directory / "current.json"
+            if not manifest_path.is_file():
+                if strict and any(directory.glob("v*.json")):
+                    raise WorkflowPublicationError(
+                        f"Published workflow '{directory.name}' has versions but no current manifest."
+                    )
                 continue
             try:
                 snapshot = self.load_current(directory.name)
+                workflow = snapshot.get("workflow") if snapshot else None
+                workflow_id = workflow.get("workflow_id") if isinstance(workflow, dict) else None
+                if workflow_id != directory.name:
+                    raise WorkflowPublicationError(
+                        f"Published workflow identity does not match directory '{directory.name}'."
+                    )
+                version = snapshot.get("publication", {}).get("version")
+                if strict and (not isinstance(version, int) or version < 1):
+                    raise WorkflowPublicationError(
+                        f"Published workflow '{workflow_id}' has invalid version provenance."
+                    )
+                if workflow_id in seen_workflow_ids:
+                    raise WorkflowPublicationError(
+                        f"Published workflow identity '{workflow_id}' is ambiguous."
+                    )
             except WorkflowPublicationError:
+                if strict:
+                    raise
                 continue
             if snapshot:
+                seen_workflow_ids.add(workflow_id)
                 published.append(snapshot)
         return published
 
@@ -76,6 +109,9 @@ class WorkflowPublicationService:
         if not manifest_path.is_file():
             return None
         manifest = self._load_json(manifest_path)
+        manifest_workflow_id = manifest.get("workflow_id")
+        if manifest_workflow_id is not None and manifest_workflow_id != workflow_id:
+            raise WorkflowPublicationError("Published workflow manifest identity is invalid.")
         version = manifest.get("current_version")
         if not isinstance(version, int) or version < 1:
             raise WorkflowPublicationError("Published workflow manifest is invalid.")

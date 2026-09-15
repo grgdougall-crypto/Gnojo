@@ -421,6 +421,7 @@ def internal_error(error):
 
 @app.errorhandler(WorkflowDraftError)
 @app.errorhandler(WorkflowPublicationError)
+@app.errorhandler(KnowledgeIntegrityError)
 @app.errorhandler(DeviceProfileError)
 @app.errorhandler(TroubleshootingHistoryError)
 @app.errorhandler(WorkflowCoverageError)
@@ -504,10 +505,7 @@ def available_workflows():
         workflow_id: {**details, "source": "built_in"}
         for workflow_id, details in AVAILABLE_WORKFLOWS.items()
     }
-    try:
-        snapshots = WorkflowPublicationService().list_current()
-    except (OSError, WorkflowPublicationError):
-        snapshots = []
+    snapshots = WorkflowPublicationService().list_current(strict=True)
     for snapshot in snapshots:
         workflow = snapshot["workflow"]
         workflow_id = workflow.get("workflow_id")

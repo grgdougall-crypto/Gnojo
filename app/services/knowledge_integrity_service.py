@@ -11,7 +11,7 @@ from app.services.knowledge_identity_service import KnowledgeIdentityError, Know
 from app.services.article_identity_resolver import ArticleIdentityResolver
 from app.services.workflow_draft_persistence import WorkflowDraftPersistence
 from app.services.curator_structural_repair_governance import StructuralRepairFingerprint
-from curator.inventory import CuratorInventory
+from curator.inventory import CuratorInventory, InventoryError
 from curator.checks import CuratorChecks
 
 
@@ -28,9 +28,26 @@ class KnowledgeIntegrityService:
         self.identities = ArticleIdentityResolver(self.repository)
 
     def report(self) -> dict[str, Any]:
-        inventory = CuratorInventory(self.root).collect()
+        try:
+            inventory = CuratorInventory(self.root).collect()
+        except InventoryError as error:
+            raise KnowledgeIntegrityError(str(error)) from error
         articles = [item for item in inventory if item.content_type == "article"]
-        workflows = [item for item in inventory if item.content_type == "workflow"]
+        all_workflows = [item for item in inventory if item.content_type == "workflow"]
+        published_workflows = [item for item in all_workflows if item.state == "published"]
+        workflows = published_workflows or [
+            item for item in all_workflows if item.state == "built_in"
+        ]
+        workflow_inventory_mode = "current_publications" if published_workflows else "built_in_fallback"
+        workflow_identity_counts = Counter(item.identifier for item in workflows)
+        ambiguous_workflow_ids = sorted(
+            identity for identity, count in workflow_identity_counts.items() if count > 1
+        )
+        if ambiguous_workflow_ids:
+            raise KnowledgeIntegrityError(
+                "Published workflow inventory has ambiguous canonical identities: "
+                + ", ".join(ambiguous_workflow_ids)
+            )
         by_id = defaultdict(list)
         by_title = defaultdict(list)
         for item in articles:
@@ -125,6 +142,11 @@ class KnowledgeIntegrityService:
                 "missing_review_metadata": missing_review, "orphaned_articles": orphans,
                 "inventory_mismatches": inventory_mismatch,
                 "command_relationship_defects": command_relationship_findings,
+                "workflow_inventory": {
+                    "mode": workflow_inventory_mode,
+                    "workflow_count": len(workflows),
+                    "complete": True,
+                },
                 "references": references, "explanations": {
                     "broken_relationships": "Workflow links whose canonical article is not currently published.",
                     "duplicate_groups": "Multiple live records that appear to represent one logical article.",

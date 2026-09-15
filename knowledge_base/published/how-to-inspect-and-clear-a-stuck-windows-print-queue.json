@@ -1,0 +1,98 @@
+{
+  "schema_version": "1.0",
+  "id": "how-to-inspect-and-clear-a-stuck-windows-print-queue",
+  "title": "How to Inspect and Clear a Stuck Windows Print Queue",
+  "category": "Desktop Support",
+  "difficulty": "Intermediate",
+  "estimated_time": "5 to 10 minutes",
+  "overview": "Inspect one Windows printer queue, remove the least amount of authorized queued work needed to recover it, and verify the result without treating a queue change as proof that every printing problem is resolved.",
+  "tags": [
+    "windows",
+    "printer",
+    "print queue",
+    "stuck print job",
+    "desktop support"
+  ],
+  "checklist": [
+    "Open Start > Settings > Bluetooth & devices > Printers & scanners, select the intended printer, and select Open print queue. Confirm the printer name before taking any action.",
+    "Inspect the pending jobs and their statuses first. Treat document names and printer or server details as potentially sensitive support data.",
+    "If one job that you submitted is stuck, cancel only that job first. Cancelling changes the queue, and a removed job cannot be restored; submit the source document again only if it is still needed.",
+    "Do not cancel another user's job. Shared queues and other users' jobs may require administrator or print-management authorization.",
+    "If the selected job does not leave and every remaining job may be removed, use the existing Clear a Stuck Print Queue resource for the exact installed printer. Review its job preview or use WhatIf before confirming the broader removal.",
+    "The Clear a Stuck Print Queue resource removes jobs only from the named printer and does not restart the Print Spooler. Do not expand the action to another queue or service without a separate approved procedure.",
+    "After remediation, refresh the selected queue and confirm it is empty. Submit one authorized, non-sensitive test page and verify both that the job leaves the queue and that the page prints.",
+    "If the queue cannot be inspected, authorized jobs cannot be removed, jobs remain after the approved action, or the test does not both leave the queue and print, stop changing the queue. If authorized, use the existing read-only Printer Diagnostic Report to collect printer, queue, and Print Spooler evidence before escalating with the printer name, job status, and visible error."
+  ],
+  "common_indicators": [
+    "A print job remains pending or shows an error after the printer has had time to process it.",
+    "A newly submitted job waits behind an older job that does not leave the queue.",
+    "The selected job remains listed after an authorized cancellation attempt.",
+    "The queue clears, but a single verification job still does not both leave the queue and print."
+  ],
+  "commands": [],
+  "related_commands": [
+    "get-printer",
+    "get-printjob",
+    "get-service"
+  ],
+  "related_topics": [
+    "Printer",
+    "Windows print queue",
+    "Print Spooler"
+  ],
+  "quiz": [
+    {
+      "question": "What is the least disruptive first change when one authorized print job is stuck?",
+      "answers": [
+        "Cancel only that job and verify it leaves the queue",
+        "Remove every job from every printer",
+        "Restart every printing service"
+      ],
+      "correct_answer": "Cancel only that job and verify it leaves the queue"
+    }
+  ],
+  "sources": [
+    {
+      "title": "View a printer's print queue in Windows | Microsoft Support | https://support.microsoft.com/en-US/Windows/Hardware/Printer/view-a-printer-s-print-queue-in-windows\\nFix print job stuck in queue errors in Windows | Microsoft Support | https://support.microsoft.com/en-us/windows/hardware/printer/fix-print-job-stuck-in-queue-errors-in-windows\\nGet-PrintJob | Microsoft Learn | https://learn.microsoft.com/en-us/powershell/module/printmanagement/get-printjob\\nRemove-PrintJob | Microsoft Learn",
+      "url": "https://learn.microsoft.com/en-us/powershell/module/printmanagement/remove-printjob"
+    }
+  ],
+  "generation": {
+    "provider": "Gnojo Curator",
+    "model": "deterministic-assisted-resolution",
+    "generated_at": "2026-09-14T00:00:00+00:00"
+  },
+  "review": {
+    "status": "approved",
+    "reviewed_by": "Gnojo reviewer",
+    "reviewed_at": "2026-09-15T05:16:07.155373+00:00",
+    "notes": [
+      "Prepared for Gnojo v1 Workflow Completion 2A.",
+      "Authoritative Windows queue guidance, command behavior, permissions, and the state-changing Clear a Stuck Print Queue resource require human review before publication."
+    ],
+    "checks": {
+      "technical_accuracy": true,
+      "user_safety": true,
+      "sources_verified": true,
+      "commands_reviewed": true
+    }
+  },
+  "workflow_origin": {
+    "filename": "printer.json",
+    "workflow_id": "printer",
+    "node_id": "inspect_print_queue",
+    "curator_task_id": null,
+    "workflow_lifecycle": "draft",
+    "workflow_source_path": "C:\\SupportPilot\\app\\workflow_drafts\\printer.json"
+  },
+  "canonical_id": "how-to-inspect-and-clear-a-stuck-windows-print-queue",
+  "version": 1,
+  "published_at": "2026-09-15T05:16:07.155373+00:00",
+  "version_history": [
+    {
+      "version": 1,
+      "published_at": "2026-09-15T05:16:07.155373+00:00",
+      "reviewed_by": "Gnojo reviewer"
+    }
+  ]
+}

@@ -1,13 +1,12 @@
 {
   "workflow_id": "printer",
   "name": "Printer",
-  "description": "Troubleshoot printer power, connections, device warnings, and basic printing problems.",
+  "description": "Troubleshoot printer power, connections, device warnings, stuck print jobs, and basic printing problems.",
   "category": "Desktop Support",
   "platform": "Cross-platform",
-  "estimated_steps": 5,
+  "estimated_steps": 6,
   "progress_mode": "branch_aware",
   "start_node": "check_power",
-
   "nodes": {
     "check_power": {
       "type": "question",
@@ -28,14 +27,13 @@
         }
       }
     },
-
     "inspect_power": {
       "type": "instruction",
       "title": "Check the Printer Power",
       "instruction": "Confirm that the power cable is securely connected and press the printer's power button.",
-      "next": "verify_power_state"
+      "next": "verify_power_state",
+      "help_text": "Verify the printer has basic power by reseating the power cable and pressing its power button. Record whether the cable was secure and whether any power light, display, sound, or other sign of power appears. This can show whether the printer responds to power input, but it does not confirm printing, network, or driver health. Do not open the printer or handle damaged electrical cords or outlets."
     },
-
     "verify_power_state": {
       "type": "question",
       "question": "After checking the power connection and button, does the printer show any sign of power?",
@@ -52,16 +50,34 @@
           "label": "I'm Still Not Sure",
           "next": "power_attention_needed"
         }
+      },
+      "help_text": "Use this decision to separate a printer that appears powered from one that needs power attention. Observe and record visible evidence such as indicator lights, a lit display, or no response after the power connection and button were checked. A Yes only confirms signs of power are present; it does not prove the printer connection or printing function is working. Do not open the printer or bypass power components unless authorized.",
+      "help_text_generation": {
+        "provider": "OpenAI",
+        "model": "gpt-5.5",
+        "node_id": "verify_power_state",
+        "generated_at": "2026-09-09T18:41:33.650476+00:00",
+        "accepted_at": "2026-09-09T18:41:33.650476+00:00",
+        "campaign_id": "KCP-1993B80FFB9F",
+        "work_item_id": "KCW-6600F0A495F3"
       }
     },
-
     "turn_on_printer": {
       "type": "instruction",
       "title": "Turn On the Printer",
       "instruction": "Turn on the printer and wait until it finishes starting.",
-      "next": "verify_printing"
+      "next": "verify_printing",
+      "help_text": "Powering on the printer establishes whether it can start before testing printing. Observe or record the power light or display, whether startup finishes, and any error lights or messages shown. Reaching a ready state does not prove printing works; it only means the printer is on and ready for the next check. Use normal power controls and avoid opening covers or changing connections unless authorized.",
+      "help_text_generation": {
+        "provider": "OpenAI",
+        "model": "gpt-5.5",
+        "node_id": "turn_on_printer",
+        "generated_at": "2026-09-09T18:41:33.650476+00:00",
+        "accepted_at": "2026-09-09T18:41:33.650476+00:00",
+        "campaign_id": "KCP-1993B80FFB9F",
+        "work_item_id": "KCW-6600F0A495F3"
+      }
     },
-
     "check_connection": {
       "type": "question",
       "question": "How is the printer connected?",
@@ -80,14 +96,13 @@
         }
       }
     },
-
     "identify_connection": {
       "type": "instruction",
       "title": "Identify the Printer Connection",
       "instruction": "Check whether a USB cable connects the printer directly to the computer. If no USB cable is present, the printer may use Wi-Fi or the local network.",
-      "next": "verify_connection_type"
+      "next": "verify_connection_type",
+      "help_text": "Use this step to identify whether the printer has a direct USB connection or is likely using Wi-Fi or the local network. Record whether a USB cable is visibly connected from the printer to the computer, or that no USB cable is present. This can confirm a direct USB path, but it cannot verify network settings or wireless connectivity. Inspect only visible connections and avoid unplugging cables or changing settings unless authorized."
     },
-
     "verify_connection_type": {
       "type": "question",
       "question": "Is a USB cable connected directly between the printer and this computer?",
@@ -106,21 +121,19 @@
         }
       }
     },
-
     "check_usb": {
       "type": "instruction",
       "title": "Check the USB Connection",
       "instruction": "Disconnect and reconnect the USB cable at both the printer and computer. Try another USB port if one is available.",
-      "next": "verify_printing"
+      "next": "verify_printing",
+      "help_text": "This step checks whether check the usb connection is contributing to the problem. Complete only the described action, note what changes, and avoid changing unrelated settings."
     },
-
     "restart_printer": {
       "type": "instruction",
       "title": "Restart the Printer",
       "instruction": "Turn the printer off, wait 30 seconds, and then turn it back on. Allow it to reconnect before trying again.",
       "next": "verify_printing"
     },
-
     "verify_printing": {
       "type": "question",
       "question": "Can you print now?",
@@ -131,11 +144,191 @@
         },
         "no": {
           "label": "No",
+          "next": "identify_printing_problem"
+        }
+      },
+      "help_text": "Use this decision point to confirm whether the printer is usable after the earlier connection and power actions. Record whether a document or test page prints successfully, or note that no page prints and any visible error shown during the attempt. A successful print supports closing the issue as restored; a failure does not identify the cause by itself, so use only an authorized, non-sensitive page for the test.",
+      "help_text_generation": {
+        "provider": "OpenAI",
+        "model": "gpt-5.5",
+        "node_id": "verify_printing",
+        "generated_at": "2026-09-09T18:41:51.708904+00:00",
+        "accepted_at": "2026-09-09T18:41:51.708904+00:00",
+        "campaign_id": "KCP-1993B80FFB9F",
+        "work_item_id": "KCW-6600F0A495F3"
+      }
+    },
+    "identify_printing_problem": {
+      "type": "question",
+      "question": "What best describes the printing problem?",
+      "help_text": "Choose the stuck-job path only when a document remains in the Windows print queue or repeatedly shows a pending or error state. Choose another printing problem for printer warnings and the existing diagnostic path.",
+      "answers": {
+        "stuck_job": {
+          "label": "A print job is stuck",
+          "next": "inspect_print_queue"
+        },
+        "other": {
+          "label": "Another printing problem",
           "next": "check_printer_status"
         }
       }
     },
-
+    "inspect_print_queue": {
+      "type": "instruction",
+      "title": "Inspect the Windows Print Queue",
+      "instruction": "Open Start > Settings > Bluetooth & devices > Printers & scanners. Select the intended printer, then select Open print queue. Confirm the printer name and review the pending jobs without cancelling anything yet.",
+      "next": "verify_printer_available",
+      "help_text": "This is an observation step. Confirm the exact printer and note the job status, owner, and document only as needed. Queued document names may be sensitive, so do not share them outside the approved support context.",
+      "knowledge_article": "how-to-inspect-and-clear-a-stuck-windows-print-queue"
+    },
+    "verify_printer_available": {
+      "type": "question",
+      "question": "Does the intended printer appear in Windows with its print queue available?",
+      "help_text": "A visible printer and accessible queue confirm only that Windows currently exposes that printer. They do not prove the connection, driver, spooler, or printer hardware is healthy.",
+      "answers": {
+        "yes": {
+          "label": "Yes",
+          "next": "verify_stuck_jobs"
+        },
+        "no": {
+          "label": "No",
+          "next": "queue_support_needed"
+        },
+        "unknown": {
+          "label": "I'm Not Sure",
+          "next": "queue_support_needed"
+        }
+      }
+    },
+    "verify_stuck_jobs": {
+      "type": "question",
+      "question": "Does the queue show one or more jobs that remain pending or show an error?",
+      "help_text": "Record the status of the intended job. Do not assume every pending job is stuck: a job may wait briefly while the printer starts or processes another job.",
+      "answers": {
+        "yes": {
+          "label": "Yes",
+          "next": "cancel_one_stuck_job"
+        },
+        "no": {
+          "label": "No",
+          "next": "check_printer_status"
+        },
+        "unknown": {
+          "label": "I'm Not Sure",
+          "next": "queue_support_needed"
+        }
+      }
+    },
+    "cancel_one_stuck_job": {
+      "type": "instruction",
+      "title": "Cancel One Authorized Stuck Job",
+      "instruction": "Select only the stuck job that you submitted or are authorized to manage, then cancel it. Do not cancel another user's job. If ownership or authorization is unclear, make no queue change and continue to the next decision.",
+      "next": "verify_cancelled_job",
+      "help_text": "Cancelling changes the queue and the removed job cannot be restored; the source document must be submitted again if it is still needed. Other users' jobs may require administrator or print-management rights.",
+      "knowledge_article": "how-to-inspect-and-clear-a-stuck-windows-print-queue"
+    },
+    "verify_cancelled_job": {
+      "type": "question",
+      "question": "Did the selected stuck job leave the queue?",
+      "help_text": "Confirm that the exact selected job is no longer listed before submitting another test. A different job remaining in the queue does not mean the selected cancellation failed.",
+      "answers": {
+        "yes": {
+          "label": "Yes",
+          "next": "test_queue_printing"
+        },
+        "no": {
+          "label": "No",
+          "next": "authorize_queue_clear"
+        },
+        "unknown": {
+          "label": "I'm Not Sure",
+          "next": "queue_support_needed"
+        }
+      }
+    },
+    "authorize_queue_clear": {
+      "type": "question",
+      "question": "Can every remaining job in this printer queue be safely removed with authorization?",
+      "help_text": "A broader queue clear permanently removes every queued job from the selected printer. Confirm the printer name, review the preview, and obtain approval before affecting shared or other users' jobs.",
+      "answers": {
+        "yes": {
+          "label": "Yes, removal is authorized",
+          "next": "clear_stuck_queue"
+        },
+        "no": {
+          "label": "No",
+          "next": "queue_support_needed"
+        },
+        "unknown": {
+          "label": "I'm Not Sure",
+          "next": "queue_support_needed"
+        }
+      }
+    },
+    "clear_stuck_queue": {
+      "type": "instruction",
+      "title": "Clear the Authorized Printer Queue",
+      "instruction": "Use the existing Clear a Stuck Print Queue resource for the exact printer. Review its job preview or use WhatIf first, confirm the target and authorization, then approve removal only if every listed job may be discarded. Do not restart the Print Spooler or change another printer queue as part of this step.",
+      "next": "verify_queue_cleared",
+      "help_text": "This is a broader state-changing action. Removed jobs cannot be restored, queued document names may be sensitive, and other users' jobs may require administrator or print-management rights.",
+      "knowledge_article": "how-to-inspect-and-clear-a-stuck-windows-print-queue"
+    },
+    "verify_queue_cleared": {
+      "type": "question",
+      "question": "Is the selected printer queue now empty?",
+      "help_text": "Reopen or refresh the exact printer queue and confirm that no jobs remain before testing. Do not infer success from the script completing alone.",
+      "answers": {
+        "yes": {
+          "label": "Yes",
+          "next": "test_queue_printing"
+        },
+        "no": {
+          "label": "No",
+          "next": "queue_support_needed"
+        },
+        "unknown": {
+          "label": "I'm Not Sure",
+          "next": "queue_support_needed"
+        }
+      }
+    },
+    "test_queue_printing": {
+      "type": "instruction",
+      "title": "Test the Printer Once",
+      "instruction": "Submit one authorized, non-sensitive test page to the same printer. Watch the queue long enough to see whether that job leaves the queue and the page prints.",
+      "next": "verify_queue_printing",
+      "help_text": "Use a single test to avoid creating another backlog. Record both outcomes: whether the job leaves the queue and whether the printer produces the page.",
+      "knowledge_article": "how-to-inspect-and-clear-a-stuck-windows-print-queue"
+    },
+    "verify_queue_printing": {
+      "type": "question",
+      "question": "Did the test job leave the queue and print successfully?",
+      "help_text": "Both results are required. A job disappearing without a printed page, or a printed page while the job remains stuck, needs further diagnosis.",
+      "answers": {
+        "yes": {
+          "label": "Yes",
+          "next": "resolved_queue"
+        },
+        "no": {
+          "label": "No",
+          "next": "queue_support_needed"
+        },
+        "unknown": {
+          "label": "I'm Not Sure",
+          "next": "queue_support_needed"
+        }
+      }
+    },
+    "resolved_queue": {
+      "type": "resolution",
+      "title": "The Print Queue Is Working",
+      "message": "The previously stuck job is no longer in the queue, and one authorized test job left the queue and printed successfully. Monitor the printer for recurrence; this test does not prove that every application, document, or future print job will succeed."
+    },
+    "queue_support_needed": {
+      "type": "resolution",
+      "title": "Print Queue Support Is Needed",
+      "message": "The queue could not be inspected or cleared safely, or the verification test did not both leave the queue and print. Stop making queue changes. Record the printer name, job status, visible error, and whether the job belongs to another user. If authorized, use the existing read-only Printer Diagnostic Report to collect printer, queue, and Print Spooler evidence, then contact organizational IT or print administration. Do not remove other users' jobs or restart the Print Spooler without authorization and an approved procedure."
+    },
     "check_printer_status": {
       "type": "question",
       "question": "Does the printer show a paper, ink, toner, or jam warning?",
@@ -154,14 +347,14 @@
         }
       }
     },
-
     "inspect_printer_display": {
       "type": "instruction",
       "title": "Inspect the Printer Status",
       "instruction": "Check the printer display and status lights for a paper, ink, toner, cover, or jam warning.",
-      "next": "verify_printer_warning"
+      "next": "verify_printer_warning",
+      "help_text": "Use the printer display and status lights to identify any local warning before investigating computer-side causes. Record the exact message, icon, light color or blink pattern, and whether it refers to paper, ink, toner, a cover, or a jam. A visible warning can show the printer is reporting a device-side condition, but it does not establish that the computer, print queue, or connection is working. Limit this step to observation unless you are authorized to handle covers, consumables, or jams safely.",
+      "knowledge_article": "printer-inspect-printer-display"
     },
-
     "verify_printer_warning": {
       "type": "question",
       "question": "After inspecting the display and status lights, is a printer warning visible?",
@@ -180,14 +373,14 @@
         }
       }
     },
-
     "clear_printer_warning": {
       "type": "instruction",
       "title": "Clear the Printer Warning",
       "instruction": "Follow the printer manufacturer's displayed or documented instructions. Before reaching inside to remove a jam, turn the printer off and unplug it if the manufacturer directs you to do so; internal components can be hot or moving. Do not force paper or touch unfamiliar internal parts.",
-      "next": "verify_after_warning"
+      "next": "verify_after_warning",
+      "help_text": "This step checks whether clear the printer warning is contributing to the problem. Complete only the described action, note what changes, and avoid changing unrelated settings.",
+      "knowledge_article": "how-to-clear-the-printer-warning"
     },
-
     "verify_after_warning": {
       "type": "question",
       "question": "Can you print after clearing the printer warning?",
@@ -202,19 +395,16 @@
         }
       }
     },
-
     "resolved": {
       "type": "resolution",
       "title": "Printer Operation Restored",
       "message": "The printer appears to be working again."
     },
-
     "power_attention_needed": {
       "type": "resolution",
       "title": "Printer Power Requires Attention",
       "message": "The printer still shows no sign of power after the basic power check. Verify the approved power source and cable, or arrange hardware support before continuing with connection troubleshooting."
     },
-
     "advanced_diagnostics": {
       "type": "resolution",
       "title": "Additional Troubleshooting Is Needed",

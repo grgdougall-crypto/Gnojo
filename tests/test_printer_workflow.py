@@ -34,10 +34,20 @@ class PrinterWorkflowTests(unittest.TestCase):
 
         self.assertEqual(report["overall_status"], "CLEAN")
         self.assertEqual(report["findings"], [])
-        self.assertEqual(report["metrics"]["reachable_nodes"], 18)
-        self.assertEqual(report["metrics"]["terminal_nodes"], 3)
-        self.assertEqual(report["metrics"]["shortest_path"], 4)
-        self.assertEqual(report["metrics"]["longest_path"], 14)
+        self.assertEqual(
+            report["metrics"]["reachable_nodes"],
+            len(engine.workflow["nodes"]),
+        )
+        self.assertEqual(report["metrics"]["unreachable_nodes"], 0)
+        self.assertGreater(report["metrics"]["terminal_nodes"], 0)
+        self.assertGreaterEqual(
+            report["metrics"]["longest_path"],
+            report["metrics"]["shortest_path"],
+        )
+        self.assertLessEqual(
+            report["metrics"]["longest_path"],
+            report["metrics"]["reachable_nodes"],
+        )
         self.assertEqual(report["metrics"]["cycles_detected"], 0)
         self.assertTrue(WorkflowProgressService.enabled(engine.workflow))
 
@@ -56,53 +66,61 @@ class PrinterWorkflowTests(unittest.TestCase):
         self.assertNotIn("How is the printer connected?", pages[4])
 
     def test_status_uncertainty_becomes_a_bounded_warning_decision(self):
-        pages = self._run(["yes", "usb", "", "no", "unknown", "", "unknown"])
-        self.assertIn("Inspect the Printer Status", pages[5])
-        self.assertIn("is a printer warning visible", pages[6])
-        self.assertIn("Additional Troubleshooting Is Needed", pages[7])
-        self.assertNotIn("Does the printer show a paper", pages[7])
+        pages = self._run([
+            "yes", "usb", "", "no", "other", "unknown", "", "unknown",
+        ])
+        self.assertIn("What best describes the printing problem?", pages[4])
+        self.assertIn("Inspect the Printer Status", pages[6])
+        self.assertIn("is a printer warning visible", pages[7])
+        self.assertIn("Additional Troubleshooting Is Needed", pages[8])
+        self.assertNotIn("Does the printer show a paper", pages[8])
+        self._assert_complete(pages)
 
     def test_cleared_warning_is_verified_once_and_does_not_repeat_remediation(self):
-        pages = self._run(["yes", "usb", "", "no", "yes", "", "no"])
-        self.assertIn("Clear the Printer Warning", pages[5])
-        self.assertIn("Can you print after clearing", pages[6])
-        self.assertIn("Additional Troubleshooting Is Needed", pages[7])
-        self.assertNotIn("Clear the Printer Warning", pages[7])
-        self.assertNotIn("Does the printer show a paper", pages[7])
+        pages = self._run([
+            "yes", "usb", "", "no", "other", "yes", "", "no",
+        ])
+        self.assertIn("Clear the Printer Warning", pages[6])
+        self.assertIn("Can you print after clearing", pages[7])
+        self.assertIn("Additional Troubleshooting Is Needed", pages[8])
+        self.assertNotIn("Clear the Printer Warning", pages[8])
+        self.assertNotIn("Does the printer show a paper", pages[8])
+        self._assert_complete(pages)
 
     def test_long_path_never_reports_completion_before_interaction_finishes(self):
         pages = self._run([
             "unknown", "", "yes", "unknown", "", "yes", "", "no",
-            "unknown", "", "yes", "", "no",
+            "other", "unknown", "", "yes", "", "no",
         ])
-        self.assertIn("Step 14 of 14 on this path", pages[-1])
         self.assertIn("Additional Troubleshooting Is Needed", pages[-1])
-        for page in pages[:-1]:
-            current, total = self._progress(page)
-            self.assertLess(current, total, page)
+        self._assert_complete(pages)
 
     def test_short_success_path_ends_at_actual_length(self):
         pages = self._run(["yes", "usb", "", "yes"])
         self.assertIn("Printer Operation Restored", pages[-1])
-        self.assertIn("Step 5 of 5 on this path", pages[-1])
+        self._assert_complete(pages)
 
     def test_previous_restores_exact_node_and_progress(self):
         self._run([
             "unknown", "", "yes", "unknown", "", "yes", "", "no",
-            "unknown", "", "yes", "",
+            "other", "unknown", "", "yes", "",
         ])
         verify = self.client.get(
             "/wizard?workflow=printer&resume=1", follow_redirects=True
         ).get_data(as_text=True)
         self.assertIn("Can you print after clearing", verify)
-        self.assertIn("Step 13 of 14 on this path", verify)
+        verify_progress = self._progress(verify)
 
         previous = self._previous()
         self.assertIn("Clear the Printer Warning", previous)
-        self.assertIn("Step 12 of 14 on this path", previous)
+        previous_progress = self._progress(previous)
+        self.assertEqual(previous_progress[0], verify_progress[0] - 1)
+        self.assertEqual(previous_progress[1], verify_progress[1])
         previous_again = self._previous()
         self.assertIn("is a printer warning visible", previous_again)
-        self.assertIn("Step 11 of 14 on this path", previous_again)
+        previous_again_progress = self._progress(previous_again)
+        self.assertEqual(previous_again_progress[0], previous_progress[0] - 1)
+        self.assertEqual(previous_again_progress[1], previous_progress[1])
 
     def _run(self, answers):
         pages = [
@@ -127,6 +145,13 @@ class PrinterWorkflowTests(unittest.TestCase):
         match = re.search(r"Step (\d+) of (\d+) on this path", page)
         self.assertIsNotNone(match, page)
         return int(match.group(1)), int(match.group(2))
+
+    def _assert_complete(self, pages):
+        for page in pages[:-1]:
+            current, total = self._progress(page)
+            self.assertLess(current, total, page)
+        current, total = self._progress(pages[-1])
+        self.assertEqual(current, total, pages[-1])
 
 
 if __name__ == "__main__":

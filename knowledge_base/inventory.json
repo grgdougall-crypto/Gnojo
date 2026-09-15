@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "generated_at": "2026-08-25T03:31:02.226018+00:00",
+  "generated_at": "2026-09-15T05:16:09.441067+00:00",
   "articles": [
     {
       "id": "ethernet-connection-check",
@@ -90,6 +90,12 @@
       "id": "vpn-connectivity-win-instr-search-error-code-kb",
       "title": "How to Identify and Research the VPN Error",
       "category": "Networking",
+      "version": 1
+    },
+    {
+      "id": "how-to-inspect-and-clear-a-stuck-windows-print-queue",
+      "title": "How to Inspect and Clear a Stuck Windows Print Queue",
+      "category": "Desktop Support",
       "version": 1
     },
     {
@@ -196,18 +202,18 @@
     }
   ],
   "integrity": {
-    "published_articles": 32,
+    "published_articles": 33,
     "draft_articles": 2,
     "broken_relationships": 0,
     "duplicate_groups": 0,
     "missing_review_metadata": 0,
-    "orphaned_articles": 0,
+    "orphaned_articles": 1,
     "inventory_mismatches": 1,
     "duplicate_articles": 0,
     "merge_candidates": 0,
     "archived_articles": 2,
     "knowledge_debt_reduction_potential": 0,
     "estimated_cleanup_minutes": 0,
-    "command_relationship_defects": 0
+    "command_relationship_defects": 3
   }
 }

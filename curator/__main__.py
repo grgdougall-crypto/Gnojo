@@ -148,11 +148,43 @@ def parser() -> argparse.ArgumentParser:
         "init-data-root",
         help="Initialize an empty GNOJO_DATA_ROOT with deployment baseline content",
     )
+    promote_article = commands.add_parser(
+        "promote-published-article",
+        help="Promote one reviewed source article into the active GNOJO_DATA_ROOT",
+    )
+    promote_article.add_argument("--article", required=True)
+    mode = promote_article.add_mutually_exclusive_group()
+    mode.add_argument("--dry-run", action="store_true")
+    mode.add_argument("--apply", action="store_true")
     return root
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parser().parse_args(argv)
+    if args.command == "promote-published-article":
+        from app.services.published_article_promotion_service import (
+            PublishedArticlePromotionError,
+            PublishedArticlePromotionService,
+        )
+
+        try:
+            service = PublishedArticlePromotionService()
+            result = (
+                service.apply(args.article)
+                if args.apply
+                else service.preview(args.article)
+            )
+        except (PublishedArticlePromotionError, OSError, ValueError) as error:
+            print(json.dumps({
+                "operation": "PROMOTE_PUBLISHED_ARTICLE",
+                "mode": "apply" if args.apply else "dry_run",
+                "result": "BLOCKED",
+                "blocking_reasons": [str(error)],
+            }, sort_keys=True), file=sys.stderr)
+            return 2
+        stream = sys.stderr if result.get("result") == "BLOCKED" else sys.stdout
+        print(json.dumps(result, sort_keys=True), file=stream)
+        return 2 if result.get("result") == "BLOCKED" else 0
     if args.command == "init-data-root":
         from app.data_root_initializer import (
             DataRootInitializationError,

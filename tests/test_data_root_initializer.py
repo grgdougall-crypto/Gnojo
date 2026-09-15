@@ -182,7 +182,7 @@ class DataRootInitializerTests(unittest.TestCase):
                     "from unittest.mock import patch\n"
                     "with patch('dotenv.load_dotenv', return_value=False):\n"
                     "    import app.app as module\n"
-                    "    assert len(module.knowledge_repository.get_published()) == 32\n"
+                    "    assert len(module.knowledge_repository.get_published()) == 33\n"
                     "    assert module.command_repository.get_all()\n"
                     "    assert module.app.test_client().get('/').status_code == 200\n"
                 ),

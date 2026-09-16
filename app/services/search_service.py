@@ -159,7 +159,7 @@ class SearchService:
         catalog = WorkflowCatalogService(
             publications=WorkflowPublicationService()
         )
-        for entry, workflow in catalog.selected_workflows():
+        for entry, workflow in catalog.selected_workflows(discoverable_only=True):
             name = entry["name"]
             description = entry["description"]
             workflow_id = entry["workflow_id"]

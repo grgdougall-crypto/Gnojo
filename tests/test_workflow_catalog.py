@@ -12,6 +12,7 @@ from app.services.workflow_catalog_service import (
     WorkflowCatalogService,
 )
 from app.services.workflow_publication_service import WorkflowPublicationService
+from app.services.workflow_draft_service import WorkflowDraftService
 
 
 class WorkflowCatalogTests(unittest.TestCase):
@@ -49,16 +50,17 @@ class WorkflowCatalogTests(unittest.TestCase):
             "Computer Running Slowly",
             "Internet Connection",
             "Printer",
-            "Advanced Network Diagnostics",
         ):
             self.assertIn(title, html)
+        self.assertNotIn("Advanced Network Diagnostics", html)
+        self.assertNotIn("Higher-Layer Connectivity Diagnostics", html)
 
     def test_recent_workflow_is_prioritized_on_home(self):
         record = self.history.start("printer", "Printer", "start")
         html = self.client.get("/").get_data(as_text=True)
         printer_position = html.index("Printer")
-        network_position = html.index("Advanced Network Diagnostics")
-        self.assertLess(printer_position, network_position)
+        application_position = html.index("Application Keeps Crashing")
+        self.assertLess(printer_position, application_position)
         self.history.delete(record["id"])
 
     def test_favorite_toggle_persists_and_prioritizes_home(self):
@@ -71,7 +73,7 @@ class WorkflowCatalogTests(unittest.TestCase):
         self.assertIn('data-workflow-id="printer"', catalog)
         self.assertIn('aria-label="Remove Printer from favorites"', catalog)
         home = self.client.get("/").get_data(as_text=True)
-        self.assertLess(home.index("Printer"), home.index("Advanced Network Diagnostics"))
+        self.assertLess(home.index("Printer"), home.index("Application Keeps Crashing"))
         removed = self.client.post("/api/workflow-favorites/printer")
         self.assertFalse(removed.get_json()["favorite"])
 
@@ -209,7 +211,141 @@ class WorkflowCatalogTests(unittest.TestCase):
         self.assertEqual(catalog["printer"]["version"], 1)
         self.assertEqual(list(catalog).count("printer"), 1)
 
-    def test_current_publications_override_fallback_and_catalog_renders_all_thirteen(self):
+    def test_networking_discovery_roles_filter_only_public_surfaces(self):
+        root = Path(self.temporary.name)
+        publications = WorkflowPublicationService(root / "publications")
+        publications.publish(self._workflow("vpn", "Vpn"), "vpn.json")
+        publications.publish(
+            self._workflow(
+                "vpn_connectivity_win", "VPN Connectivity Troubleshooting (Windows)"
+            ),
+            "vpn_connectivity_win.json",
+        )
+        service = WorkflowCatalogService(
+            publications=publications,
+            built_in_metadata=AVAILABLE_WORKFLOWS,
+        )
+
+        complete = service.catalog()
+        discovery = service.discovery_catalog()
+
+        self.assertEqual(complete["internet"]["discovery_role"], "public_entry")
+        self.assertEqual(
+            complete["vpn_connectivity_win"]["discovery_role"], "public_entry"
+        )
+        self.assertEqual(
+            complete["network_diagnostics"]["discovery_role"], "contextual"
+        )
+        self.assertEqual(
+            complete["higher_layer_connectivity"]["discovery_role"], "contextual"
+        )
+        self.assertEqual(complete["vpn"]["discovery_role"], "legacy")
+        self.assertIn("internet", discovery)
+        self.assertIn("vpn_connectivity_win", discovery)
+        self.assertNotIn("network_diagnostics", discovery)
+        self.assertNotIn("higher_layer_connectivity", discovery)
+        self.assertNotIn("vpn", discovery)
+
+    def test_home_and_browse_hide_contextual_and_legacy_networking_entries(self):
+        root = Path(self.temporary.name)
+        publications = WorkflowPublicationService(root / "publications")
+        publications.publish(self._workflow("vpn", "Vpn"), "vpn.json")
+        publications.publish(
+            self._workflow(
+                "vpn_connectivity_win", "VPN Connectivity Troubleshooting (Windows)"
+            ),
+            "vpn_connectivity_win.json",
+        )
+
+        with patch("app.app.WorkflowPublicationService", return_value=publications):
+            self.client.post("/api/workflow-favorites/vpn_connectivity_win")
+            home = self.client.get("/").get_data(as_text=True)
+            browse = self.client.get("/workflows").get_data(as_text=True)
+
+        for html in (home, browse):
+            self.assertIn("Internet Connection", html)
+            self.assertIn("VPN Connectivity Troubleshooting (Windows)", html)
+            self.assertNotIn("Advanced Network Diagnostics", html)
+            self.assertNotIn("Higher-Layer Connectivity Diagnostics", html)
+            self.assertNotIn('href="/wizard?workflow=vpn"', html)
+
+    def test_hidden_favorite_identity_is_preserved_but_not_recommended(self):
+        with self.client.session_transaction() as browser_session:
+            browser_session["favorite_workflow_ids"] = ["network_diagnostics"]
+
+        html = self.client.get("/").get_data(as_text=True)
+
+        self.assertNotIn("Advanced Network Diagnostics", html)
+        with self.client.session_transaction() as browser_session:
+            self.assertEqual(
+                browser_session["favorite_workflow_ids"], ["network_diagnostics"]
+            )
+
+    def test_legacy_vpn_direct_route_and_pinned_version_remain_available(self):
+        root = Path(self.temporary.name)
+        publications = WorkflowPublicationService(root / "publications")
+        version_two = self._workflow("vpn", "Legacy VPN Procedure")
+        version_two["nodes"]["start"]["instruction"] = "Legacy version two guidance."
+        publications.publish(self._workflow("vpn", "Initial VPN Procedure"), "vpn.json")
+        publications.publish(version_two, "vpn.json")
+
+        with patch("app.app.WorkflowPublicationService", return_value=publications):
+            initial = self.client.get("/wizard?workflow=vpn")
+            version_three = self._workflow("vpn", "New VPN Procedure")
+            version_three["nodes"]["start"]["instruction"] = "New version three guidance."
+            publications.publish(version_three, "vpn.json")
+            resumed = self.client.get("/wizard?workflow=vpn&resume=1")
+
+        self.assertEqual(initial.status_code, 200)
+        self.assertIn("Legacy version two guidance.", initial.get_data(as_text=True))
+        self.assertEqual(resumed.status_code, 200)
+        self.assertIn("Legacy version two guidance.", resumed.get_data(as_text=True))
+        self.assertNotIn("New version three guidance.", resumed.get_data(as_text=True))
+
+    def test_search_returns_mature_vpn_workflow_not_legacy_vpn(self):
+        root = Path(self.temporary.name)
+        publications = WorkflowPublicationService(root / "publications")
+        publications.publish(self._workflow("vpn", "Vpn"), "vpn.json")
+        publications.publish(
+            self._workflow(
+                "vpn_connectivity_win", "VPN Connectivity Troubleshooting (Windows)"
+            ),
+            "vpn_connectivity_win.json",
+        )
+        search = SearchService()
+        search.knowledge.get_published = lambda: []
+        search.commands.get_all = lambda: []
+
+        with patch(
+            "app.services.search_service.WorkflowPublicationService",
+            return_value=publications,
+        ):
+            workflow_results = [
+                item for item in search.search_all("VPN")
+                if item.content_type == "Workflow"
+            ]
+
+        self.assertEqual(
+            [item.id for item in workflow_results], ["vpn_connectivity_win"]
+        )
+
+    def test_workflow_studio_keeps_legacy_and_public_vpn_drafts_visible(self):
+        root = Path(self.temporary.name)
+        drafts = WorkflowDraftService(root / "drafts")
+        drafts.save_draft(self._workflow("vpn", "Vpn"))
+        drafts.save_draft(self._workflow(
+            "vpn_connectivity_win", "VPN Connectivity Troubleshooting (Windows)"
+        ))
+
+        with patch("app.app.WorkflowDraftService", return_value=drafts):
+            response = self.client.get("/workflow-studio")
+
+        html = response.get_data(as_text=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Vpn", html)
+        self.assertIn("VPN Connectivity Troubleshooting (Windows)", html)
+
+    def test_current_publications_override_fallback_and_discovery_renders_public_entries(self):
         publication_root = Path(self.temporary.name) / "publications"
         publications = WorkflowPublicationService(publication_root)
         identities = list(AVAILABLE_WORKFLOWS) + [f"published_{index}" for index in range(5)]
@@ -230,11 +366,11 @@ class WorkflowCatalogTests(unittest.TestCase):
         self.assertEqual(catalog["internet"]["name"], "Current Internet Guidance")
         self.assertTrue(all(item["source"] == "published" for item in catalog.values()))
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.get_data(as_text=True).count("workflow-card-item"), 13)
+        self.assertEqual(response.get_data(as_text=True).count("workflow-card-item"), 11)
         self.assertEqual(home.status_code, 200)
         self.assertIn("Current Internet Guidance", response.get_data(as_text=True))
         self.assertIn("Current Internet Guidance", home.get_data(as_text=True))
-        self.assertIn("Explore all 13 workflows", home.get_data(as_text=True))
+        self.assertIn("Explore all 11 workflows", home.get_data(as_text=True))
         after = {
             path.relative_to(publication_root): path.read_bytes()
             for path in publication_root.rglob("*") if path.is_file()

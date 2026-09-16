@@ -18,6 +18,14 @@ class WorkflowCatalogService:
     """Resolve tracked built-ins and active publications into one public catalog."""
 
     WORKFLOW_ID_PATTERN = re.compile(r"[a-z0-9][a-z0-9_-]*")
+    PUBLIC_ENTRY = "public_entry"
+    DISCOVERY_ROLES = {
+        "internet": PUBLIC_ENTRY,
+        "vpn_connectivity_win": PUBLIC_ENTRY,
+        "network_diagnostics": "contextual",
+        "higher_layer_connectivity": "contextual",
+        "vpn": "legacy",
+    }
 
     def __init__(
         self,
@@ -39,12 +47,18 @@ class WorkflowCatalogService:
             for workflow_id, entry in self._ordered_items(selected)
         }
 
-    def selected_workflows(self):
+    def discovery_catalog(self):
+        """Return the normal user-facing discovery view of the complete catalog."""
+        return self.discovery_view(self.catalog())
+
+    def selected_workflows(self, *, discoverable_only=False):
         """Return catalog metadata with its selected workflow content for internal reads."""
         selected, workflows = self._resolve()
         return [
             (deepcopy(entry), deepcopy(workflows[workflow_id]))
             for workflow_id, entry in self._ordered_items(selected)
+            if not discoverable_only
+            or entry["discovery_role"] == self.PUBLIC_ENTRY
         ]
 
     def built_ins(self):
@@ -143,6 +157,9 @@ class WorkflowCatalogService:
             ),
             "source": source,
             "version": version if source == "published" else None,
+            "discovery_role": self.DISCOVERY_ROLES.get(
+                workflow_id, self.PUBLIC_ENTRY
+            ),
         }
 
     def _validate_workflow(self, workflow, *, source):
@@ -166,3 +183,12 @@ class WorkflowCatalogService:
             entries.items(),
             key=lambda item: (item[1]["name"].casefold(), item[0]),
         )
+
+    @classmethod
+    def discovery_view(cls, catalog):
+        """Filter already-resolved entries without changing runtime identity selection."""
+        return {
+            workflow_id: entry
+            for workflow_id, entry in catalog.items()
+            if entry.get("discovery_role", cls.PUBLIC_ENTRY) == cls.PUBLIC_ENTRY
+        }

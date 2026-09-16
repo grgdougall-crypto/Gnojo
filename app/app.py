@@ -688,17 +688,18 @@ def home():
         if not session["learning_mode"]:
             session.pop("learning_concepts", None)
     active_device = active_device_profile()
-    workflows = available_workflows()
+    runtime_workflows = available_workflows()
+    workflows = WorkflowCatalogService.discovery_view(runtime_workflows)
     for details in workflows.values():
         details["compatibility"] = workflow_device_compatibility(details, active_device)
     priority = {"recommended": 0, "compatible": 1, "neutral": 2, "incompatible": 3}
     workflows = dict(sorted(workflows.items(), key=lambda item: (priority[item[1]["compatibility"]], item[1]["name"].lower())))
 
-    favorite_ids = favorite_workflow_ids(workflows)
-    recent_ids = recent_workflow_ids(workflows)
+    favorite_ids = favorite_workflow_ids(runtime_workflows)
+    recent_ids = recent_workflow_ids(runtime_workflows)
     featured_ids = []
     for workflow_id in favorite_ids + recent_ids:
-        if workflow_id not in featured_ids:
+        if workflow_id in workflows and workflow_id not in featured_ids:
             featured_ids.append(workflow_id)
     for workflow_id, details in workflows.items():
         if details["compatibility"] == "recommended" and workflow_id not in featured_ids:
@@ -719,14 +720,15 @@ def home():
         favorite_ids=favorite_ids,
         active_device=active_device,
         learning_mode=session.get("learning_mode", False),
-        active_session=active_troubleshooting_session(workflows),
+        active_session=active_troubleshooting_session(runtime_workflows),
     )
 
 
 @app.route("/workflows")
 def workflow_catalog():
     device = active_device_profile()
-    workflows = available_workflows()
+    runtime_workflows = available_workflows()
+    workflows = WorkflowCatalogService.discovery_view(runtime_workflows)
     for details in workflows.values():
         details["compatibility"] = workflow_device_compatibility(details, device)
     workflows = dict(sorted(workflows.items(), key=lambda item: (
@@ -736,8 +738,8 @@ def workflow_catalog():
         "workflow_catalog.html",
         workflows=workflows,
         active_device=device,
-        favorite_ids=favorite_workflow_ids(workflows),
-        recent_ids=recent_workflow_ids(workflows),
+        favorite_ids=favorite_workflow_ids(runtime_workflows),
+        recent_ids=recent_workflow_ids(runtime_workflows),
     )
 
 

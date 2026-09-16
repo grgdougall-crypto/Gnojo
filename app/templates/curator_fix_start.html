@@ -1,10 +1,10 @@
 {% extends "base.html" %}
-{% block title %}Fix Wizard | Gnojo{% endblock %}
+{% block title %}Guided Repair | Gnojo{% endblock %}
 {% block content %}
 <div class="container curator-page" id="main-content">
   {% with curator_active='maintenance' %}{% include 'partials/_curator_nav.html' %}{% endwith %}
-  <nav aria-label="Breadcrumb"><a href="{{ url_for('curator_dashboard') }}">Curator</a> / <a href="{{ url_for('knowledge_integrity_dashboard') }}">Knowledge Integrity</a> / Fix Wizard</nav>
-  <header class="curator-heading"><div><span class="section-eyebrow">Curator maintenance</span><h1>Fix Wizard</h1><p>Start or resume a guided maintenance session to review one current integrity finding at a time. Nothing changes until you preview and confirm a supported repair.</p></div></header>
+  <nav aria-label="Breadcrumb"><a href="{{ url_for('curator_dashboard') }}">Knowledge Health</a> / <a href="{{ url_for('knowledge_integrity_dashboard') }}">Knowledge Integrity</a> / Guided Repair</nav>
+  <header class="curator-heading"><div><span class="section-eyebrow">Supervised maintenance</span><h1>Guided Repair</h1><p>Start or resume a guided maintenance session to review one current integrity finding at a time. Nothing changes until you preview and confirm a supported repair.</p></div></header>
   {% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
   <section class="quality-section" aria-labelledby="baselineTitle">
     <h2 id="baselineTitle">Current maintenance baseline</h2>
@@ -12,22 +12,22 @@
       <article><span>Broken relationships</span><strong>{{ integrity.counts.broken_relationships }}</strong></article>
       <article><span>Duplicate groups</span><strong>{{ integrity.counts.duplicate_groups }}</strong></article>
       <article><span>Inventory mismatches</span><strong>{{ integrity.counts.inventory_mismatches }}</strong></article>
-      <article><span>Orphaned articles</span><strong>{{ integrity.counts.orphaned_articles }}</strong></article>
+      <article><span>Unlinked articles</span><strong>{{ integrity.counts.orphaned_articles }}</strong></article>
       <article><span>Legacy review records</span><strong>{{ integrity.counts.missing_review_metadata }}</strong></article>
     </div>
     <form method="post" class="mt-4">
       <label class="form-label" for="reviewer">Reviewer name</label>
       <input class="form-control" id="reviewer" name="reviewer" required autocomplete="name" aria-describedby="reviewerHelp">
       <p id="reviewerHelp" class="form-text">Gnojo has no login system yet, so the session records the name you enter. It is never used to backdate legacy reviews.</p>
-      <button class="btn btn-primary btn-lg" type="submit">{{ 'Resume Fix Wizard Session' if sessions|selectattr('ended_at', 'none')|list else 'Start Fix Wizard Session' }}</button>
+      <button class="btn btn-primary btn-lg" type="submit">{{ 'Resume Guided Repair Session' if sessions|selectattr('ended_at', 'none')|list else 'Start Guided Repair Session' }}</button>
     </form>
   </section>
   {% if sessions %}
   <section class="quality-section mt-4" aria-labelledby="resumeTitle">
-    <h2 id="resumeTitle">Resume a Fix Wizard Session</h2>
+    <h2 id="resumeTitle">Resume a Guided Repair Session</h2>
     <div class="d-grid gap-2">
       {% for session in sessions if not session.ended_at %}
-      <a class="integrity-record curator-fix-session-card text-decoration-none" href="{{ url_for('curator_fix_session', session_id=session.session_id) }}" aria-label="Resume Fix Wizard session {{ session.session_id }} for {{ session.started_by }}: {{ session.progress.original_queue }} starting, {{ session.progress.discovered_during_session }} added, {{ session.progress.remaining }} remaining, {{ session.progress.handled }} handled, {{ session.progress.session_repairs }} completed in this session, {{ session.progress.external_resolutions }} resolved externally">
+      <a class="integrity-record curator-fix-session-card text-decoration-none" href="{{ url_for('curator_fix_session', session_id=session.session_id) }}" aria-label="Resume Guided Repair session {{ session.session_id }} for {{ session.started_by }}: {{ session.progress.original_queue }} starting, {{ session.progress.discovered_during_session }} added, {{ session.progress.remaining }} remaining, {{ session.progress.handled }} handled, {{ session.progress.session_repairs }} completed in this session, {{ session.progress.external_resolutions }} resolved externally">
         <span class="curator-fix-session-card__heading"><strong>Reviewer {{ session.started_by }}</strong><code>{{ session.session_id }}</code></span>
         <span class="curator-fix-session-card__metrics"><span><strong>{{ session.progress.original_queue }}</strong> starting</span><span><strong>{{ session.progress.discovered_during_session }}</strong> added</span><span><strong>{{ session.progress.remaining }}</strong> remaining</span></span>
         <span class="curator-fix-session-card__outcomes"><span>{{ session.progress.handled }} handled</span><span>{{ session.progress.session_repairs }} completed in this session</span><span>{{ session.progress.external_resolutions }} resolved externally</span></span>

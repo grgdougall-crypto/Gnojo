@@ -42,7 +42,7 @@ class ScriptLibraryTests(unittest.TestCase):
         response = self.client.get("/content-studio")
         html = response.get_data(as_text=True)
         self.assertIn('href="/scripts/builder"', html)
-        self.assertIn("Open Script Builder", html)
+        self.assertIn("Script Builder", html)
         self.assertNotIn("Coming Soon", html)
         library = self.client.get("/scripts")
         self.assertEqual(library.status_code, 200)

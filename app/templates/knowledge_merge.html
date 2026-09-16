@@ -2,7 +2,7 @@
 {% block title %}Merge Knowledge | Gnojo{% endblock %}
 {% block content %}
 <div class="container curator-page">
-  {% if return_to %}<div class="alert alert-info">You are reviewing a merge from a maintenance session. After a successful merge, Gnojo will return you to the Fix Wizard.</div>{% endif %}
+  {% if return_to %}<div class="alert alert-info">You are reviewing a merge from a maintenance session. After a successful merge, Gnojo will return you to Guided Repair.</div>{% endif %}
   <header class="curator-heading"><div><span class="section-eyebrow">Knowledge integrity</span><h1>Merge Workspace</h1><p>Compare duplicate candidates, preview every addition and reference update, then explicitly confirm the merge.</p></div><a class="btn btn-outline-primary" href="{{ url_for('knowledge_integrity_dashboard') }}">Back</a></header>
   {% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
   {% for preview in previews %}

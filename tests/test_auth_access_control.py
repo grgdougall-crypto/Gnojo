@@ -89,7 +89,8 @@ class AuthenticationAccessControlTests(unittest.TestCase):
         self.assertEqual(response.headers["Location"], "/content-studio")
         page = self.client.get("/content-studio")
         self.assertEqual(page.status_code, 200)
-        self.assertIn(b"Content Studio", page.data)
+        self.assertIn(b"<h1 class=\"display-5 fw-bold\">Build</h1>", page.data)
+        self.assertIn(b"Growth Operations", page.data)
 
     def test_invalid_login_fails_without_authenticating(self):
         page = self.client.get("/login")

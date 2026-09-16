@@ -81,10 +81,12 @@ class CuratorDashboardPageTests(unittest.TestCase):
             "recent_audits": [{"run_id": "RUN-1", "completed_at": "2026-08-05T12:00:00+00:00", "summary": {"findings": 4}}],
         }
 
-    def test_content_studio_links_to_curator(self):
+    def test_build_landing_exposes_governed_workspaces(self):
         html = self.client.get("/content-studio").get_data(as_text=True)
-        self.assertIn('href="/curator"', html)
-        self.assertIn("Curator Dashboard", html)
+        self.assertIn('href="/curator/growth/operations"', html)
+        self.assertIn('href="/curator/growth/knowledge-builder"', html)
+        self.assertIn('href="/review"', html)
+        self.assertIn('href="/workflow-studio"', html)
 
     @patch("app.app.CuratorDashboardService")
     def test_dashboard_renders_operational_information(self, service):
@@ -92,7 +94,9 @@ class CuratorDashboardPageTests(unittest.TestCase):
         response = self.client.get("/curator")
         html = response.get_data(as_text=True)
         self.assertEqual(response.status_code, 200)
-        self.assertIn("Run Curator Audit", html)
+        self.assertIn("Knowledge Health", html)
+        self.assertIn("Run Knowledge Audit", html)
+        self.assertIn("Guided Repair", html)
         self.assertIn("Knowledge Tasks", html)
         self.assertIn("GKT-TEST", html)
         self.assertIn("Operational Health", html)

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Relationship Proposals | Curator | Gnojo{% endblock %}
+{% block title %}Relationship Reviews | Knowledge Health | Gnojo{% endblock %}
 {% block content %}
 <div class="container" aria-labelledby="relationshipQueueTitle">
   {% if not harness_mode %}{% with curator_active='relationships' %}{% include 'partials/_curator_nav.html' %}{% endwith %}{% endif %}
@@ -8,7 +8,7 @@
 
   <header class="page-header mb-4">
     <span class="section-eyebrow">Supervised review</span>
-    <h1 id="relationshipQueueTitle">Relationship Proposal Queue</h1>
+    <h1 id="relationshipQueueTitle">Relationship Reviews</h1>
     <p>Review deterministic relationship-repair proposals together. No relationship changes have been applied, and human review governs every final decision.</p>
   </header>
 

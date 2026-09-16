@@ -512,6 +512,38 @@ main {
     .search-suggestion-summary { white-space: normal; }
 }
 
+.product-area-nav {
+    border-top: 1px solid var(--sp-border);
+}
+
+.app-header .product-area-nav .container {
+    display: flex;
+    align-items: center;
+    flex-wrap: nowrap;
+    gap: .35rem;
+    overflow-x: auto;
+    padding-block: .35rem;
+    scrollbar-width: thin;
+}
+
+.product-area-nav__link {
+    display: inline-flex;
+    align-items: center;
+    gap: .45rem;
+    border-radius: .65rem;
+    color: var(--sp-muted);
+    font-size: .88rem;
+    font-weight: 600;
+    padding: .55rem .8rem;
+    white-space: nowrap;
+}
+
+.product-area-nav__link:hover,
+.product-area-nav__link.active {
+    background: color-mix(in srgb, var(--sp-blue) 12%, transparent);
+    color: var(--sp-blue);
+}
+
 /* Search autocomplete */
 
 .global-search-wrapper {

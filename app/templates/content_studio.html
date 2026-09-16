@@ -1,212 +1,61 @@
 {% extends "base.html" %}
 
-{% block title %}Content Studio | Gnojo{% endblock %}
+{% block title %}Build | Gnojo{% endblock %}
 
 {% block content %}
-
 <div class="container py-5">
-
-    <div class="mb-5">
-
-        <p class="text-uppercase text-muted mb-2">
-            AI Authoring Platform
+    <header class="mb-5">
+        <p class="section-label mb-2">Governed authoring</p>
+        <h1 class="display-5 fw-bold">Build</h1>
+        <p class="text-muted fs-5 mb-0">
+            Grow, review, and shape governed troubleshooting knowledge without bypassing human approval.
         </p>
+    </header>
 
-        <h1 class="display-5 fw-bold">
-            Content Studio
-        </h1>
-
-        <p class="text-muted fs-5">
-            Build and manage AI-powered workflows, knowledge articles,
-            commands, and automation content from one place.
-        </p>
-
-    </div>
-
-    <div class="row g-4">
-
-        <div class="col-12"><span class="section-eyebrow">Authoring workspace</span><h2 class="h3 mb-0">Create and Manage</h2><p class="text-muted mb-0">Build and maintain reusable troubleshooting resources.</p></div>
-
-        <div class="col-md-6 col-xl-3">
-
-            <a
-                href="{{ url_for('workflow_studio') }}"
-                class="text-decoration-none"
-            >
-
-                <div
-                    class="card h-100 shadow-sm
-                           border-start border-4
-                           border-primary content-card"
-                >
-
-                    <div
-                        class="card-body text-center
-                               p-5 d-flex flex-column"
-                    >
-
-                        <i class="bi bi-diagram-3 display-2"></i>
-
-                        <h3 class="h4 mt-4 fw-semibold">
-                            Workflows
-                        </h3>
-
-                        <p class="text-muted mt-auto mb-0">
-                            Generate and manage troubleshooting workflows.
-                        </p>
-
-                        <span class="btn btn-outline-primary mt-4">
-                            Open Workflow Studio
-                        </span>
-
-                    </div>
-
-                </div>
-
-            </a>
-
+    <section aria-labelledby="buildWorkspacesTitle">
+        <div class="section-heading">
+            <p class="section-label">Build workspaces</p>
+            <h2 id="buildWorkspacesTitle">Prepare and review knowledge</h2>
+            <p class="section-description">Start with the operator workspace that matches the work in front of you.</p>
         </div>
-
-        <div class="col-md-6 col-xl-3">
-
-            <a
-                href="{{ url_for('article_builder') }}"
-                class="text-decoration-none"
-            >
-
-                <div
-                    class="card h-100 shadow-sm
-                           border-start border-4
-                           border-success content-card"
-                >
-
-                    <div
-                        class="card-body text-center
-                               p-5 d-flex flex-column"
-                    >
-
-                        <i class="bi bi-journal-text display-2"></i>
-
-                        <h3 class="h4 mt-4 fw-semibold">
-                            Article Builder Preview
-                        </h3>
-
-                        <p class="text-muted mt-auto mb-0">
-                            Explore the early-preview article authoring experience.
-                        </p>
-
-                        <span class="btn btn-outline-success mt-4">
-                            Open Article Builder Preview
-                        </span>
-
-                    </div>
-
-                </div>
-
-            </a>
-
-        </div>
-
-        <div class="col-md-6 col-xl-3">
-
-            <a
-                href="{{ url_for('command_builder') }}"
-                class="text-decoration-none"
-            >
-
-                <div
-                    class="card h-100 shadow-sm
-                           border-start border-4
-                           border-warning content-card"
-                >
-
-                    <div
-                        class="card-body text-center
-                               p-5 d-flex flex-column"
-                    >
-
-                        <i class="bi bi-terminal display-2"></i>
-
-                        <h3 class="h4 mt-4 fw-semibold">
-                            Commands
-                        </h3>
-
-                        <p class="text-muted mt-auto mb-0">
-                            Build command documentation and references.
-                        </p>
-
-                        <span class="btn btn-outline-warning mt-4">
-                            Open Command Builder
-                        </span>
-
-                    </div>
-
-                </div>
-
-            </a>
-
-        </div>
-
-        <div class="col-md-6 col-xl-3">
-            <a href="{{ url_for('script_builder') }}" class="text-decoration-none">
-            <div
-                class="card h-100 shadow-sm
-                       border-start border-4
-                       border-info content-card"
-            >
-
-                <div
-                    class="card-body text-center
-                           p-5 d-flex flex-column"
-                >
-
-                    <i class="bi bi-lightning-charge display-2"></i>
-
-                    <h3 class="h4 mt-4 fw-semibold">
-                        Scripts
-                    </h3>
-
-                    <p class="text-muted mt-auto mb-0">
-                        Build and review automation and diagnostic scripts.
-                    </p>
-
-                    <span class="btn btn-outline-info mt-4">Open Script Builder</span>
-
-                </div>
-
+        <div class="row g-4">
+            {% for endpoint, icon, title, description, action, color in [
+                ('growth_operations', 'bi-graph-up-arrow', 'Growth Operations', 'Discover coverage opportunities and start bounded supervised propagation.', 'Open Growth Operations', 'primary'),
+                ('knowledge_builder_index', 'bi-bricks', 'Unified Knowledge Builder', 'Move governed knowledge work through Prepare, Review, and Complete.', 'Open Knowledge Builder', 'success'),
+                ('review_workspace', 'bi-inbox-check', 'Review', 'Resolve the next governed human decision in the shared review queue.', 'Open Review', 'warning'),
+                ('workflow_studio', 'bi-diagram-3', 'Workflow Studio', 'Create and manage editable troubleshooting workflow drafts.', 'Open Workflow Studio', 'info')
+            ] %}
+            <div class="col-12 col-md-6">
+                <a href="{{ url_for(endpoint) }}" class="text-decoration-none">
+                    <article class="card h-100 shadow-sm border-start border-4 border-{{ color }} content-card">
+                        <div class="card-body p-4 d-flex gap-3 align-items-start">
+                            <div class="service-icon flex-shrink-0"><i class="bi {{ icon }}" aria-hidden="true"></i></div>
+                            <div class="d-flex flex-column h-100 flex-grow-1">
+                                <h3 class="h4 fw-semibold">{{ title }}</h3>
+                                <p class="text-muted flex-grow-1">{{ description }}</p>
+                                <span class="btn btn-outline-{{ color }} align-self-start">{{ action }} <i class="bi bi-arrow-right ms-2" aria-hidden="true"></i></span>
+                            </div>
+                        </div>
+                    </article>
+                </a>
             </div>
-            </a>
-
+            {% endfor %}
         </div>
+    </section>
 
-        <div class="col-12 mt-5"><span class="section-eyebrow">Governance workspace</span><h2 class="h3 mb-0">Measure and Govern</h2><p class="text-muted mb-0">Audit, prioritize, and improve the quality of Gnojo content.</p></div>
-
-        <div class="col-12">
-            <a href="{{ url_for('curator_dashboard') }}" class="text-decoration-none">
-                <div class="card shadow-sm border-start border-4 border-info content-card curator-studio-card">
-                    <div class="card-body p-4 d-flex flex-wrap align-items-center gap-4">
-                        <div class="quality-studio-card__icon curator-studio-card__icon"><i class="bi bi-stars" aria-hidden="true"></i></div>
-                        <div class="flex-grow-1"><span class="section-eyebrow">Knowledge operations</span><h2 class="h4 mt-1 mb-1">Curator Dashboard</h2><p class="text-muted mb-0">Run deterministic audits and review persistent tasks, knowledge debt, health, and lessons.</p></div>
-                        <span class="btn btn-outline-info">Open Curator <i class="bi bi-arrow-right ms-2" aria-hidden="true"></i></span>
-                    </div>
-                </div>
-            </a>
+    <details class="quality-section mt-5">
+        <summary>
+            <span>
+                <span class="section-eyebrow">Specialized authoring</span>
+                <strong>Advanced authoring tools</strong>
+                <small>Article, command, and script builders remain available when a governed flow requires them.</small>
+            </span>
+        </summary>
+        <div class="d-flex flex-wrap gap-2 pt-3">
+            <a class="btn btn-outline-secondary" href="{{ url_for('article_builder') }}">Article Builder Preview</a>
+            <a class="btn btn-outline-secondary" href="{{ url_for('command_builder') }}">Command Builder</a>
+            <a class="btn btn-outline-secondary" href="{{ url_for('script_builder') }}">Script Builder</a>
         </div>
-
-        <div class="col-12">
-            <a href="{{ url_for('content_quality') }}" class="text-decoration-none">
-                <div class="card shadow-sm border-start border-4 border-danger content-card quality-studio-card">
-                    <div class="card-body p-4 d-flex flex-wrap align-items-center gap-4">
-                        <div class="quality-studio-card__icon"><i class="bi bi-clipboard2-pulse" aria-hidden="true"></i></div>
-                        <div class="flex-grow-1"><span class="section-eyebrow">Measure and improve</span><h2 class="h4 mt-1 mb-1">Content Quality Dashboard</h2><p class="text-muted mb-0">Turn workflow usage, feedback, abandonment, and coverage gaps into an actionable improvement queue.</p></div>
-                        <span class="btn btn-outline-danger">Open Content Quality <i class="bi bi-arrow-right ms-2" aria-hidden="true"></i></span>
-                    </div>
-                </div>
-            </a>
-        </div>
-
-    </div>
-
+    </details>
 </div>
-
 {% endblock %}

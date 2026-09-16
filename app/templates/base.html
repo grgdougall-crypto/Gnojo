@@ -112,30 +112,7 @@
                         Gnojo ready
                     </span>
 
-                    <a
-                        class="btn btn-outline-secondary btn-sm header-history-link"
-                        href="{{ url_for('troubleshooting_history') }}"
-                        {% if request.endpoint in ('troubleshooting_history', 'troubleshooting_history_detail') %}aria-current="page"{% endif %}
-                    >
-                        <i class="bi bi-clock-history" aria-hidden="true"></i>
-                        <span>History</span>
-                    </a>
-
-                    {% if reviewer_authenticated %}<a
-    class="btn btn-outline-primary btn-sm"
-    href="{{ url_for('review_workspace') }}"
-    {% if request.endpoint and request.endpoint.startswith('review_workspace') %}aria-current="page"{% endif %}
->
-    <i class="bi bi-inbox-check me-1" aria-hidden="true"></i>
-    Review
-</a><a
-    class="btn btn-outline-primary btn-sm"
-    href="{{ url_for('content_studio') }}"
-    {% if request.endpoint == 'content_studio' %}aria-current="page"{% endif %}
->
-    <i class="bi bi-pencil-square me-1"></i>
-    Content Studio
-</a>
+                    {% if reviewer_authenticated %}
                     <form method="post" action="{{ url_for('logout') }}" class="d-inline">
                         <input type="hidden" name="authenticity_token" value="{{ authenticity_token() }}">
                         <button class="btn btn-outline-secondary btn-sm" type="submit">Sign Out</button>
@@ -158,6 +135,33 @@
 
                 </div>
 
+            </div>
+        </nav>
+        {% set product_path = request.path %}
+        {% set troubleshoot_active = product_path == '/' or product_path.startswith('/workflows') or product_path.startswith('/wizard') or product_path.startswith('/troubleshooting-history') or product_path.startswith('/device-profiles') %}
+        {% set knowledge_active = product_path == '/knowledge' or product_path.startswith('/knowledge/published') or (product_path.startswith('/commands') and not product_path.startswith('/commands/builder')) or (product_path.startswith('/scripts') and not product_path.startswith('/scripts/builder')) or product_path.startswith('/search') %}
+        {% set build_active = product_path.startswith('/content-studio') or product_path.startswith('/review') or product_path.startswith('/workflow-studio') or product_path.startswith('/curator/growth') or product_path.startswith('/knowledge/builder') or product_path.startswith('/knowledge/drafts') or product_path.startswith('/commands/builder') or product_path.startswith('/scripts/builder') %}
+        {% set health_active = (product_path.startswith('/curator') and not product_path.startswith('/curator/growth')) or product_path.startswith('/content-quality') %}
+        <nav class="product-area-nav" aria-label="Product areas">
+            <div class="container">
+                <a class="product-area-nav__link{% if troubleshoot_active %} active{% endif %}" href="{{ url_for('home') }}"{% if troubleshoot_active %} aria-current="page"{% endif %}>
+                    <i class="bi bi-tools" aria-hidden="true"></i>
+                    Troubleshoot
+                </a>
+                <a class="product-area-nav__link{% if knowledge_active %} active{% endif %}" href="{{ url_for('knowledge_center') }}"{% if knowledge_active %} aria-current="page"{% endif %}>
+                    <i class="bi bi-journal-bookmark" aria-hidden="true"></i>
+                    Knowledge
+                </a>
+                {% if reviewer_authenticated %}
+                <a class="product-area-nav__link{% if build_active %} active{% endif %}" href="{{ url_for('content_studio') }}"{% if build_active %} aria-current="page"{% endif %}>
+                    <i class="bi bi-hammer" aria-hidden="true"></i>
+                    Build
+                </a>
+                <a class="product-area-nav__link{% if health_active %} active{% endif %}" href="{{ url_for('curator_dashboard') }}"{% if health_active %} aria-current="page"{% endif %}>
+                    <i class="bi bi-heart-pulse" aria-hidden="true"></i>
+                    Health
+                </a>
+                {% endif %}
             </div>
         </nav>
     </header>

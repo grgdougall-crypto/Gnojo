@@ -28,7 +28,7 @@
         <label class="form-check mb-3"><input class="form-check-input" type="checkbox" name="approved" value="yes" required> <span class="form-check-label">I reviewed this exact before/after change and approve linking the published canonical article.</span></label>
         <button class="btn btn-success" type="submit">Approve and apply repair</button>
       </form>
-      {% elif p.eligible %}<div class="alert alert-warning">Open this task from its active Fix Wizard session to approve the repair.</div>{% endif %}
+      {% elif p.eligible %}<div class="alert alert-warning">Open this task from its active Guided Repair session to approve the repair.</div>{% endif %}
     {% else %}
       <div class="alert alert-info" role="status"><strong>Repair adapter not available</strong><p class="mb-0">{{ p.blocking_reason if p else 'This observation requires human judgment and cannot be repaired automatically.' }}</p></div>
     {% endif %}

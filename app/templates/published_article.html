@@ -60,7 +60,7 @@
                 class="btn btn-outline-primary"
             >
                 <i class="bi bi-arrow-left me-2"></i>
-                {{ return_label or ('Back to Assisted Resolution' if return_to.startswith('/curator/tasks/') else 'Back to Fix Wizard' if return_to.startswith('/curator/fix') else 'Back to Search Results' if return_to.startswith('/search') else 'Back to Published Articles') }}
+                {{ return_label or ('Back to Assisted Resolution' if return_to.startswith('/curator/tasks/') else 'Back to Guided Repair' if return_to.startswith('/curator/fix') else 'Back to Search Results' if return_to.startswith('/search') else 'Back to Published Articles') }}
             </a>
         </div>
 

@@ -67,6 +67,16 @@
     </div>
 </section>
 
+<nav class="container py-3" aria-label="Troubleshoot shortcuts">
+    <div class="d-flex flex-wrap align-items-center gap-2">
+        <strong class="me-2">Troubleshoot</strong>
+        <a class="btn btn-sm btn-outline-primary" href="#workflows">Guided Troubleshooting</a>
+        <a class="btn btn-sm btn-outline-primary" href="{{ url_for('workflow_catalog') }}">Browse Workflows</a>
+        <a class="btn btn-sm btn-outline-primary" href="{{ url_for('troubleshooting_history') }}">History</a>
+        <a class="btn btn-sm btn-outline-primary" href="{{ url_for('device_profiles') }}">Device Profiles</a>
+    </div>
+</nav>
+
 <section class="mission-section" id="workflows">
     <div class="container">
         {% if active_session %}

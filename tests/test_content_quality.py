@@ -162,9 +162,9 @@ class ContentQualityPageTests(unittest.TestCase):
             app.config["STRUCTURAL_REPAIR_REPOSITORY_ROOT"] = self.previous_repository_root
         self.temporary.cleanup()
 
-    def test_content_studio_links_to_quality_dashboard(self):
-        html = self.client.get("/content-studio").get_data(as_text=True)
-        self.assertIn("Content Quality Dashboard", html)
+    def test_health_landing_links_to_quality_dashboard(self):
+        html = self.client.get("/curator").get_data(as_text=True)
+        self.assertIn("Content Quality", html)
         self.assertIn("Open Content Quality", html)
         self.assertIn('href="/content-quality"', html)
 

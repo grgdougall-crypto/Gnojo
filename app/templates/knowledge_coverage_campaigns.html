@@ -3,7 +3,7 @@
 {% block content %}
 <div class="container curator-page" id="main-content" aria-labelledby="campaignsTitle">
   {% with curator_active='growth' %}{% include 'partials/_curator_nav.html' %}{% endwith %}
-  <nav aria-label="Breadcrumb"><a href="{{ url_for('curator_growth_dashboard') }}">Curator Growth</a> / Coverage Campaigns</nav>
+  <nav aria-label="Breadcrumb"><a href="{{ url_for('content_studio') }}">Build</a> / Coverage Campaigns</nav>
   <header class="curator-heading"><div><span class="section-eyebrow">Knowledge Factory</span><h1 id="campaignsTitle">Coverage Campaigns</h1><p>Plan knowledge expansion from Gnojo's current inventory. Analysis is deterministic and never creates or publishes content.</p></div><a class="btn btn-outline-primary" href="{{ url_for('curator_growth_dashboard') }}">Back to Growth</a></header>
   {% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
 

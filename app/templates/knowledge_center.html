@@ -1,379 +1,57 @@
 {% extends "base.html" %}
 
-{% block title %}Gnojo | Knowledge Center{% endblock %}
+{% block title %}Knowledge | Gnojo{% endblock %}
 
 {% block content %}
-
 <section class="content-section">
-
     <div class="container">
+        <header class="section-heading">
+            <p class="section-label">Knowledge</p>
+            <h1>Find trusted troubleshooting knowledge</h1>
+            <p class="section-description">Search or browse published articles, reviewed commands, and available scripts.</p>
+        </header>
 
-        <div
-            class="d-flex flex-wrap justify-content-between
-                   align-items-start gap-3 mb-5"
-        >
-            <div class="section-heading mb-0">
-
-                <p class="section-label">
-                    Knowledge Center
-                </p>
-
-                <h1>
-                    What Would You Like to Do?
-                </h1>
-
-                <p class="section-description">
-                    Find trusted guidance, review new content,
-                    or create structured troubleshooting knowledge.
-                </p>
-
-            </div>
-
-            <a
-                class="btn btn-outline-primary"
-                href="{{ url_for('home') }}"
-            >
-                <i class="bi bi-arrow-left me-2"></i>
-                Home
-            </a>
-
-        </div>
-
-        <!-- Search published knowledge -->
-
-        <div class="card shadow-sm mb-4">
-
+        <section class="card shadow-sm mb-4" aria-labelledby="knowledgeSearchTitle">
             <div class="card-body p-4">
-
                 <div class="d-flex align-items-start gap-3 mb-3">
-
-                    <div class="service-icon">
-                        <i class="bi bi-search"></i>
-                    </div>
-
+                    <div class="service-icon"><i class="bi bi-search" aria-hidden="true"></i></div>
                     <div>
-
-                        <h2 class="h4 mb-1">
-                            Search Gnojo Knowledge
-                        </h2>
-
-                        <p class="text-muted mb-0">
-                            Search articles, commands, topics,
-                            and troubleshooting guidance.
-                        </p>
-
+                        <h2 class="h4 mb-1" id="knowledgeSearchTitle">Search</h2>
+                        <p class="text-muted mb-0">Search published guidance, commands, scripts, topics, and workflows.</p>
                     </div>
-
                 </div>
-
-                <form
-                    method="GET"
-                    action="{{ url_for('search') }}"
-                >
+                <form method="get" action="{{ url_for('search') }}" role="search">
                     <div class="input-group">
-
-                        <span class="input-group-text">
-                            <i class="bi bi-search"></i>
-                        </span>
-
+                        <span class="input-group-text"><i class="bi bi-search" aria-hidden="true"></i></span>
                         <label class="visually-hidden" for="knowledgeLibrarySearch">Search published knowledge</label>
-                        <input
-                            id="knowledgeLibrarySearch"
-                            class="form-control"
-                            type="search"
-                            name="q"
-                            placeholder="Search the knowledge library"
-                            required
-                        >
-
-                        <button
-                            class="btn btn-primary"
-                            type="submit"
-                        >
-                            Search
-                        </button>
-
+                        <input id="knowledgeLibrarySearch" class="form-control" type="search" name="q" placeholder="Search Gnojo knowledge" required>
+                        <input type="hidden" name="type" value="all">
+                        <button class="btn btn-primary" type="submit">Search</button>
                     </div>
                 </form>
-
-                <p class="small text-muted mt-2 mb-0">
-                    Search reviewed and published Gnojo articles.
-                </p>
-
             </div>
-
-        </div>
-
-        <!-- Knowledge actions -->
+        </section>
 
         <div class="row g-3">
-
-            <!-- Command Builder -->
-
-            {% if reviewer_authenticated %}
-            <div class="col-12">
-
-                <div class="card shadow-sm">
-
-                    <div class="card-body p-4">
-
-                        <div
-                            class="d-flex flex-wrap justify-content-between
-                                   align-items-center gap-3"
-                        >
-                            <div class="d-flex align-items-start gap-3">
-
-                                <div class="service-icon">
-                                    <i class="bi bi-pencil-square"></i>
-                                </div>
-
-                                <div>
-
-                                    <h2 class="h4 mb-1">
-                                        Command Builder
-                                    </h2>
-
-                                    <p class="text-muted mb-0">
-                                        Create and review structured command
-                                        documentation before publication.
-                                    </p>
-
-                                </div>
-
-                            </div>
-
-                            <a
-                                class="btn btn-primary sp-action-button"
-                                href="{{ url_for('command_builder') }}"
-                            >
-                                Open Command Builder
-                                <i class="bi bi-arrow-right ms-2"></i>
-                            </a>
-
+            {% for endpoint, icon, title, description, action, count in [
+                ('list_published', 'bi-journal-check', 'Published Articles', 'Open reviewed troubleshooting guidance and supporting reference material.', 'Browse Articles', published_count),
+                ('list_commands', 'bi-terminal', 'Commands', 'Review command syntax, examples, risk, and supported platforms.', 'Browse Commands', none),
+                ('list_scripts', 'bi-filetype-ps1', 'Scripts', 'Browse diagnostic collectors and governed automation resources.', 'Browse Scripts', none)
+            ] %}
+            <div class="col-12 col-lg-4">
+                <a class="text-decoration-none" href="{{ url_for(endpoint) }}">
+                    <article class="card h-100 shadow-sm content-card">
+                        <div class="card-body p-4 d-flex flex-column">
+                            <div class="service-icon mb-3"><i class="bi {{ icon }}" aria-hidden="true"></i></div>
+                            <h2 class="h4">{{ title }}{% if count is not none %} <span class="badge text-bg-success">{{ count }}</span>{% endif %}</h2>
+                            <p class="text-muted flex-grow-1">{{ description }}</p>
+                            <span class="btn btn-outline-primary align-self-start">{{ action }} <i class="bi bi-arrow-right ms-2" aria-hidden="true"></i></span>
                         </div>
-
-                    </div>
-
-                </div>
-
+                    </article>
+                </a>
             </div>
-            {% endif %}
-
-            <!-- Draft review -->
-
-            {% if reviewer_authenticated %}
-            <div class="col-12">
-
-                <div class="card shadow-sm">
-
-                    <div class="card-body p-4">
-
-                        <div
-                            class="d-flex flex-wrap justify-content-between
-                                   align-items-center gap-3"
-                        >
-                            <div class="d-flex align-items-start gap-3">
-
-                                <div class="service-icon">
-                                    <i class="bi bi-file-earmark-text"></i>
-                                </div>
-
-                                <div>
-
-                                    <div
-                                        class="d-flex flex-wrap
-                                               align-items-center gap-2 mb-1"
-                                    >
-                                        <h2 class="h4 mb-0">
-                                            Review Drafts
-                                        </h2>
-
-                                        <span class="badge text-bg-warning">
-                                            {{ draft_count }}
-                                        </span>
-                                    </div>
-
-                                    <p class="text-muted mb-0">
-                                        Review AI-generated knowledge before publication.
-                                    </p>
-
-                                </div>
-
-                            </div>
-
-                            <a
-                                class="btn btn-outline-primary sp-action-button"
-                                href="{{ url_for('list_drafts') }}"
-                            >
-                                Review Drafts
-                                <i class="bi bi-arrow-right ms-2"></i>
-                            </a>
-
-                        </div>
-
-                    </div>
-
-                </div>
-
-            </div>
-            {% endif %}
-
-            <!-- Published articles -->
-
-            <div class="col-12">
-
-                <div class="card shadow-sm">
-
-                    <div class="card-body p-4">
-
-                        <div
-                            class="d-flex flex-wrap justify-content-between
-                                   align-items-center gap-3"
-                        >
-                            <div class="d-flex align-items-start gap-3">
-
-                                <div class="service-icon">
-                                    <i class="bi bi-journal-check"></i>
-                                </div>
-
-                                <div>
-
-                                    <div
-                                        class="d-flex flex-wrap
-                                               align-items-center gap-2 mb-1"
-                                    >
-                                        <h2 class="h4 mb-0">
-                                            Published Articles
-                                        </h2>
-
-                                        <span class="badge text-bg-success">
-                                            {{ published_count }}
-                                        </span>
-                                    </div>
-
-                                    <p class="text-muted mb-0">
-                                        Open trusted, reviewed troubleshooting guidance.
-                                    </p>
-
-                                </div>
-
-                            </div>
-
-                            <a
-                                class="btn btn-outline-primary sp-action-button"
-                                href="{{ url_for('list_published') }}"
-                            >
-                                Browse Articles
-                                <i class="bi bi-arrow-right ms-2"></i>
-                            </a>
-
-                        </div>
-
-                    </div>
-
-                </div>
-
-            </div>
-
-            <!-- Command Library -->
-
-            <div class="col-12">
-
-                <div class="card shadow-sm">
-
-                    <div class="card-body p-4">
-
-                        <div
-                            class="d-flex flex-wrap justify-content-between
-                                   align-items-center gap-3"
-                        >
-                            <div class="d-flex align-items-start gap-3">
-
-                                <div class="service-icon">
-                                    <i class="bi bi-terminal"></i>
-                                </div>
-
-                                <div>
-
-                                    <h2 class="h4 mb-1">
-                                        Command Library
-                                    </h2>
-
-                                    <p class="text-muted mb-0">
-                                        Browse reviewed commands, syntax, examples,
-                                        risks, and supported platforms.
-                                    </p>
-
-                                </div>
-
-                            </div>
-
-                            <a
-                                class="btn btn-outline-primary sp-action-button"
-                                href="{{ url_for('list_commands') }}"
-                                aria-label="Browse Command Library"
-                            >
-                                Browse Commands
-                                <i class="bi bi-arrow-right ms-2"></i>
-                            </a>
-
-                        </div>
-
-                    </div>
-
-                </div>
-
-            </div>
-
-            <!-- Learning Library -->
-
-            <div class="col-12">
-
-                <div class="card shadow-sm">
-
-                    <div class="card-body p-4">
-
-                        <div
-                            class="d-flex flex-wrap justify-content-between
-                                   align-items-center gap-3"
-                        >
-                            <div class="d-flex align-items-start gap-3">
-
-                                <div class="service-icon">
-                                    <i class="bi bi-mortarboard"></i>
-                                </div>
-
-                                <div>
-
-                                    <h2 class="h4 mb-1">
-                                        Learning Library
-                                    </h2>
-
-                                    <p class="text-muted mb-0">
-                                        Explore related concepts, official documentation,
-                                        and guided practice.
-                                    </p>
-
-                                </div>
-
-                            </div>
-
-                            <span class="badge text-bg-secondary">
-                                Coming Soon
-                            </span>
-
-                        </div>
-
-                    </div>
-
-                </div>
-
-            </div>
-
+            {% endfor %}
         </div>
-
     </div>
-
 </section>
-
 {% endblock %}

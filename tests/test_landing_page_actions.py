@@ -20,7 +20,7 @@ class LandingPageActionTests(unittest.TestCase):
         self.assertIn('href="#workflows"', self.html)
         self.assertIn("Create Device Profile", self.html)
         self.assertIn('/device-profiles', self.html)
-        self.assertIn("Knowledge Center", self.html)
+        self.assertNotIn("Knowledge Center", self.html)
         self.assertNotIn(">Knowledge Base<", self.html)
 
     def test_primary_destinations_load(self):
@@ -52,9 +52,14 @@ class LandingPageActionTests(unittest.TestCase):
         self.assertNotIn(">Review<", header)
         self.assertNotIn("Content Studio", header)
 
-    def test_troubleshoot_home_exposes_required_shortcuts(self):
-        for label in ("Guided Troubleshooting", "Browse Workflows", "History", "Device Profiles"):
-            self.assertIn(label, self.html)
+    def test_troubleshoot_home_avoids_redundant_shortcut_navigation(self):
+        self.assertNotIn('aria-label="Troubleshoot shortcuts"', self.html)
+        self.assertNotIn("Gnojo can help with", self.html)
+        self.assertNotIn('class="hero-summary"', self.html)
+        self.assertIn("Choose a Workflow", self.html)
+        self.assertIn("Create Device Profile", self.html)
+        self.assertIn("Recommended Workflows", self.html)
+        self.assertIn("Browse all workflows", self.html)
 
     def test_command_builder_identifies_itself_truthfully(self):
         html = self.client.get("/commands/builder").get_data(as_text=True)
@@ -68,6 +73,13 @@ class LandingPageActionTests(unittest.TestCase):
         self.assertIn("Wi-Fi+DNS+DHCP+VPN+routing+network+diagnostics", self.html)
         self.assertIn("Windows+Server+Active+Directory+Group+Policy+permissions", self.html)
         self.assertIn("security+alerts+logs+packet+captures+escalation", self.html)
+        self.assertNotIn("More Gnojo Services", self.html)
+        self.assertIn("Browse workflows and guidance by troubleshooting domain.", self.html)
+        services = self.html[self.html.index("Troubleshooting Areas"):]
+        for label in ("Desktop Support", "Networking", "Servers &amp; Identity", "Security"):
+            self.assertIn(label, services)
+        self.assertNotIn("Knowledge Center", services)
+        self.assertNotIn("Learning Mode", services)
 
 
 if __name__ == "__main__":

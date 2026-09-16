@@ -5,77 +5,32 @@
 {% block content %}
 <section class="hero-section">
     <div class="container">
-        <div class="hero-grid">
-            <div class="hero-content">
-                <span class="eyebrow">
-                    AI-assisted IT troubleshooting
-                </span>
+        <div class="hero-content hero-content--wide">
+            <span class="eyebrow">
+                AI-assisted IT troubleshooting
+            </span>
 
-                <h1>Navigate. Diagnose. Resolve.</h1>
+            <h1>Navigate. Diagnose. Resolve.</h1>
 
-                <p class="hero-description">
-                    Guided troubleshooting for users, technicians,
-                    administrators, students, and security professionals.
-                </p>
+            <p class="hero-description">
+                Guided troubleshooting for users, technicians,
+                administrators, students, and security professionals.
+            </p>
 
-                <div class="hero-actions">
-                    <a href="#workflows" class="btn btn-primary btn-lg">
-                        <i class="bi bi-tools me-2"></i>
-                        Choose a Workflow
-                    </a>
+            <div class="hero-actions">
+                <a href="#workflows" class="btn btn-primary btn-lg">
+                    <i class="bi bi-tools me-2"></i>
+                    Choose a Workflow
+                </a>
 
-                    <a class="btn btn-outline-primary btn-lg" href="{{ url_for('device_profiles') }}">
-                        <i class="bi bi-pc-display me-2"></i>
-                        {% if active_device %}Device: {{ active_device.name }}{% else %}Create Device Profile{% endif %}
-                    </a>
-                </div>
+                <a class="btn btn-outline-primary btn-lg" href="{{ url_for('device_profiles') }}">
+                    <i class="bi bi-pc-display me-2"></i>
+                    {% if active_device %}Device: {{ active_device.name }}{% else %}Create Device Profile{% endif %}
+                </a>
             </div>
-
-            <aside class="hero-summary">
-                <p class="section-label mb-2">
-                    Gnojo can help with
-                </p>
-
-                <ul class="capability-list">
-                    <li>
-                        <i class="bi bi-check-circle-fill"></i>
-                        Windows, macOS, and Linux
-                    </li>
-
-                    <li>
-                        <i class="bi bi-check-circle-fill"></i>
-                        Networking, VPN, DNS, DHCP, and connectivity
-                    </li>
-
-                    <li>
-                        <i class="bi bi-check-circle-fill"></i>
-                        Servers, identity, and access management
-                    </li>
-
-                    <li>
-                        <i class="bi bi-check-circle-fill"></i>
-                        Security alerts, logs, and packet analysis
-                    </li>
-
-                    <li>
-                        <i class="bi bi-check-circle-fill"></i>
-                        Guided diagnostics, commands, and evidence collection
-                    </li>
-                </ul>
-            </aside>
         </div>
     </div>
 </section>
-
-<nav class="container py-3" aria-label="Troubleshoot shortcuts">
-    <div class="d-flex flex-wrap align-items-center gap-2">
-        <strong class="me-2">Troubleshoot</strong>
-        <a class="btn btn-sm btn-outline-primary" href="#workflows">Guided Troubleshooting</a>
-        <a class="btn btn-sm btn-outline-primary" href="{{ url_for('workflow_catalog') }}">Browse Workflows</a>
-        <a class="btn btn-sm btn-outline-primary" href="{{ url_for('troubleshooting_history') }}">History</a>
-        <a class="btn btn-sm btn-outline-primary" href="{{ url_for('device_profiles') }}">Device Profiles</a>
-    </div>
-</nav>
 
 <section class="mission-section" id="workflows">
     <div class="container">
@@ -156,10 +111,10 @@
         <div class="section-heading">
             <p class="section-label">Gnojo Workspace</p>
 
-            <h2>More Gnojo Services</h2>
+            <h2>Troubleshooting Areas</h2>
 
             <p class="section-description">
-                Additional service areas will be connected as the platform grows.
+                Browse workflows and guidance by troubleshooting domain.
             </p>
         </div>
 
@@ -240,48 +195,6 @@
                 </a>
             </div>
 
-            <div class="col-12 col-md-6 col-xl-4">
-                <a
-    class="service-card"
-    href="{{ url_for('knowledge_center') }}"
->
-                    <div class="service-icon">
-                        <i class="bi bi-journal-bookmark"></i>
-                    </div>
-
-                    <div>
-                        <h3>Knowledge Center</h3>
-
-                        <p>
-                            Browse troubleshooting playbooks,
-                            solutions, commands, and examples.
-                        </p>
-                    </div>
-
-                    <i class="bi bi-arrow-right card-arrow"></i>
-                </a>
-            </div>
-
-            <div class="col-12 col-md-6 col-xl-4">
-                <a class="service-card" href="{{ url_for('home', learning='1', _anchor='workflows') }}">
-                    <div class="service-icon">
-                        <i class="bi bi-mortarboard"></i>
-                    </div>
-
-                    <div>
-                        <h3>Learning Mode</h3>
-
-                        <p>
-                            Practice realistic scenarios and learn
-                            why each troubleshooting step matters.
-                        </p>
-
-                        <span class="service-card__destination">Explore learning resources</span>
-                    </div>
-
-                    <i class="bi bi-arrow-right card-arrow"></i>
-                </a>
-            </div>
         </div>
     </div>
 </section>

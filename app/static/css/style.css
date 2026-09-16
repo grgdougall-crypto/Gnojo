@@ -191,6 +191,10 @@ a {
     max-width: 760px;
 }
 
+.hero-content--wide {
+    max-width: 960px;
+}
+
 .eyebrow,
 .section-label {
     color: var(--sp-blue);

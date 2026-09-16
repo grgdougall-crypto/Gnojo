@@ -96,6 +96,7 @@ from app.services.workflow_publication_service import (
     WorkflowPublicationError,
     WorkflowPublicationService,
 )
+from app.services.workflow_catalog_service import WorkflowCatalogService
 
 from app.services.workflow_ai_service import (
     WorkflowAIError,
@@ -500,27 +501,11 @@ AVAILABLE_WORKFLOWS = {
 
 
 def available_workflows():
-    """Build the runtime catalog from built-ins and active publications."""
-    catalog = {
-        workflow_id: {**details, "source": "built_in"}
-        for workflow_id, details in AVAILABLE_WORKFLOWS.items()
-    }
-    snapshots = WorkflowPublicationService().list_current(strict=True)
-    for snapshot in snapshots:
-        workflow = snapshot["workflow"]
-        workflow_id = workflow.get("workflow_id")
-        if not workflow_id:
-            continue
-        catalog[workflow_id] = {
-            "name": workflow.get("name") or workflow_id.replace("_", " ").title(),
-            "description": workflow.get("description") or "Follow this guided troubleshooting workflow.",
-            "icon": workflow.get("icon") or "bi-signpost-split",
-            "source": "published",
-            "version": snapshot.get("publication", {}).get("version"),
-            "category": workflow_category(workflow),
-            "platform": workflow_platform(workflow),
-        }
-    return catalog
+    """Return the one authoritative public workflow catalog."""
+    return WorkflowCatalogService(
+        publications=WorkflowPublicationService(),
+        built_in_metadata=AVAILABLE_WORKFLOWS,
+    ).catalog()
 
 
 def load_runtime_workflow(engine, workflow_id, catalog=None, version=None):
@@ -4010,27 +3995,22 @@ def workflow_studio():
         for item in drafts
         if item.get("workflow_id") and not item.get("is_damaged")
     }
+    catalog_service = WorkflowCatalogService(
+        publications=WorkflowPublicationService(),
+        built_in_metadata=AVAILABLE_WORKFLOWS,
+    )
     built_ins = []
-    for workflow_id, details in AVAILABLE_WORKFLOWS.items():
-        engine = DecisionEngine()
-        try:
-            engine.load_workflow(workflow_id)
-        except (OSError, ValueError):
-            continue
-        workflow = engine.workflow
+    for details in catalog_service.built_ins():
+        workflow_id = details["workflow_id"]
         existing = draft_by_workflow.get(workflow_id)
         built_ins.append({
             "workflow_id": workflow_id,
-            "name": workflow.get("name") or details["name"],
-            "description": workflow.get("description") or details["description"],
-            "category": workflow_category(workflow),
-            "platform": workflow_platform(workflow),
-            "estimated_steps": workflow.get("estimated_steps"),
-            "progress_mode": (
-                "branch_aware"
-                if workflow.get("progress_mode") == "branch_aware"
-                else "static"
-            ),
+            "name": details["name"],
+            "description": details["description"],
+            "category": details["category"],
+            "platform": details["platform"],
+            "estimated_steps": details["estimated_steps"],
+            "progress_mode": details["progress_mode"],
             "draft_filename": existing.get("filename") if existing else None,
         })
 
@@ -4051,15 +4031,17 @@ def workflow_studio():
 
 @app.route("/workflow-studio/built-ins/<workflow_id>/copy", methods=["POST"])
 def copy_builtin_workflow(workflow_id):
-    if workflow_id not in AVAILABLE_WORKFLOWS:
+    workflow = WorkflowCatalogService(
+        publications=WorkflowPublicationService(),
+        built_in_metadata=AVAILABLE_WORKFLOWS,
+    ).load_builtin(workflow_id)
+    if workflow is None:
         abort(404)
 
     draft_service = WorkflowDraftService()
-    engine = DecisionEngine()
-    engine.load_workflow(workflow_id)
     try:
         filename = draft_service.ensure_editable_copy(
-            workflow_id, engine.workflow, source_type="built_in"
+            workflow_id, workflow, source_type="built_in"
         )
     except WorkflowDraftError:
         return error_response(

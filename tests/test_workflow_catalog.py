@@ -1,10 +1,16 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 from app.app import AVAILABLE_WORKFLOWS, app, available_workflows
+from app.services.search_service import SearchService
 from app.services.troubleshooting_history_service import TroubleshootingHistoryService
+from app.services.workflow_catalog_service import (
+    WorkflowCatalogError,
+    WorkflowCatalogService,
+)
 from app.services.workflow_publication_service import WorkflowPublicationService
 
 
@@ -89,6 +95,120 @@ class WorkflowCatalogTests(unittest.TestCase):
             },
         }
 
+    @classmethod
+    def _write_builtin(cls, directory, workflow_id, name=None, filename=None):
+        directory.mkdir(parents=True, exist_ok=True)
+        workflow = cls._workflow(workflow_id, name or workflow_id.replace("_", " ").title())
+        path = directory / (filename or f"{workflow_id}.json")
+        path.write_text(json.dumps(workflow), encoding="utf-8")
+        return path
+
+    def test_authoritative_catalog_combines_builtin_only_and_partial_publications(self):
+        root = Path(self.temporary.name)
+        built_ins = root / "built-ins"
+        publications = WorkflowPublicationService(root / "publications")
+        self._write_builtin(built_ins, "built_in_only", "Built In Only")
+        publications.publish(
+            self._workflow("published_only", "Published Only"),
+            "published_only.json",
+        )
+
+        catalog = WorkflowCatalogService(
+            built_ins, publications=publications
+        ).catalog()
+
+        self.assertEqual(list(catalog), ["built_in_only", "published_only"])
+        self.assertEqual(catalog["built_in_only"]["source"], "built_in")
+        self.assertEqual(catalog["published_only"]["source"], "published")
+        self.assertEqual(catalog["published_only"]["version"], 1)
+
+    def test_active_publication_overrides_builtin_once_and_drafts_are_not_public(self):
+        root = Path(self.temporary.name)
+        built_ins = root / "built-ins"
+        drafts = root / "workflow-drafts"
+        publications = WorkflowPublicationService(root / "publications")
+        self._write_builtin(built_ins, "shared", "Tracked Shared")
+        self._write_builtin(drafts, "draft_only", "Draft Only")
+        publications.publish(
+            self._workflow("shared", "Current Shared"), "shared.json"
+        )
+
+        catalog = WorkflowCatalogService(
+            built_ins, publications=publications
+        ).catalog()
+
+        self.assertEqual(list(catalog), ["shared"])
+        self.assertEqual(catalog["shared"]["name"], "Current Shared")
+        self.assertEqual(catalog["shared"]["source"], "published")
+        self.assertNotIn("draft_only", catalog)
+
+    def test_conflicting_tracked_identity_fails_closed(self):
+        root = Path(self.temporary.name)
+        built_ins = root / "built-ins"
+        self._write_builtin(
+            built_ins,
+            "canonical_identity",
+            filename="different_filename.json",
+        )
+
+        with self.assertRaisesRegex(
+            WorkflowCatalogError, "identity does not match filename"
+        ):
+            WorkflowCatalogService(
+                built_ins,
+                publications=WorkflowPublicationService(root / "publications"),
+            ).catalog()
+
+    def test_catalog_order_is_deterministic_by_title_then_identity(self):
+        root = Path(self.temporary.name)
+        built_ins = root / "built-ins"
+        self._write_builtin(built_ins, "zeta", "Same Title")
+        self._write_builtin(built_ins, "alpha", "Same Title")
+        self._write_builtin(built_ins, "middle", "A First Title")
+        service = WorkflowCatalogService(
+            built_ins,
+            publications=WorkflowPublicationService(root / "publications"),
+        )
+
+        self.assertEqual(list(service.catalog()), ["middle", "alpha", "zeta"])
+        self.assertEqual(list(service.catalog()), list(service.catalog()))
+
+    def test_search_uses_builtin_catalog_when_no_publication_exists(self):
+        root = Path(self.temporary.name)
+        service = SearchService()
+        service.knowledge.get_published = lambda: []
+        service.commands.get_all = lambda: []
+        publications = WorkflowPublicationService(root / "publications")
+
+        with patch(
+            "app.services.search_service.WorkflowPublicationService",
+            return_value=publications,
+        ):
+            results = service.search_all("Internet Connection")
+
+        self.assertTrue(any(
+            result.id == "internet" and result.content_type == "Workflow"
+            for result in results
+        ))
+
+    def test_current_printer_publication_remains_the_selected_runtime_entry(self):
+        root = Path(self.temporary.name)
+        publications = WorkflowPublicationService(root / "publications")
+        publications.publish(
+            self._workflow("printer", "Current Printer Publication"),
+            "printer.json",
+        )
+
+        catalog = WorkflowCatalogService(
+            publications=publications,
+            built_in_metadata=AVAILABLE_WORKFLOWS,
+        ).catalog()
+
+        self.assertEqual(catalog["printer"]["name"], "Current Printer Publication")
+        self.assertEqual(catalog["printer"]["source"], "published")
+        self.assertEqual(catalog["printer"]["version"], 1)
+        self.assertEqual(list(catalog).count("printer"), 1)
+
     def test_current_publications_override_fallback_and_catalog_renders_all_thirteen(self):
         publication_root = Path(self.temporary.name) / "publications"
         publications = WorkflowPublicationService(publication_root)
@@ -112,6 +232,8 @@ class WorkflowCatalogTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.get_data(as_text=True).count("workflow-card-item"), 13)
         self.assertEqual(home.status_code, 200)
+        self.assertIn("Current Internet Guidance", response.get_data(as_text=True))
+        self.assertIn("Current Internet Guidance", home.get_data(as_text=True))
         self.assertIn("Explore all 13 workflows", home.get_data(as_text=True))
         after = {
             path.relative_to(publication_root): path.read_bytes()

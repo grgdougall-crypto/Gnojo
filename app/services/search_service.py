@@ -2,7 +2,7 @@ from app.models.search_result import SearchResult
 from app.repositories.command_repository import CommandRepository
 from app.repositories.knowledge_repository import KnowledgeRepository
 from app.services.workflow_publication_service import WorkflowPublicationService
-from app.services.workflow_metadata_service import workflow_category, workflow_platform
+from app.services.workflow_catalog_service import WorkflowCatalogService
 
 
 class SearchService:
@@ -156,14 +156,15 @@ class SearchService:
 
     def _search_workflows(self, query):
         ranked_results = []
-        snapshots = WorkflowPublicationService().list_current(strict=True)
-        for snapshot in snapshots:
-            workflow = snapshot.get("workflow", {})
-            name = workflow.get("name", "")
-            description = workflow.get("description", "")
-            workflow_id = workflow.get("workflow_id", "")
-            category = workflow_category(workflow)
-            platform = workflow_platform(workflow)
+        catalog = WorkflowCatalogService(
+            publications=WorkflowPublicationService()
+        )
+        for entry, workflow in catalog.selected_workflows():
+            name = entry["name"]
+            description = entry["description"]
+            workflow_id = entry["workflow_id"]
+            category = entry["category"]
+            platform = entry["platform"]
             searchable_nodes = " ".join(
                 " ".join(str(node.get(key, "")) for key in ("title", "question", "instruction", "message", "help_text"))
                 for node in (workflow.get("nodes") or {}).values()
@@ -176,7 +177,6 @@ class SearchService:
             score += self._score_text(query, platform, 55, 40, 25)
             score += self._score_text(query, searchable_nodes, 20, 15, 10)
             if score:
-                version = snapshot.get("publication", {}).get("version")
                 ranked_results.append(SearchResult(
                     id=workflow_id,
                     title=name or workflow_id,

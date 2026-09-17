@@ -430,15 +430,15 @@ class WorkflowCatalogTests(unittest.TestCase):
             response = self.client.get("/workflows")
             home = self.client.get("/")
 
-        self.assertEqual(len(catalog), 13)
+        self.assertEqual(len(catalog), len(identities))
         self.assertEqual(catalog["internet"]["name"], "Internet Not Working")
         self.assertTrue(all(item["source"] == "published" for item in catalog.values()))
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.get_data(as_text=True).count("workflow-card-item"), 11)
+        self.assertEqual(response.get_data(as_text=True).count("workflow-card-item"), 12)
         self.assertEqual(home.status_code, 200)
         self.assertIn("Internet Not Working", response.get_data(as_text=True))
         self.assertIn("Internet Not Working", home.get_data(as_text=True))
-        self.assertIn("Explore all 11 workflows", home.get_data(as_text=True))
+        self.assertIn("Explore all 12 workflows", home.get_data(as_text=True))
         after = {
             path.relative_to(publication_root): path.read_bytes()
             for path in publication_root.rglob("*") if path.is_file()

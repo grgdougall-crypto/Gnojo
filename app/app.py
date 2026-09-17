@@ -496,6 +496,16 @@ AVAILABLE_WORKFLOWS = {
         "icon": "bi-device-hdd",
         "category": "Desktop Support",
         "platform": "Windows",
+    },
+    "windows_update": {
+        "name": "Windows Update Issue",
+        "description": (
+            "Diagnose failed, stalled, pending, or restart-required Windows "
+            "updates with safe checks, bounded recovery, and explicit verification."
+        ),
+        "icon": "bi-arrow-repeat",
+        "category": "Desktop Support",
+        "platform": "Windows",
     }
 }
 

@@ -1,0 +1,219 @@
+{
+  "workflow_id": "windows_update",
+  "name": "Windows Update Issue",
+  "description": "Diagnose failed, stalled, pending, or restart-required Windows updates with safe checks, bounded recovery, and explicit verification.",
+  "category": "Desktop Support",
+  "platform": "Windows",
+  "estimated_steps": 9,
+  "progress_mode": "branch_aware",
+  "start_node": "confirm_windows",
+  "nodes": {
+    "confirm_windows": {
+      "type": "question",
+      "question": "Is this a Windows device that you can inspect under its update policy?",
+      "help_text": "Saving work first makes a possible Windows restart safer.",
+      "conditions": {"platform": "Windows"},
+      "skip_to": "unsupported_platform",
+      "answers": {
+        "yes": {"label": "Yes - I have saved my work and can inspect it", "next": "inspect_update_state"},
+        "managed": {"label": "A policy or administrator controls updates", "next": "managed_or_service_support"},
+        "unsure": {"label": "I am not sure", "next": "managed_or_service_support"}
+      }
+    },
+    "unsupported_platform": {
+      "type": "resolution",
+      "title": "Use Guidance for This Operating System",
+      "message": "This workflow is designed for Windows. Choose platform-specific update guidance or correct the active device profile before continuing."
+    },
+    "inspect_update_state": {
+      "type": "instruction",
+      "title": "Inspect the Current Update State",
+      "instruction": "Open Settings > Windows Update. Record the displayed status, any update name or identifier, any error code, and whether Windows says a restart is required. Do not install or restart yet.",
+      "help_text": "The current Windows Update status determines the safest next step and preserves useful details if escalation is needed.",
+      "knowledge_article": "windows-slow-check-updates",
+      "next": "classify_update_state"
+    },
+    "classify_update_state": {
+      "type": "question",
+      "question": "What does Windows Update currently report?",
+      "answers": {
+        "failed": {"label": "An update failed or shows an error", "next": "record_failure_details"},
+        "stuck": {"label": "Downloading or installing appears stuck", "next": "observe_update_progress"},
+        "restart": {"label": "A restart is required", "next": "restart_attempt_status"},
+        "pending": {"label": "An update is pending or in progress", "next": "observe_update_progress"},
+        "healthy": {"label": "Windows reports up to date", "next": "verify_intended_update"},
+        "managed": {"label": "A policy, service, or organization message blocks updates", "next": "managed_or_service_support"},
+        "unsure": {"label": "I cannot tell", "next": "clarify_update_state"}
+      }
+    },
+    "clarify_update_state": {
+      "type": "instruction",
+      "title": "Review the Status One More Time",
+      "instruction": "On the Windows Update page, select Check for updates once and wait for the displayed status to settle. Record the exact wording and any error code. Do not repeatedly select Check for updates.",
+      "knowledge_article": "windows-slow-check-updates",
+      "next": "clarified_update_state"
+    },
+    "clarified_update_state": {
+      "type": "question",
+      "question": "After the single check, which state is visible?",
+      "answers": {
+        "failed": {"label": "Failed or error", "next": "record_failure_details"},
+        "stuck": {"label": "Stuck downloading or installing", "next": "observe_update_progress"},
+        "restart": {"label": "Restart required", "next": "restart_attempt_status"},
+        "pending": {"label": "Pending or progressing", "next": "observe_update_progress"},
+        "healthy": {"label": "Up to date", "next": "verify_intended_update"},
+        "managed": {"label": "Policy, service, or organization block", "next": "managed_or_service_support"},
+        "unclear": {"label": "The state is still unclear", "next": "uncertain_state_support"}
+      }
+    },
+    "record_failure_details": {
+      "type": "instruction",
+      "title": "Record the Failed Update",
+      "instruction": "Record the update name, failure time, and error code shown in Windows Update or Update history. Keep those details for support. Do not delete update folders or reset Windows Update components.",
+      "help_text": "The exact update and error distinguish storage, policy, service, and servicing problems without making broad system changes.",
+      "knowledge_article": "windows-slow-check-updates",
+      "next": "classify_failure"
+    },
+    "classify_failure": {
+      "type": "question",
+      "question": "What kind of blocker does Windows identify?",
+      "answers": {
+        "storage": {"label": "More storage space is required", "next": "inspect_storage"},
+        "policy": {"label": "Policy, administrator, or service restriction", "next": "managed_or_service_support"},
+        "servicing": {"label": "Servicing, component, or system-file problem", "next": "servicing_support"},
+        "other": {"label": "Another update error", "next": "inspect_storage"},
+        "unsure": {"label": "I am not sure", "next": "uncertain_state_support"}
+      }
+    },
+    "observe_update_progress": {
+      "type": "instruction",
+      "title": "Observe One Update Interval",
+      "instruction": "Keep the computer connected to power and the internet. Note the displayed percentage or status, wait ten minutes without repeatedly checking, then compare the status again.",
+      "help_text": "A bounded observation distinguishes slow progress from a stalled update without interrupting Windows servicing.",
+      "knowledge_article": "windows-slow-check-updates",
+      "next": "progress_result"
+    },
+    "progress_result": {
+      "type": "question",
+      "question": "What happened during the observation interval?",
+      "answers": {
+        "progressed": {"label": "The update progressed or completed", "next": "verify_update_state"},
+        "unchanged": {"label": "The status did not change", "next": "inspect_storage"},
+        "error": {"label": "An error appeared", "next": "record_failure_details"},
+        "unsure": {"label": "I cannot confirm progress", "next": "uncertain_state_support"}
+      }
+    },
+    "inspect_storage": {
+      "type": "instruction",
+      "title": "Inspect Available Storage",
+      "instruction": "Open Settings > System > Storage and review the Windows drive. Note any low-storage warning or message that the update needs more space. Do not delete files yet.",
+      "help_text": "Windows needs free storage for updates and temporary servicing files. This step observes capacity before any cleanup.",
+      "knowledge_article": "windows-storage-performance",
+      "next": "storage_result"
+    },
+    "storage_result": {
+      "type": "question",
+      "question": "Does Windows report low storage or that the update needs more space?",
+      "answers": {
+        "yes": {"label": "Yes", "next": "low_storage_handoff"},
+        "no": {"label": "No", "next": "restart_attempt_status"},
+        "unsure": {"label": "I am not sure", "next": "low_storage_handoff"}
+      }
+    },
+    "low_storage_handoff": {
+      "type": "transition",
+      "title": "Continue to Low Disk Space",
+      "message": "Low or uncertain storage can block Windows Update. Use the dedicated Low Disk Space workflow to verify capacity and review cleanup choices without deleting system folders or unfamiliar files.",
+      "help_text": "The dedicated workflow keeps cleanup bounded and leaves important-file decisions with the user.",
+      "knowledge_article": "windows-storage-performance",
+      "button_label": "Continue to Low Disk Space",
+      "next_workflow": "low_storage"
+    },
+    "restart_attempt_status": {
+      "type": "question",
+      "question": "Has Windows already been restarted once for this update problem?",
+      "help_text": "One controlled restart is different from repeatedly restarting through the same failure.",
+      "answers": {
+        "no": {"label": "No", "next": "restart_windows_safely"},
+        "yes": {"label": "Yes", "next": "persistent_failure_support"},
+        "unsure": {"label": "I am not sure", "next": "uncertain_state_support"}
+      }
+    },
+    "restart_windows_safely": {
+      "type": "instruction",
+      "title": "Complete One Controlled Restart",
+      "instruction": "Save all work. If this is a managed device, follow the organization's update policy. Use Start > Power > Restart once, keep the computer connected to power, and allow Windows to finish any update screen without forcing shutdown.",
+      "help_text": "A single controlled restart can complete a pending update. Repeated or forced restarts can interrupt servicing.",
+      "knowledge_article": "windows-slow-check-updates",
+      "next": "post_restart_state"
+    },
+    "post_restart_state": {
+      "type": "question",
+      "question": "After signing in, what does Windows Update report?",
+      "answers": {
+        "healthy": {"label": "Up to date or the intended update completed", "next": "verify_intended_update"},
+        "progressing": {"label": "The update is now progressing", "next": "verify_update_state"},
+        "same": {"label": "The same restart or pending state remains", "next": "persistent_failure_support"},
+        "error": {"label": "The update failed or shows an error", "next": "persistent_failure_support"},
+        "managed": {"label": "A policy or organization message is shown", "next": "managed_or_service_support"}
+      }
+    },
+    "verify_update_state": {
+      "type": "instruction",
+      "title": "Verify the Update Result",
+      "instruction": "Return to Settings > Windows Update. Confirm whether the intended update completed or progress resumed, and check that Windows shows no blocking update error.",
+      "help_text": "A changed percentage alone is not final success; Windows must also show no blocking error.",
+      "knowledge_article": "windows-slow-check-updates",
+      "next": "verification_result"
+    },
+    "verification_result": {
+      "type": "question",
+      "question": "Is the intended update complete, or progressing with no blocking error?",
+      "answers": {
+        "complete": {"label": "The update completed with no blocking error", "next": "resolved_update"},
+        "progressing": {"label": "Progress resumed and no blocking error is shown", "next": "monitor_update_completion"},
+        "failed": {"label": "A blocking error remains", "next": "persistent_failure_support"},
+        "unsure": {"label": "I cannot verify the result", "next": "uncertain_state_support"}
+      }
+    },
+    "monitor_update_completion": {
+      "type": "resolution",
+      "title": "Update Progress Restored",
+      "message": "Windows Update is progressing without a blocking error. Keep the computer connected to power and the internet, allow the update to finish, and verify the final Windows Update status before considering the update complete."
+    },
+    "verify_intended_update": {
+      "type": "question",
+      "question": "Did the intended update complete, and does Windows show no blocking update error?",
+      "answers": {
+        "yes": {"label": "Yes", "next": "resolved_update"},
+        "no": {"label": "No", "next": "persistent_failure_support"},
+        "unsure": {"label": "I am not sure", "next": "uncertain_state_support"}
+      }
+    },
+    "resolved_update": {
+      "type": "resolution",
+      "title": "Windows Update Verified",
+      "message": "The intended update completed and Windows reports no blocking update error. Keep normal update maintenance enabled and monitor for recurrence."
+    },
+    "managed_or_service_support": {
+      "type": "resolution",
+      "title": "Managed Update Support Required",
+      "message": "A policy, administrator, or service restriction is blocking Windows Update. Record the exact message and contact the device administrator or support team. Do not disable security controls or start, stop, or reconfigure unfamiliar services."
+    },
+    "servicing_support": {
+      "type": "resolution",
+      "title": "Windows Servicing Review Required",
+      "message": "Windows reports a servicing, component-store, or system-file problem. Preserve the error code and contact a qualified technician. Diagnostic or repair tools such as DISM and SFC require an approved servicing plan and are not run automatically by this workflow."
+    },
+    "persistent_failure_support": {
+      "type": "resolution",
+      "title": "Persistent Update Failure Needs Support",
+      "message": "The supported first-line checks did not clear the update problem. Provide the update name, error code, update-history result, storage status, and restart result to support. Do not delete system folders, reset update components, or repeatedly restart the device."
+    },
+    "uncertain_state_support": {
+      "type": "resolution",
+      "title": "Update State Could Not Be Verified",
+      "message": "The current update state or result is not clear enough for a safe next action. Capture the Windows Update screen and any error code, then contact support rather than guessing or applying broad repairs."
+    }
+  }
+}

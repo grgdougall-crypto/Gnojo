@@ -70,7 +70,7 @@ class WorkflowOrganizationTests(unittest.TestCase):
             self.assertIn("Built-in Workflows", html)
             self.assertIn("Create Editable Copy", html)
             self.assertIn(
-                'aria-label="Create editable copy of Internet Connection"',
+                'aria-label="Create editable copy of Internet Not Working"',
                 html,
             )
 
@@ -143,7 +143,7 @@ class WorkflowOrganizationTests(unittest.TestCase):
         with patch("app.app.WorkflowDraftService", return_value=drafts):
             html = app.test_client().get("/workflow-studio").get_data(as_text=True)
         self.assertIn(
-            'aria-label="Open editable copy of Internet Connection"',
+            'aria-label="Open editable copy of Internet Not Working"',
             html,
         )
         self.assertIn('href="/workflow-editor/internet.json"', html)

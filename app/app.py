@@ -517,9 +517,14 @@ def load_runtime_workflow(engine, workflow_id, catalog=None, version=None):
         snapshot = WorkflowPublicationService().load_version(workflow_id, version) if version else WorkflowPublicationService().load_current(workflow_id)
         if not snapshot:
             raise FileNotFoundError(workflow_id)
-        engine.load_workflow_data(snapshot["workflow"])
+        engine.load_workflow_data(
+            WorkflowCatalogService.apply_public_presentation(snapshot["workflow"])
+        )
     else:
         engine.load_workflow(workflow_id)
+        engine.workflow = WorkflowCatalogService.apply_public_presentation(
+            engine.workflow
+        )
 
     # Preserve immutable historical publications while allowing narrowly scoped
     # runtime compatibility for older active snapshots.
@@ -3987,11 +3992,16 @@ def workflow_studio():
         }
 
     draft_path = _workflow_repository_root() / "app" / "workflow_drafts"
-    drafts = (
+    stored_drafts = (
         WorkflowDraftService(draft_path).list_drafts()
         if draft_path.exists()
         else []
     )
+    drafts = [
+        WorkflowCatalogService.apply_public_presentation(item)
+        if not item.get("is_damaged") else item
+        for item in stored_drafts
+    ]
     draft_by_workflow = {
         item["workflow_id"]: item
         for item in drafts

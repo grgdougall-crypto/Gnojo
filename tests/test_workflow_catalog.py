@@ -48,18 +48,18 @@ class WorkflowCatalogTests(unittest.TestCase):
         self.assertIn("workflow_favorites.js", html)
         for title in (
             "Computer Running Slowly",
-            "Internet Connection",
-            "Printer",
+            "Internet Not Working",
+            "Printer Not Working",
         ):
             self.assertIn(title, html)
         self.assertNotIn("Advanced Network Diagnostics", html)
         self.assertNotIn("Higher-Layer Connectivity Diagnostics", html)
 
     def test_recent_workflow_is_prioritized_on_home(self):
-        record = self.history.start("printer", "Printer", "start")
+        record = self.history.start("printer", "Printer Not Working", "start")
         html = self.client.get("/").get_data(as_text=True)
-        printer_position = html.index("Printer")
-        application_position = html.index("Application Keeps Crashing")
+        printer_position = html.index("Printer Not Working")
+        application_position = html.index("Application Crashing or Freezing")
         self.assertLess(printer_position, application_position)
         self.history.delete(record["id"])
 
@@ -71,9 +71,12 @@ class WorkflowCatalogTests(unittest.TestCase):
             self.assertEqual(browser_session["favorite_workflow_ids"], ["printer"])
         catalog = self.client.get("/workflows").get_data(as_text=True)
         self.assertIn('data-workflow-id="printer"', catalog)
-        self.assertIn('aria-label="Remove Printer from favorites"', catalog)
+        self.assertIn('aria-label="Remove Printer Not Working from favorites"', catalog)
         home = self.client.get("/").get_data(as_text=True)
-        self.assertLess(home.index("Printer"), home.index("Application Keeps Crashing"))
+        self.assertLess(
+            home.index("Printer Not Working"),
+            home.index("Application Crashing or Freezing"),
+        )
         removed = self.client.post("/api/workflow-favorites/printer")
         self.assertFalse(removed.get_json()["favorite"])
 
@@ -186,7 +189,7 @@ class WorkflowCatalogTests(unittest.TestCase):
             "app.services.search_service.WorkflowPublicationService",
             return_value=publications,
         ):
-            results = service.search_all("Internet Connection")
+            results = service.search_all("Internet Not Working")
 
         self.assertTrue(any(
             result.id == "internet" and result.content_type == "Workflow"
@@ -206,7 +209,7 @@ class WorkflowCatalogTests(unittest.TestCase):
             built_in_metadata=AVAILABLE_WORKFLOWS,
         ).catalog()
 
-        self.assertEqual(catalog["printer"]["name"], "Current Printer Publication")
+        self.assertEqual(catalog["printer"]["name"], "Printer Not Working")
         self.assertEqual(catalog["printer"]["source"], "published")
         self.assertEqual(catalog["printer"]["version"], 1)
         self.assertEqual(list(catalog).count("printer"), 1)
@@ -263,11 +266,71 @@ class WorkflowCatalogTests(unittest.TestCase):
             browse = self.client.get("/workflows").get_data(as_text=True)
 
         for html in (home, browse):
-            self.assertIn("Internet Connection", html)
-            self.assertIn("VPN Connectivity Troubleshooting (Windows)", html)
+            self.assertIn("Internet Not Working", html)
+            self.assertIn("VPN Not Connecting", html)
             self.assertNotIn("Advanced Network Diagnostics", html)
             self.assertNotIn("Higher-Layer Connectivity Diagnostics", html)
             self.assertNotIn('href="/wizard?workflow=vpn"', html)
+
+    def test_current_public_metadata_is_consistent_across_catalog_search_and_wizard(self):
+        expected = {
+            "internet": ("Internet Not Working", "Windows"),
+            "printer": ("Printer Not Working", "Windows"),
+            "vpn_connectivity_win": ("VPN Not Connecting", "Windows"),
+            "application_crash": ("Application Crashing or Freezing", "Windows"),
+        }
+        catalog = available_workflows()
+        self.assertEqual(
+            catalog["printer"]["description"],
+            "Troubleshoot printer power, status, connections, printing, and "
+            "stuck Windows print queues with verified recovery steps.",
+        )
+        self.assertEqual(
+            catalog["vpn_connectivity_win"]["description"],
+            "Troubleshoot Windows VPN connection, sign-in, client, adapter, "
+            "security-software, and network problems, with verification after "
+            "each approved step.",
+        )
+
+        for workflow_id, (title, platform) in expected.items():
+            self.assertEqual(catalog[workflow_id]["workflow_id"], workflow_id)
+            self.assertEqual(catalog[workflow_id]["name"], title)
+            self.assertEqual(catalog[workflow_id]["platform"], platform)
+
+            results = SearchService().search_all(title)
+            self.assertTrue(any(
+                item.id == workflow_id
+                and item.content_type == "Workflow"
+                and item.title == title
+                for item in results
+            ))
+
+            client = app.test_client()
+            response = client.get(f"/wizard?workflow={workflow_id}")
+            self.assertEqual(response.status_code, 200)
+            self.assertIn(title, response.get_data(as_text=True))
+
+        home = self.client.get("/").get_data(as_text=True)
+        browse = self.client.get("/workflows").get_data(as_text=True)
+        search = self.client.get(
+            "/search?q=VPN+Not+Connecting&type=workflow"
+        ).get_data(as_text=True)
+        for html in (home, browse):
+            self.assertNotIn("Application Keeps Crashing", html)
+            self.assertNotIn("VPN Connectivity Troubleshooting (Windows)", html)
+        self.assertIn("VPN Not Connecting", search)
+        self.assertNotIn("VPN Connectivity Troubleshooting (Windows)", search)
+
+    def test_current_publication_fingerprints_match_metadata_polish(self):
+        publications = WorkflowPublicationService()
+        for workflow_id in (
+            "internet", "printer", "vpn_connectivity_win", "application_crash"
+        ):
+            snapshot = publications.load_current(workflow_id)
+            self.assertEqual(
+                snapshot["publication"]["content_hash"],
+                publications.content_hash(snapshot["workflow"]),
+            )
 
     def test_hidden_favorite_identity_is_preserved_but_not_recommended(self):
         with self.client.session_transaction() as browser_session:
@@ -343,7 +406,12 @@ class WorkflowCatalogTests(unittest.TestCase):
         html = response.get_data(as_text=True)
         self.assertEqual(response.status_code, 200)
         self.assertIn("Vpn", html)
-        self.assertIn("VPN Connectivity Troubleshooting (Windows)", html)
+        self.assertIn("VPN Not Connecting", html)
+        self.assertNotIn("VPN Connectivity Troubleshooting (Windows)", html)
+        self.assertEqual(
+            drafts.get_draft("vpn_connectivity_win.json")["name"],
+            "VPN Connectivity Troubleshooting (Windows)",
+        )
 
     def test_current_publications_override_fallback_and_discovery_renders_public_entries(self):
         publication_root = Path(self.temporary.name) / "publications"
@@ -363,13 +431,13 @@ class WorkflowCatalogTests(unittest.TestCase):
             home = self.client.get("/")
 
         self.assertEqual(len(catalog), 13)
-        self.assertEqual(catalog["internet"]["name"], "Current Internet Guidance")
+        self.assertEqual(catalog["internet"]["name"], "Internet Not Working")
         self.assertTrue(all(item["source"] == "published" for item in catalog.values()))
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.get_data(as_text=True).count("workflow-card-item"), 11)
         self.assertEqual(home.status_code, 200)
-        self.assertIn("Current Internet Guidance", response.get_data(as_text=True))
-        self.assertIn("Current Internet Guidance", home.get_data(as_text=True))
+        self.assertIn("Internet Not Working", response.get_data(as_text=True))
+        self.assertIn("Internet Not Working", home.get_data(as_text=True))
         self.assertIn("Explore all 11 workflows", home.get_data(as_text=True))
         after = {
             path.relative_to(publication_root): path.read_bytes()

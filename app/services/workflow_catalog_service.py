@@ -26,6 +26,30 @@ class WorkflowCatalogService:
         "higher_layer_connectivity": "contextual",
         "vpn": "legacy",
     }
+    PUBLIC_PRESENTATION = {
+        "application_crash": {
+            "name": "Application Crashing or Freezing",
+        },
+        "internet": {
+            "name": "Internet Not Working",
+        },
+        "printer": {
+            "name": "Printer Not Working",
+            "description": (
+                "Troubleshoot printer power, status, connections, printing, and "
+                "stuck Windows print queues with verified recovery steps."
+            ),
+            "platform": "Windows",
+        },
+        "vpn_connectivity_win": {
+            "name": "VPN Not Connecting",
+            "description": (
+                "Troubleshoot Windows VPN connection, sign-in, client, adapter, "
+                "security-software, and network problems, with verification after "
+                "each approved step."
+            ),
+        },
+    }
 
     def __init__(
         self,
@@ -130,25 +154,26 @@ class WorkflowCatalogService:
 
     def _entry(self, workflow, *, source, version=None):
         workflow_id = workflow["workflow_id"]
-        presentation = self.built_in_metadata.get(workflow_id, {})
-        name = workflow.get("name")
-        description = workflow.get("description")
+        fallback = self.built_in_metadata.get(workflow_id, {})
+        presentation = self.PUBLIC_PRESENTATION.get(workflow_id, {})
+        name = presentation.get("name") or workflow.get("name")
+        description = presentation.get("description") or workflow.get("description")
         return {
             "workflow_id": workflow_id,
             "name": (
                 name.strip()
                 if isinstance(name, str) and name.strip()
-                else presentation.get("name") or workflow_id.replace("_", " ").title()
+                else fallback.get("name") or workflow_id.replace("_", " ").title()
             ),
             "description": (
                 description.strip()
                 if isinstance(description, str) and description.strip()
-                else presentation.get("description")
+                else fallback.get("description")
                 or "Follow this guided troubleshooting workflow."
             ),
-            "icon": workflow.get("icon") or presentation.get("icon") or "bi-signpost-split",
-            "category": workflow_category(workflow),
-            "platform": workflow_platform(workflow),
+            "icon": workflow.get("icon") or fallback.get("icon") or "bi-signpost-split",
+            "category": presentation.get("category") or workflow_category(workflow),
+            "platform": presentation.get("platform") or workflow_platform(workflow),
             "estimated_steps": workflow.get("estimated_steps"),
             "progress_mode": (
                 "branch_aware"
@@ -161,6 +186,14 @@ class WorkflowCatalogService:
                 workflow_id, self.PUBLIC_ENTRY
             ),
         }
+
+    @classmethod
+    def apply_public_presentation(cls, workflow):
+        """Return runtime workflow content with public metadata overlaid in memory."""
+        presented = deepcopy(workflow)
+        workflow_id = presented.get("workflow_id") if isinstance(presented, dict) else None
+        presented.update(cls.PUBLIC_PRESENTATION.get(workflow_id, {}))
+        return presented
 
     def _validate_workflow(self, workflow, *, source):
         if not isinstance(workflow, dict):

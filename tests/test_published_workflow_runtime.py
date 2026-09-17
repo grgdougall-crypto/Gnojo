@@ -55,7 +55,7 @@ class PublishedWorkflowRuntimeTests(unittest.TestCase):
     def test_built_in_workflows_remain_available(self):
         response = self.client.get("/wizard?workflow=internet")
         self.assertEqual(response.status_code, 200)
-        self.assertIn("Internet Connection", response.get_data(as_text=True))
+        self.assertIn("Internet Not Working", response.get_data(as_text=True))
 
 
 if __name__ == "__main__":

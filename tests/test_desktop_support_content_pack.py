@@ -11,7 +11,7 @@ from app.services.workflow_validation_service import WorkflowValidationService
 
 class DesktopSupportContentPackTests(unittest.TestCase):
     WORKFLOWS = {
-        "application_crash": "Application Keeps Crashing",
+        "application_crash": "Application Crashing or Freezing",
         "no_sound": "No Sound",
         "low_storage": "Low Disk Space",
     }

@@ -70,7 +70,7 @@ class VPNConnectivityWorkflowTests(unittest.TestCase):
         self.assertIn("Step 5 of 5 on this path", pages[-1])
         self.assertIn("Continue to Application Troubleshooting", pages[-1])
         application = self._post("")
-        self.assertIn("Application Keeps Crashing", application)
+        self.assertIn("Application Crashing or Freezing", application)
         self.assertIn("Protect Your Work First", application)
 
     def test_general_network_and_error_handoffs_use_available_workflows(self):
@@ -78,7 +78,7 @@ class VPNConnectivityWorkflowTests(unittest.TestCase):
         self.assertIn("General Network Troubleshooting Required", general[-1])
         self.assertIn("Continue to Internet Connection", general[-1])
         internet = self._post("")
-        self.assertIn("Internet Connection", internet)
+        self.assertIn("Internet Not Working", internet)
         self.assertIn("Can any other devices connect", internet)
 
         error = self._run(["internet_works_no_vpn", "yes", "yes", "yes", "no"])

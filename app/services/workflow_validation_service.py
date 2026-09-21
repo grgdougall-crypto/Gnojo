@@ -13,7 +13,7 @@ class WorkflowValidationService:
         "transition",
     }
 
-    def validate(self, workflow):
+    def validate(self, workflow, available_workflow_ids=None):
         """
         Return validation results for a workflow draft.
         """
@@ -155,6 +155,22 @@ class WorkflowValidationService:
                 "resolution or transition node."
             )
 
+        quality = WorkflowQualityValidator().validate(
+            workflow,
+            available_workflow_ids=self._handoff_workflow_ids(
+                nodes, available_workflow_ids
+            ),
+        )
+        for finding in quality["findings"]:
+            if finding.get("rule") != "BROKEN_WORKFLOW_HANDOFF":
+                continue
+            node_id = finding.get("node_id")
+            target = (finding.get("evidence") or {}).get("next_workflow")
+            errors.append(
+                f"Transition node '{node_id}' references unavailable workflow "
+                f"'{target}'."
+            )
+
         return {
             "is_valid": not errors,
             "errors": errors,
@@ -163,8 +179,25 @@ class WorkflowValidationService:
                 reachable_nodes
             ),
             "unreachable_nodes": unreachable_nodes,
-            "quality": WorkflowQualityValidator().validate(workflow),
+            "quality": quality,
         }
+
+    def _handoff_workflow_ids(self, nodes, available_workflow_ids=None):
+        has_handoff = any(
+            isinstance(node, dict)
+            and node.get("type") == "transition"
+            and isinstance(node.get("next_workflow"), str)
+            and node.get("next_workflow").strip()
+            for node in nodes.values()
+        )
+        if not has_handoff:
+            return None
+        if available_workflow_ids is not None:
+            return {str(value) for value in available_workflow_ids}
+
+        from app.services.workflow_catalog_service import WorkflowCatalogService
+
+        return set(WorkflowCatalogService().catalog())
 
     def _validate_conditions(self, node_id, node, nodes, errors):
         from app.services.workflow_condition_service import CONDITION_FIELDS

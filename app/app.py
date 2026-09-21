@@ -506,6 +506,16 @@ AVAILABLE_WORKFLOWS = {
         "icon": "bi-arrow-repeat",
         "category": "Desktop Support",
         "platform": "Windows",
+    },
+    "usb_device_not_recognized": {
+        "name": "USB Device Not Recognized",
+        "description": (
+            "Diagnose USB devices that are missing, intermittent, or reported "
+            "incorrectly by Windows using safe checks and explicit verification."
+        ),
+        "icon": "bi-usb-symbol",
+        "category": "Desktop Support",
+        "platform": "Windows",
     }
 }
 
@@ -4622,12 +4632,27 @@ def create_workflow_article_draft(filename, node_id):
 
 @app.route("/api/workflow-drafts/<filename>/validation")
 def validate_workflow_draft(filename):
-    workflow = WorkflowDraftService().get_draft(filename)
+    try:
+        workflow = WorkflowDraftService().get_draft(filename)
 
-    if workflow is None:
-        return {"ok": False, "error": "Workflow draft not found."}, 404
+        if workflow is None:
+            return {"ok": False, "error": "Workflow draft not found."}, 404
 
-    validation = WorkflowValidationService().validate(workflow)
+        validation = WorkflowValidationService().validate(workflow)
+    except WorkflowDraftError:
+        return {
+            "ok": False,
+            "error": "The workflow draft could not be read safely.",
+        }, 409
+    except WorkflowPublicationError:
+        return {
+            "ok": False,
+            "error": (
+                "Workflow validation could not resolve the authoritative "
+                "workflow catalog."
+            ),
+        }, 409
+
     issues = []
 
     for level, messages in (

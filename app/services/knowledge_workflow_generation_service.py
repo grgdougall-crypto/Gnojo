@@ -739,7 +739,12 @@ class KnowledgeWorkflowGenerationService:
         return workflow
 
     def _validate(self, workflow, package):
-        core = self.validator.validate(workflow)
+        core = self.validator.validate(
+            workflow,
+            available_workflow_ids={
+                item["workflow_id"] for item in self._workflow_inventory()
+            },
+        )
         validation = [{"check": "workflow_schema", "level": "error" if not core["is_valid"] else "pass",
                        "messages": core["errors"] + core["warnings"]}]
         if core["unreachable_nodes"]:

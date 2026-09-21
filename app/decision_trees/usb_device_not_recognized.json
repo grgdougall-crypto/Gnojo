@@ -1,0 +1,292 @@
+{
+  "workflow_id": "usb_device_not_recognized",
+  "name": "USB Device Not Recognized",
+  "description": "Diagnose USB devices that are missing, intermittent, or reported incorrectly by Windows using safe connection checks and explicit verification.",
+  "category": "Desktop Support",
+  "platform": "Windows",
+  "estimated_steps": 9,
+  "progress_mode": "branch_aware",
+  "start_node": "confirm_windows",
+  "nodes": {
+    "confirm_windows": {
+      "type": "question",
+      "question": "Is this a Windows device that you can inspect under its hardware and security policy?",
+      "help_text": "Managed computers may restrict USB devices or require approved hardware.",
+      "conditions": {"platform": "Windows"},
+      "skip_to": "unsupported_platform",
+      "answers": {
+        "yes": {"label": "Yes", "next": "identify_device_type"},
+        "restricted": {"label": "USB use may be restricted", "next": "policy_support"},
+        "unsure": {"label": "I am not sure", "next": "policy_support"}
+      }
+    },
+    "unsupported_platform": {
+      "type": "resolution",
+      "title": "Use Guidance for This Operating System",
+      "message": "This workflow is designed for Windows. Choose platform-specific USB guidance or correct the active device profile before continuing."
+    },
+    "identify_device_type": {
+      "type": "question",
+      "question": "What kind of USB device is affected?",
+      "answers": {
+        "printer": {"label": "Printer", "next": "printer_handoff"},
+        "audio": {"label": "Speaker, headset, or audio device", "next": "audio_handoff"},
+        "storage": {"label": "Flash drive or external storage", "next": "storage_safety"},
+        "input": {"label": "Keyboard or mouse", "next": "input_continuity"},
+        "other": {"label": "Another USB device", "next": "inspect_connection"},
+        "unsure": {"label": "I am not sure", "next": "inspect_connection"}
+      }
+    },
+    "printer_handoff": {
+      "type": "transition",
+      "title": "Continue to Printer Not Working",
+      "message": "The Printer workflow already contains the governed USB connection, printer-status, queue, and print-verification path.",
+      "button_label": "Continue to Printer Not Working",
+      "next_workflow": "printer"
+    },
+    "audio_handoff": {
+      "type": "transition",
+      "title": "Continue to No Sound",
+      "message": "The No Sound workflow already contains the governed USB audio connection, output-selection, and playback-verification path.",
+      "button_label": "Continue to No Sound",
+      "next_workflow": "no_sound"
+    },
+    "storage_safety": {
+      "type": "question",
+      "question": "What is the current state of the removable storage device?",
+      "help_text": "Do not disconnect storage while Windows or the device indicates activity.",
+      "answers": {
+        "accessible": {"label": "It appears sometimes and files are accessible", "next": "protect_storage_data"},
+        "inactive_missing": {"label": "It is not visible and shows no activity", "next": "inspect_connection"},
+        "activity": {"label": "It shows activity or may be transferring data", "next": "protect_storage_data"},
+        "uncertain": {"label": "I am not sure", "next": "storage_integrity_support"}
+      }
+    },
+    "protect_storage_data": {
+      "type": "resolution",
+      "title": "Protect the Storage Data First",
+      "message": "The storage device may contain accessible data or an active operation. Stop connection testing, copy important files to an approved location if they are safely accessible, and use approved storage support. Do not repeatedly reconnect, initialize, format, repair, or write test files to uncertain media."
+    },
+    "storage_integrity_support": {
+      "type": "resolution",
+      "title": "Storage Integrity Needs Review",
+      "message": "The removable media state is not clear enough for safe connection testing. Preserve the device and contact storage support. Do not initialize, format, run repair options, or continue reconnecting it until data importance and media health are understood."
+    },
+    "input_continuity": {
+      "type": "question",
+      "question": "Can you continue controlling Windows if this keyboard or mouse is disconnected?",
+      "answers": {
+        "yes": {"label": "Yes, another input method is available", "next": "inspect_connection"},
+        "not_only": {"label": "Yes, it is not my only input device", "next": "inspect_connection"},
+        "no": {"label": "No, it is my only working input device", "next": "input_device_support"},
+        "unsure": {"label": "I am not sure", "next": "input_device_support"}
+      }
+    },
+    "input_device_support": {
+      "type": "resolution",
+      "title": "Arrange an Alternate Input Method",
+      "message": "Do not disconnect the only working keyboard or mouse. Arrange an approved alternate input method or contact support before continuing USB connection tests."
+    },
+    "inspect_connection": {
+      "type": "instruction",
+      "title": "Inspect the USB Connection",
+      "instruction": "Without disconnecting anything yet, inspect the USB plug, cable, port, and device for looseness, bent or damaged parts, heat, or debris. Note whether the device connects through a hub or dock. Do not force or clean a connector with tools.",
+      "help_text": "Visible damage and shared hubs should be identified before reconnecting the device.",
+      "next": "connection_context"
+    },
+    "connection_context": {
+      "type": "question",
+      "question": "What did the connection inspection show?",
+      "answers": {
+        "damaged": {"label": "The device, cable, or port looks damaged or hot", "next": "hardware_damage_support"},
+        "hub": {"label": "The device uses a hub or dock", "next": "try_direct_connection"},
+        "direct": {"label": "The device connects directly and looks undamaged", "next": "check_device_power"},
+        "unclear": {"label": "I cannot inspect it safely", "next": "ambiguous_result_support"}
+      }
+    },
+    "hardware_damage_support": {
+      "type": "resolution",
+      "title": "Stop Using the Damaged Connection",
+      "message": "Visible damage or unusual heat may indicate a hardware or electrical fault. Stop using the affected device, cable, hub, or port and contact hardware support. Do not force the connector or test it in another computer."
+    },
+    "check_device_power": {
+      "type": "instruction",
+      "title": "Check the Device's Power State",
+      "instruction": "If the USB device has its own power adapter, battery, switch, or status light, confirm its normal power state without opening the device. If it has no separate power control, continue without changing anything.",
+      "next": "device_power_result"
+    },
+    "device_power_result": {
+      "type": "question",
+      "question": "Does the device have the expected power state?",
+      "answers": {
+        "yes": {"label": "Yes", "next": "try_alternate_port"},
+        "no_power_needed": {"label": "It has no separate power control", "next": "try_alternate_port"},
+        "no": {"label": "No, it does not power on normally", "next": "device_power_support"},
+        "unsure": {"label": "I am not sure", "next": "ambiguous_result_support"}
+      }
+    },
+    "device_power_support": {
+      "type": "resolution",
+      "title": "Device Power Needs Hardware Support",
+      "message": "The device does not reach its expected power state. Verify only its approved external power source and contact hardware support. Do not open the device or test a visibly damaged power connection."
+    },
+    "try_direct_connection": {
+      "type": "instruction",
+      "title": "Test Without the Hub or Dock",
+      "instruction": "If the device can be disconnected safely, remove it from the hub or dock and connect it directly to a compatible computer port. For removable storage, continue only when Windows offers safe removal or the device is not active. Do not force an unfamiliar connector.",
+      "help_text": "A direct connection separates a device problem from a hub, dock, cable, or shared-power problem.",
+      "next": "direct_connection_result"
+    },
+    "direct_connection_result": {
+      "type": "question",
+      "question": "What happens when the device is connected directly?",
+      "answers": {
+        "works": {"label": "Windows recognizes it and its function works", "next": "verify_direct_operation"},
+        "not_detected": {"label": "Windows still does not detect it", "next": "inspect_device_manager"},
+        "intermittent": {"label": "It connects and disconnects intermittently", "next": "intermittent_support"},
+        "unsafe": {"label": "I cannot test it safely", "next": "ambiguous_result_support"}
+      }
+    },
+    "verify_direct_operation": {
+      "type": "question",
+      "question": "Does Windows consistently recognize the intended device, and does its intended function work during the direct test?",
+      "answers": {
+        "yes": {"label": "Yes", "next": "resolved_hub_bypass"},
+        "no": {"label": "No", "next": "hub_or_device_support"},
+        "intermittent": {"label": "It disconnects or changes state", "next": "intermittent_support"},
+        "unsure": {"label": "I am not sure", "next": "ambiguous_result_support"}
+      }
+    },
+    "resolved_hub_bypass": {
+      "type": "resolution",
+      "title": "Device Verified on a Direct Connection",
+      "message": "Windows consistently recognizes the device and its intended function works when connected directly. The hub or dock path remains suspect; keep using the verified direct connection and have the hub, dock, cable, or shared-power path reviewed separately."
+    },
+    "hub_or_device_support": {
+      "type": "resolution",
+      "title": "Direct Connection Did Not Fully Resolve the Issue",
+      "message": "The direct connection did not produce both consistent recognition and working device function. Record the tested port and observed behavior for hardware or driver support."
+    },
+    "try_alternate_port": {
+      "type": "instruction",
+      "title": "Reconnect and Test One Compatible Port",
+      "instruction": "If the device can be disconnected safely, reconnect it firmly. Then test one other known-compatible USB port on the same computer. Do not use a damaged port, force the connector, or repeatedly move the device between ports.",
+      "help_text": "One bounded alternate-port test can distinguish the original port from the device without broad system changes.",
+      "next": "alternate_port_result"
+    },
+    "alternate_port_result": {
+      "type": "question",
+      "question": "What happened during the bounded port test?",
+      "answers": {
+        "works": {"label": "The device works in the tested port", "next": "verify_port_operation"},
+        "not_detected": {"label": "Windows still does not detect it", "next": "inspect_device_manager"},
+        "error": {"label": "Windows reports an error or incorrect device", "next": "inspect_device_manager"},
+        "intermittent": {"label": "It repeatedly connects and disconnects", "next": "intermittent_support"},
+        "unsafe": {"label": "I could not test it safely", "next": "ambiguous_result_support"}
+      }
+    },
+    "verify_port_operation": {
+      "type": "question",
+      "question": "Does Windows consistently recognize the intended device, and does its intended function actually work in the tested port?",
+      "answers": {
+        "yes": {"label": "Yes", "next": "resolved_port_test"},
+        "recognized_only": {"label": "Windows recognizes it, but its function does not work", "next": "function_support"},
+        "no": {"label": "No", "next": "inspect_device_manager"},
+        "intermittent": {"label": "It still disconnects intermittently", "next": "intermittent_support"}
+      }
+    },
+    "resolved_port_test": {
+      "type": "resolution",
+      "title": "USB Device Function Verified",
+      "message": "Windows consistently recognizes the intended USB device and its intended function works in the tested port. If a different port was required, the original port or connection path remains unverified and should be reviewed separately."
+    },
+    "inspect_device_manager": {
+      "type": "instruction",
+      "title": "Inspect the Device in Device Manager",
+      "instruction": "Open Device Manager, locate the intended device or an Unknown Device entry, and review Properties > Device Status. Record any warning icon, disabled state, or error code. Do not uninstall the device, delete drivers, or change power-management settings.",
+      "help_text": "Device Manager can show whether Windows recognizes the hardware and reports a device or driver problem without changing it.",
+      "knowledge_article": "using-device-manager-to-troubleshoot-hardware",
+      "next": "device_manager_result"
+    },
+    "device_manager_result": {
+      "type": "question",
+      "question": "What does Device Manager show for the intended USB device?",
+      "answers": {
+        "normal": {"label": "The device is listed with no warning", "next": "other_computer_available"},
+        "warning": {"label": "A warning icon or error code is shown", "next": "driver_support"},
+        "unknown": {"label": "It appears as Unknown Device or incorrectly", "next": "driver_support"},
+        "missing": {"label": "The device is missing", "next": "other_computer_available"},
+        "disabled": {"label": "The device is disabled", "next": "driver_or_policy_support"},
+        "restricted": {"label": "A policy or security restriction is shown", "next": "policy_support"},
+        "unclear": {"label": "I cannot determine the result", "next": "ambiguous_result_support"}
+      }
+    },
+    "other_computer_available": {
+      "type": "question",
+      "question": "Is an approved compatible computer available for one safe device test?",
+      "help_text": "Do not test organizationally restricted hardware or uncertain removable media on another computer.",
+      "answers": {
+        "yes": {"label": "Yes", "next": "test_other_computer"},
+        "no": {"label": "No", "next": "ambiguous_result_support"},
+        "restricted": {"label": "Policy or data sensitivity prevents testing", "next": "policy_support"},
+        "unsure": {"label": "I am not sure", "next": "ambiguous_result_support"}
+      }
+    },
+    "test_other_computer": {
+      "type": "instruction",
+      "title": "Test the Device on One Approved Computer",
+      "instruction": "Connect the device once to an approved compatible computer. Observe whether Windows consistently recognizes the intended device and whether its intended function works. Do not install unofficial drivers or test uncertain storage media containing sensitive data.",
+      "next": "other_computer_result"
+    },
+    "other_computer_result": {
+      "type": "question",
+      "question": "What happened on the approved comparison computer?",
+      "answers": {
+        "works": {"label": "The device is recognized and works consistently", "next": "original_computer_support"},
+        "fails": {"label": "The device is not recognized or does not function", "next": "hardware_failure_support"},
+        "intermittent": {"label": "It repeatedly connects and disconnects", "next": "intermittent_support"},
+        "unclear": {"label": "The result is unclear", "next": "ambiguous_result_support"}
+      }
+    },
+    "driver_support": {
+      "type": "resolution",
+      "title": "Driver Review Is Required",
+      "message": "Windows reports a device identity or driver error. Record the exact Device Manager status and error code, then use approved device-manufacturer or organizational driver support. Do not uninstall devices broadly or delete driver packages."
+    },
+    "driver_or_policy_support": {
+      "type": "resolution",
+      "title": "Device Enablement Requires Approval",
+      "message": "Device Manager reports the device as disabled. Record the device identity and status, then contact support before enabling it; the state may reflect hardware, driver, security, or organizational policy."
+    },
+    "policy_support": {
+      "type": "resolution",
+      "title": "USB Policy Review Is Required",
+      "message": "A security or organizational policy may control this USB device. Record the device identity and displayed message, then contact the administrator. Do not disable USB security controls or work around device restrictions."
+    },
+    "original_computer_support": {
+      "type": "resolution",
+      "title": "Original Computer Needs USB Support",
+      "message": "The device works consistently on an approved comparison computer, so the original computer's port, controller, driver, power, or policy path needs review. Record both test results; do not broadly reinstall drivers or change registry or power-management settings."
+    },
+    "hardware_failure_support": {
+      "type": "resolution",
+      "title": "USB Device Hardware Failure Is Likely",
+      "message": "The device was not recognized or functional on either approved computer. Stop repeated connection testing and contact the device manufacturer or hardware support. Preserve important storage media for data-recovery assessment."
+    },
+    "intermittent_support": {
+      "type": "resolution",
+      "title": "Intermittent USB Connection Needs Support",
+      "message": "Repeated USB disconnects can indicate a device, cable, port, hub, power, or driver problem. Stop repeated reconnection, record the tested configuration, and contact support before changing power-management or driver settings."
+    },
+    "function_support": {
+      "type": "resolution",
+      "title": "Device Function Still Needs Support",
+      "message": "Windows recognizes the intended device, but recognition alone is not success because its intended function does not work. Record the device status and failed function for device-specific support."
+    },
+    "ambiguous_result_support": {
+      "type": "resolution",
+      "title": "USB Result Could Not Be Verified",
+      "message": "The result is not clear enough for another safe action. Record the device, port or hub path, Windows message, and Device Manager status, then contact support rather than applying broad driver, registry, security, or power changes."
+    }
+  }
+}

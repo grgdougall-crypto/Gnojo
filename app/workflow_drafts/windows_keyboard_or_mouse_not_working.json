@@ -1,0 +1,209 @@
+{
+    "workflow_id": "windows_keyboard_or_mouse_not_working",
+    "name": "Keyboard or Mouse Not Working",
+    "estimated_steps": 12,
+    "start_node": "start_confirm_scope",
+    "nodes": {
+        "start_confirm_scope": {
+            "type": "instruction",
+            "title": "Confirm The Affected Input Device",
+            "instruction": "Identify whether the issue affects a keyboard, mouse, touchpad, or multiple input devices. If the primary input device is unusable, connect a known-working temporary USB keyboard or mouse if available so you can complete the Windows checks safely.",
+            "help_text": "For business devices, avoid disassembling the keyboard, mouse, laptop, receiver, or dock. Record the device type, brand, connection method, and when the issue started.",
+            "next": "q_is_bluetooth"
+        },
+        "q_is_bluetooth": {
+            "type": "question",
+            "question": "Is the keyboard or mouse connected using Bluetooth rather than a USB cable or USB receiver?",
+            "help_text": "Bluetooth devices pair directly with Windows through Settings. Wireless devices that use a small USB dongle are not Bluetooth for this workflow.",
+            "answers": {
+                "yes": {
+                    "label": "Yes",
+                    "next": "instr_bluetooth_basic_checks"
+                },
+                "no": {
+                    "label": "No",
+                    "next": "q_is_usb_device"
+                }
+            }
+        },
+        "q_is_usb_device": {
+            "type": "question",
+            "question": "Does the keyboard or mouse connect using a USB cable, USB receiver, docking station, or hub?",
+            "help_text": "This includes wired USB keyboards and mice, wireless keyboards and mice with a USB dongle, and devices connected through a monitor, hub, or docking station.",
+            "answers": {
+                "yes": {
+                    "label": "Yes",
+                    "next": "instr_usb_basic_checks"
+                },
+                "no": {
+                    "label": "No",
+                    "next": "instr_builtin_device_checks"
+                }
+            }
+        },
+        "instr_bluetooth_basic_checks": {
+            "type": "instruction",
+            "title": "Check Bluetooth Device Power And Pairing State",
+            "instruction": "Turn the keyboard or mouse off and back on. Replace or recharge the batteries if applicable. Move the device close to the computer, remove obvious wireless interference, and put the device into pairing mode according to the manufacturer instructions. In Windows, open Settings > Bluetooth & devices and check whether the device appears as paired or connected.",
+            "help_text": "Many Bluetooth keyboards and mice have a pairing button or a device-slot selector. Make sure the device is not currently paired to another computer, tablet, or phone.",
+            "knowledge_article": "KB-WIN-BLUETOOTH-PAIRING-BASICS",
+            "next": "q_bluetooth_connected"
+        },
+        "q_bluetooth_connected": {
+            "type": "question",
+            "question": "After the basic Bluetooth checks, does Windows show the device as connected and does input work?",
+            "help_text": "If Windows cannot find, pair, or connect to the device, continue in the Bluetooth troubleshooting workflow instead of duplicating those steps here.",
+            "answers": {
+                "yes": {
+                    "label": "Yes",
+                    "next": "q_device_behaves_incorrectly"
+                },
+                "no": {
+                    "label": "No",
+                    "next": "transition_bluetooth_workflow"
+                }
+            }
+        },
+        "transition_bluetooth_workflow": {
+            "type": "transition",
+            "title": "Continue With Bluetooth Device Not Connecting",
+            "message": "The issue appears to be a Bluetooth discovery, pairing, or connection problem. Continue with the dedicated Bluetooth troubleshooting workflow.",
+            "next_workflow": "bt_win_not_connecting"
+        },
+        "instr_usb_basic_checks": {
+            "type": "instruction",
+            "title": "Check USB Connection And Receiver",
+            "instruction": "Disconnect and reconnect the USB cable or receiver. Connect it directly to the computer instead of through a hub, monitor, docking station, or extension cable. Try another compatible USB port. For wireless USB devices, confirm the power switch is on, replace or recharge the batteries, and make sure the USB receiver is the correct receiver for that keyboard or mouse.",
+            "help_text": "If the device has a pairing or connect button for its USB receiver, press it according to the manufacturer instructions. Avoid forcing USB connectors into damaged ports.",
+            "knowledge_article": "KB-WIN-USB-INPUT-DEVICE-BASIC-CHECKS",
+            "next": "q_usb_recognized"
+        },
+        "q_usb_recognized": {
+            "type": "question",
+            "question": "After reseating the connection or trying another compatible USB port, does Windows recognize the device and does input work?",
+            "help_text": "Signs of recognition include cursor movement, keyboard input, a connection sound, or the device appearing under Keyboards, Mice and other pointing devices, or Human Interface Devices in Device Manager.",
+            "answers": {
+                "yes": {
+                    "label": "Yes",
+                    "next": "q_device_behaves_incorrectly"
+                },
+                "no": {
+                    "label": "No",
+                    "next": "transition_usb_workflow"
+                }
+            }
+        },
+        "transition_usb_workflow": {
+            "type": "transition",
+            "title": "Continue With USB Device Not Recognized",
+            "message": "The issue appears to be USB detection or enumeration related. Continue with the dedicated USB Device Not Recognized workflow.",
+            "next_workflow": "usb_device_not_recognized"
+        },
+        "instr_builtin_device_checks": {
+            "type": "instruction",
+            "title": "Check Built-In Keyboard Or Touchpad Controls",
+            "instruction": "If this is a laptop keyboard or built-in touchpad, restart Windows, check for a physical touchpad switch, and use the appropriate function key shortcut to enable the touchpad if present. Review Settings > Bluetooth & devices > Touchpad and Settings > Accessibility to confirm the device has not been disabled by a Windows setting.",
+            "help_text": "Some laptops disable the touchpad when an external mouse is connected. Some function keys require holding Fn, while others toggle directly.",
+            "knowledge_article": "KB-WIN-TOUCHPAD-KEYBOARD-SETTINGS",
+            "next": "q_builtin_detected"
+        },
+        "q_builtin_detected": {
+            "type": "question",
+            "question": "After checking built-in device controls and restarting Windows, is the keyboard or touchpad detected and responding?",
+            "help_text": "If the device is still not detected, continue to safe Windows driver and hardware validation checks.",
+            "answers": {
+                "yes": {
+                    "label": "Yes",
+                    "next": "q_device_behaves_incorrectly"
+                },
+                "no": {
+                    "label": "No",
+                    "next": "instr_device_manager_and_cross_test"
+                }
+            }
+        },
+        "q_device_behaves_incorrectly": {
+            "type": "question",
+            "question": "Is the device detected but still intermittent, delayed, typing the wrong characters, double-clicking, drifting, or otherwise behaving incorrectly?",
+            "help_text": "Choose No if the device is now working normally after the connection, power, or pairing checks.",
+            "answers": {
+                "yes": {
+                    "label": "Yes",
+                    "next": "instr_behavior_and_settings_checks"
+                },
+                "no": {
+                    "label": "No",
+                    "next": "resolution_working"
+                }
+            }
+        },
+        "instr_behavior_and_settings_checks": {
+            "type": "instruction",
+            "title": "Check Input Behavior And Windows Settings",
+            "instruction": "Test the keyboard in Notepad and test the mouse on a plain, non-reflective surface. Clean debris from keys, buttons, the scroll wheel, and the optical sensor. Replace batteries if the device is wireless. In Windows, review Settings > Accessibility > Keyboard for Sticky Keys, Filter Keys, and Toggle Keys, review Settings > Accessibility > Mouse for Mouse Keys, confirm the correct keyboard layout under Settings > Time & language > Language & region, and check pointer speed or touchpad sensitivity settings.",
+            "help_text": "Filter Keys can make a keyboard seem delayed or unresponsive. Mouse Keys can move the pointer using the numeric keypad and may confuse normal mouse behavior.",
+            "knowledge_article": "KB-WIN-ACCESSIBILITY-INPUT-SETTINGS",
+            "next": "q_behavior_resolved"
+        },
+        "q_behavior_resolved": {
+            "type": "question",
+            "question": "After cleaning, basic testing, and Windows input setting checks, is the keyboard or mouse working correctly?",
+            "help_text": "If the problem only occurs in one application, also check that application's shortcuts, add-ins, or input configuration.",
+            "answers": {
+                "yes": {
+                    "label": "Yes",
+                    "next": "resolution_working"
+                },
+                "no": {
+                    "label": "No",
+                    "next": "instr_device_manager_and_cross_test"
+                }
+            }
+        },
+        "instr_device_manager_and_cross_test": {
+            "type": "instruction",
+            "title": "Validate Device Manager And Cross-Test Hardware",
+            "instruction": "Open Device Manager and review Keyboards, Mice and other pointing devices, Bluetooth, Universal Serial Bus controllers, and Human Interface Devices as applicable. Look for disabled devices, warning icons, or repeated connect and disconnect behavior. Use Scan for hardware changes. If appropriate, uninstall the affected HID, keyboard, or mouse device entry and restart Windows so the driver reloads. Then test the suspect keyboard or mouse on another compatible computer, and test a known-good keyboard or mouse on this Windows computer using the same connection type when possible.",
+            "help_text": "Do not delete driver software unless directed by your organization's support process. Cross-testing helps separate a failed peripheral from a Windows, port, Bluetooth, or system board issue.",
+            "knowledge_article": "KB-WIN-DEVICE-MANAGER-HID-INPUT-DEVICES",
+            "next": "q_cross_test_device_failure"
+        },
+        "q_cross_test_device_failure": {
+            "type": "question",
+            "question": "Do the cross-test results show that the suspected keyboard or mouse fails on another compatible computer while known-good input devices work on this PC?",
+            "help_text": "Answer Yes when the evidence points to the keyboard or mouse itself. Answer No if the issue follows the Windows computer, the results are inconclusive, or multiple input devices fail on this PC.",
+            "answers": {
+                "yes": {
+                    "label": "Yes",
+                    "next": "resolution_replace_device"
+                },
+                "no": {
+                    "label": "No",
+                    "next": "resolution_escalate_pc_issue"
+                }
+            }
+        },
+        "resolution_working": {
+            "type": "resolution",
+            "title": "Keyboard Or Mouse Restored",
+            "message": "The keyboard or mouse is working normally. Document the corrective action, such as replacing batteries, reseating the receiver, changing ports, adjusting accessibility settings, cleaning the device, or reconnecting Bluetooth."
+        },
+        "resolution_replace_device": {
+            "type": "resolution",
+            "title": "Replace Or Service The Input Device",
+            "message": "Testing indicates the keyboard or mouse is likely faulty. Replace the device, recharge or replace its battery pack if serviceable, or process it through the approved warranty or hardware replacement procedure."
+        },
+        "resolution_escalate_pc_issue": {
+            "type": "resolution",
+            "title": "Escalate Windows Or Hardware Investigation",
+            "message": "The issue does not clearly isolate to the keyboard or mouse. Escalate for deeper Windows driver, profile, endpoint hardware, docking station, USB controller, Bluetooth adapter, or system board investigation. Include Device Manager findings, connection type, cross-test results, and any recent updates or physical damage."
+        }
+    },
+    "description": "Troubleshoot Windows keyboard or mouse issues including no input, intermittent behavior, USB/receiver problems, Bluetooth pairing, Windows input settings, and basic hardware checks. Deeper USB or Bluetooth connection issues hand off to the dedicated workflows.",
+    "platform": "Windows",
+    "difficulty": "Intermediate",
+    "size": "Medium",
+    "generation_provider": "OpenAI",
+    "status": "Generated Draft",
+    "category": "Desktop Support"
+}

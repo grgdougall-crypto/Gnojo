@@ -478,6 +478,13 @@
 
         try {
             const response = await fetch(designer.dataset.validationUrl, { headers: { "Accept": "application/json" } });
+            const contentType = response.headers.get("content-type") || "";
+            if (!contentType.toLowerCase().includes("application/json")) {
+                if (response.redirected || response.url.includes("/login")) {
+                    throw new Error("Your reviewer session expired. Sign in again, then retry validation.");
+                }
+                throw new Error("Validation returned an unexpected server response. Reload the page and try again.");
+            }
             const result = await response.json();
             if (!response.ok || !result.ok) throw new Error(result.error || "Validation could not be completed.");
             validationPassed = result.is_valid;

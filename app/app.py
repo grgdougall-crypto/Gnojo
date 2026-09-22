@@ -5865,13 +5865,12 @@ def workflow_builder():
                 generated_workflow
             )
 
-            outline_service = WorkflowOutlineService()
-
-            outline = outline_service.build_outline(
-                generated_workflow
-            )
-
-            if validation["is_valid"]:
+            structural_errors = validation.get("structural_errors") or []
+            if not structural_errors:
+                outline_service = WorkflowOutlineService()
+                outline = outline_service.build_outline(
+                    generated_workflow
+                )
 
                 draft_service = (
                     WorkflowDraftService()
@@ -5885,6 +5884,12 @@ def workflow_builder():
                 return redirect(
                     url_for("workflow_builder_result", filename=filename)
                 )
+
+            error = (
+                "The generated workflow could not be saved because its "
+                "structure is incomplete or unsafe to load. "
+                + " ".join(structural_errors)
+            )
 
         except Exception as ex:
 

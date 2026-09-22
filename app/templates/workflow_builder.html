@@ -181,6 +181,12 @@
 
                             </div>
 
+                            {% if filename %}
+                                <div class="alert alert-info">
+                                    The workflow was saved as an editable draft. Repair the validation errors in Workflow Designer before publication.
+                                </div>
+                            {% endif %}
+
                         {% endif %}
 
                         {% if validation.warnings %}
@@ -205,14 +211,18 @@
 
                         {% endif %}
 
-                        {% if validation.is_valid and filename %}
+                        {% if filename %}
                             <div class="d-flex flex-wrap gap-2 my-4">
                                 <a
                                     class="btn btn-primary"
                                     href="{{ url_for('workflow_editor', filename=filename) }}"
                                 >
                                     <i class="bi bi-pencil-square me-2" aria-hidden="true"></i>
-                                    Review and Prepare to Publish
+                                    {% if validation.is_valid %}
+                                        Review and Prepare to Publish
+                                    {% else %}
+                                        Open in Workflow Designer
+                                    {% endif %}
                                     <i class="bi bi-arrow-right ms-2" aria-hidden="true"></i>
                                 </a>
                                 <a

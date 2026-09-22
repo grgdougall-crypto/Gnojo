@@ -27,6 +27,9 @@ class WorkflowValidationService:
                 "errors": [
                     "Workflow must be a JSON object."
                 ],
+                "structural_errors": [
+                    "Workflow must be a JSON object."
+                ],
                 "warnings": [],
                 "reachable_nodes": [],
                 "unreachable_nodes": [],
@@ -60,6 +63,7 @@ class WorkflowValidationService:
             return {
                 "is_valid": False,
                 "errors": errors,
+                "structural_errors": list(errors),
                 "warnings": warnings,
                 "reachable_nodes": [],
                 "unreachable_nodes": [],
@@ -155,6 +159,7 @@ class WorkflowValidationService:
                 "resolution or transition node."
             )
 
+        structural_errors = list(errors)
         quality = WorkflowQualityValidator().validate(
             workflow,
             available_workflow_ids=self._handoff_workflow_ids(
@@ -174,6 +179,7 @@ class WorkflowValidationService:
         return {
             "is_valid": not errors,
             "errors": errors,
+            "structural_errors": structural_errors,
             "warnings": warnings,
             "reachable_nodes": sorted(
                 reachable_nodes

@@ -1,0 +1,221 @@
+{
+    "workflow_id": "windows_sign_in_problem",
+    "name": "Windows Sign-in Problem",
+    "estimated_steps": 12,
+    "start_node": "q_reach_signin_screen",
+    "nodes": {
+        "q_reach_signin_screen": {
+            "type": "question",
+            "question": "Can you reach the Windows sign-in screen for the affected user account?",
+            "help_text": "This workflow applies when Windows loads to the sign-in screen but the user cannot access the desktop.",
+            "answers": {
+                "yes": {
+                    "label": "Yes",
+                    "next": "i_baseline_identity_connectivity"
+                },
+                "no": {
+                    "label": "No",
+                    "next": "t_pre_signin_startup_issue"
+                }
+            }
+        },
+        "t_pre_signin_startup_issue": {
+            "type": "resolution",
+            "title": "Continue With Startup Or Display Troubleshooting",
+            "message": "The issue occurs before Windows reaches the sign-in screen. Use a startup, display, BitLocker, or boot recovery workflow before troubleshooting credentials."
+        },
+        "i_baseline_identity_connectivity": {
+            "type": "instruction",
+            "title": "Verify Identity, Keyboard, And Connectivity",
+            "instruction": "Confirm the correct user is selected, verify the username or email address, check Caps Lock and Num Lock, confirm the keyboard layout, and use the network icon to connect to Wi-Fi or Ethernet if the account may require online authentication. Do not ask the user to reveal their password.",
+            "help_text": "Many sign-in failures are caused by the wrong keyboard layout, cached credentials, a disconnected network, or signing in to the wrong account.",
+            "knowledge_article": "KB-WIN-SIGNIN-BASIC-CHECKS",
+            "next": "q_using_pin_or_hello"
+        },
+        "q_using_pin_or_hello": {
+            "type": "question",
+            "question": "Are you trying to sign in with a PIN, fingerprint, face recognition, or security key instead of the account password?",
+            "help_text": "Windows Hello methods can fail even when the account password is still valid.",
+            "answers": {
+                "yes": {
+                    "label": "Yes",
+                    "next": "i_switch_to_password"
+                },
+                "no": {
+                    "label": "No",
+                    "next": "q_managed_account"
+                }
+            }
+        },
+        "i_switch_to_password": {
+            "type": "instruction",
+            "title": "Switch To Password Sign-In",
+            "instruction": "Select Sign-in options, choose the password icon, and try the account password. If the password option is not visible, select Other user if available, then enter the full username or email address and password.",
+            "help_text": "This distinguishes a Windows Hello problem from a password or account authentication problem.",
+            "knowledge_article": "KB-WIN-SIGNIN-OPTIONS",
+            "next": "q_password_signin_success"
+        },
+        "q_password_signin_success": {
+            "type": "question",
+            "question": "Can you sign in successfully with the account password?",
+            "answers": {
+                "yes": {
+                    "label": "Yes",
+                    "next": "r_repair_windows_hello"
+                },
+                "no": {
+                    "label": "No",
+                    "next": "q_forgot_pin_available"
+                }
+            }
+        },
+        "r_repair_windows_hello": {
+            "type": "resolution",
+            "title": "Repair Windows Hello After Sign-In",
+            "message": "The account password works, so the sign-in failure is isolated to Windows Hello. After reaching the desktop, open Settings > Accounts > Sign-in options, remove and recreate the affected PIN, fingerprint, face, or security key method as appropriate.",
+            "knowledge_article": "KB-WIN-HELLO-RESET"
+        },
+        "q_forgot_pin_available": {
+            "type": "question",
+            "question": "Do you see an I forgot my PIN link or another Windows Hello recovery option on the sign-in screen?",
+            "help_text": "This option may require internet access, a Microsoft account verification prompt, or organization-managed multifactor authentication.",
+            "answers": {
+                "yes": {
+                    "label": "Yes",
+                    "next": "i_reset_pin_from_signin"
+                },
+                "no": {
+                    "label": "No",
+                    "next": "q_managed_account"
+                }
+            }
+        },
+        "i_reset_pin_from_signin": {
+            "type": "instruction",
+            "title": "Reset The PIN From The Sign-In Screen",
+            "instruction": "Select I forgot my PIN and complete the identity verification prompts. Keep the device connected to the internet and follow any Microsoft account or organization MFA requirements shown on screen.",
+            "help_text": "Do not delete the user profile, reset Windows, or remove account data to fix a PIN problem.",
+            "knowledge_article": "KB-WIN-HELLO-PIN-RECOVERY",
+            "next": "q_pin_reset_success"
+        },
+        "q_pin_reset_success": {
+            "type": "question",
+            "question": "After resetting the PIN or Windows Hello method, can you reach the desktop?",
+            "answers": {
+                "yes": {
+                    "label": "Yes",
+                    "next": "r_signin_restored"
+                },
+                "no": {
+                    "label": "No",
+                    "next": "q_managed_account"
+                }
+            }
+        },
+        "r_signin_restored": {
+            "type": "resolution",
+            "title": "Sign-In Restored",
+            "message": "The user can now access the desktop. Confirm the account name is correct, lock and unlock the device once to verify the fix, and document the sign-in method that worked."
+        },
+        "q_managed_account": {
+            "type": "question",
+            "question": "Is this a work, school, domain, or managed organization account?",
+            "help_text": "Managed accounts may depend on domain connectivity, Entra ID authentication, MFA, account lockout policy, password expiration, or conditional access rules.",
+            "knowledge_article": "KB-WIN-MANAGED-ACCOUNT-SIGNIN",
+            "answers": {
+                "yes": {
+                    "label": "Yes",
+                    "next": "i_check_org_network_and_lockout"
+                },
+                "no": {
+                    "label": "No",
+                    "next": "q_microsoft_account"
+                }
+            }
+        },
+        "i_check_org_network_and_lockout": {
+            "type": "instruction",
+            "title": "Check Organization Network And Lockout Indicators",
+            "instruction": "Verify the username format required by the organization, such as user@domain.com or DOMAIN\\username. Connect to the corporate network, Wi-Fi, Ethernet, or pre-logon VPN if available. If Windows reports the account is locked, disabled, password expired, or credentials cannot be verified, stop repeated attempts to avoid extending the lockout.",
+            "help_text": "Cached domain credentials can allow offline sign-in in some cases, but first-time sign-in, recent password changes, and policy updates often require network connectivity.",
+            "knowledge_article": "KB-WIN-DOMAIN-CACHED-CREDENTIALS",
+            "next": "q_org_signin_success"
+        },
+        "q_org_signin_success": {
+            "type": "question",
+            "question": "After confirming the username format and network connection, can you sign in?",
+            "answers": {
+                "yes": {
+                    "label": "Yes",
+                    "next": "r_signin_restored"
+                },
+                "no": {
+                    "label": "No",
+                    "next": "t_org_admin_identity_support"
+                }
+            }
+        },
+        "t_org_admin_identity_support": {
+            "type": "resolution",
+            "title": "Escalate To Organization Identity Support",
+            "message": "The remaining failure likely requires administrator action, such as unlocking the account, resetting the password, reviewing domain or Entra ID sign-in logs, checking conditional access policy, or validating device compliance.",
+            "knowledge_article": "KB-WIN-ORG-AUTH-ESCALATION"
+        },
+        "q_microsoft_account": {
+            "type": "question",
+            "question": "Is the Windows account a Microsoft account that uses an email address, such as Outlook.com, Hotmail, Live, or another personal email?",
+            "help_text": "If the same email is used for both personal Microsoft services and work or school access, confirm which account type Windows expects on the sign-in screen.",
+            "knowledge_article": "KB-WIN-MICROSOFT-VS-LOCAL-ACCOUNT",
+            "answers": {
+                "yes": {
+                    "label": "Yes",
+                    "next": "t_microsoft_account_recovery"
+                },
+                "no": {
+                    "label": "No",
+                    "next": "q_other_admin_available"
+                }
+            }
+        },
+        "t_microsoft_account_recovery": {
+            "type": "resolution",
+            "title": "Continue With Microsoft Account Recovery",
+            "message": "Use Microsoft account recovery to reset or verify the account password, then return to the Windows sign-in screen and try the updated password while connected to the internet. If recovery information is unavailable, continue with Microsoft account support.",
+            "knowledge_article": "KB-WIN-MSA-PASSWORD-RECOVERY"
+        },
+        "q_other_admin_available": {
+            "type": "question",
+            "question": "Is there another administrator account on this PC that can sign in?",
+            "help_text": "This applies to local Windows accounts. Avoid deleting the user profile or resetting the PC unless explicitly approved through recovery procedures.",
+            "answers": {
+                "yes": {
+                    "label": "Yes",
+                    "next": "r_other_admin_reset_local_password"
+                },
+                "no": {
+                    "label": "No",
+                    "next": "t_local_admin_required"
+                }
+            }
+        },
+        "r_other_admin_reset_local_password": {
+            "type": "resolution",
+            "title": "Reset The Local Account Password Safely",
+            "message": "Sign in with the other administrator account and reset the affected local account password using Windows account management tools. Preserve the user profile and data. If the user used EFS-encrypted files or saved credentials, warn that some protected secrets may not be recoverable after a password reset.",
+            "knowledge_article": "KB-WIN-LOCAL-ACCOUNT-PASSWORD-RESET"
+        },
+        "t_local_admin_required": {
+            "type": "resolution",
+            "title": "Escalate For Local Administrator Recovery",
+            "message": "No available administrator account can sign in. Escalate for approved local administrator recovery, device management assistance, or offline recovery procedures according to organizational policy.",
+            "knowledge_article": "KB-WIN-LOCAL-ADMIN-RECOVERY"
+        }
+    },
+    "description": "Troubleshoot Windows sign-in problems involving passwords, PIN/Windows Hello, managed accounts, lockouts, connectivity, and account recovery. Safe recovery steps are used first, with administrator escalation when required.",
+    "platform": "Windows",
+    "difficulty": "Intermediate",
+    "size": "Medium",
+    "generation_provider": "OpenAI",
+    "status": "Generated Draft",
+    "category": "Networking"
+}
